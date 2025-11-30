@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import Papa from "papaparse";
 import { ArrowLeft, Upload, FileText, Check, X, Download, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -15,75 +16,86 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
+import { useAppStore, createCustomersAndTicketsFromCSV } from "@/store/useAppStore";
 
 interface CSVRow {
-  title: string;
-  nrcId: string;
-  name: string;
-  phoneNumber: string;
-  arrearAmount: string;
-  employerName: string;
-  paymentMethod: string;
-  status: string;
+  'Customer Name'?: string;
+  'NRC Number'?: string;
+  'Amount Owed'?: string;
+  [key: string]: string | undefined;
 }
 
-interface ParsedRow extends CSVRow {
+interface ParsedRow {
+  name: string;
+  nrcNumber: string;
+  amountOwed: number;
   isValid: boolean;
   errors: string[];
   isDuplicate: boolean;
 }
 
-const SAMPLE_CSV = `Title,Name,NRC ID,Phone Number,Arrear Amount,Employer Name,Payment Method,Status
-Mr,John Doe,123456/10/1,+260 97 1234567,15000,ABC Company,bank_transfer,defaulted
-Mrs,Jane Smith,234567/20/2,+260 96 2345678,8500,XYZ Corp,mobile_money,active`;
+const SAMPLE_CSV = `Customer Name,NRC Number,Amount Owed
+John Mwanza,123456/10/1,15000
+Jane Banda,234567/20/2,8500
+Peter Phiri,345678/30/3,22000`;
 
 export default function CSVImport() {
+  const navigate = useNavigate();
   const { toast } = useToast();
+  const { customers, settings, addCustomers, addTickets } = useAppStore();
+  
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [parsedData, setParsedData] = useState<ParsedRow[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
 
-  const parseCSV = (content: string): ParsedRow[] => {
-    const lines = content.trim().split('\n');
-    if (lines.length < 2) return [];
+  const existingNrcNumbers = new Set(customers.map((c) => c.nrcNumber));
 
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-    const rows: ParsedRow[] = [];
-    const seenNrcIds = new Set<string>();
-
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.trim());
-      const row: CSVRow = {
-        title: values[headers.indexOf('title')] || '',
-        name: values[headers.indexOf('name')] || '',
-        nrcId: values[headers.indexOf('nrc id')] || '',
-        phoneNumber: values[headers.indexOf('phone number')] || '',
-        arrearAmount: values[headers.indexOf('arrear amount')] || '0',
-        employerName: values[headers.indexOf('employer name')] || '',
-        paymentMethod: values[headers.indexOf('payment method')] || 'cash',
-        status: values[headers.indexOf('status')] || 'active',
-      };
-
-      const errors: string[] = [];
-      if (!row.name) errors.push('Name is required');
-      if (!row.nrcId) errors.push('NRC ID is required');
-      if (!row.phoneNumber) errors.push('Phone number is required');
-      if (isNaN(parseFloat(row.arrearAmount))) errors.push('Invalid arrear amount');
-
-      const isDuplicate = seenNrcIds.has(row.nrcId);
-      if (row.nrcId) seenNrcIds.add(row.nrcId);
-
-      rows.push({
-        ...row,
-        isValid: errors.length === 0 && !isDuplicate,
-        errors,
-        isDuplicate,
-      });
-    }
-
-    return rows;
+  const parseCSV = (file: File) => {
+    Papa.parse<CSVRow>(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const seenNrcNumbers = new Set<string>();
+        const parsed: ParsedRow[] = results.data.map((row) => {
+          const name = row['Customer Name']?.trim() || '';
+          const nrcNumber = row['NRC Number']?.trim() || '';
+          const amountOwedStr = row['Amount Owed']?.trim() || '0';
+          const amountOwed = parseFloat(amountOwedStr.replace(/[^0-9.-]/g, ''));
+          
+          const errors: string[] = [];
+          if (!name) errors.push('Customer Name is required');
+          if (!nrcNumber) errors.push('NRC Number is required');
+          if (isNaN(amountOwed) || amountOwed <= 0) errors.push('Valid Amount Owed is required');
+          
+          const isDuplicateInFile = seenNrcNumbers.has(nrcNumber);
+          const isDuplicateInDb = existingNrcNumbers.has(nrcNumber);
+          const isDuplicate = isDuplicateInFile || isDuplicateInDb;
+          
+          if (nrcNumber) seenNrcNumbers.add(nrcNumber);
+          if (isDuplicateInDb) errors.push('NRC already exists in system');
+          if (isDuplicateInFile) errors.push('Duplicate NRC in file');
+          
+          return {
+            name,
+            nrcNumber,
+            amountOwed: isNaN(amountOwed) ? 0 : amountOwed,
+            isValid: errors.length === 0,
+            errors,
+            isDuplicate,
+          };
+        });
+        setParsedData(parsed);
+      },
+      error: (error) => {
+        toast({
+          title: "Parse Error",
+          description: error.message,
+          variant: "destructive",
+        });
+      },
+    });
   };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -91,14 +103,9 @@ export default function CSVImport() {
     setIsDragging(false);
 
     const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile && droppedFile.type === 'text/csv') {
+    if (droppedFile && (droppedFile.type === 'text/csv' || droppedFile.name.endsWith('.csv'))) {
       setFile(droppedFile);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const content = event.target?.result as string;
-        setParsedData(parseCSV(content));
-      };
-      reader.readAsText(droppedFile);
+      parseCSV(droppedFile);
     } else {
       toast({
         title: "Invalid File",
@@ -112,17 +119,12 @@ export default function CSVImport() {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       setFile(selectedFile);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const content = event.target?.result as string;
-        setParsedData(parseCSV(content));
-      };
-      reader.readAsText(selectedFile);
+      parseCSV(selectedFile);
     }
   };
 
   const handleImport = async () => {
-    const validRows = parsedData.filter(r => r.isValid);
+    const validRows = parsedData.filter((r) => r.isValid);
     if (validRows.length === 0) {
       toast({
         title: "No Valid Data",
@@ -135,18 +137,32 @@ export default function CSVImport() {
     setIsImporting(true);
     setImportProgress(0);
 
-    for (let i = 0; i < validRows.length; i++) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      setImportProgress(((i + 1) / validRows.length) * 100);
+    // Create customers and tickets with 50/50 agent distribution
+    const { customers: newCustomers, tickets: newTickets } = createCustomersAndTicketsFromCSV(
+      validRows.map((r) => ({
+        name: r.name,
+        nrcNumber: r.nrcNumber,
+        amountOwed: r.amountOwed,
+      })),
+      settings
+    );
+
+    // Simulate progress
+    for (let i = 0; i <= 100; i += 10) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      setImportProgress(i);
     }
+
+    addCustomers(newCustomers);
+    addTickets(newTickets);
 
     setIsImporting(false);
     toast({
       title: "Import Complete",
-      description: `Successfully imported ${validRows.length} customers`,
+      description: `Successfully imported ${validRows.length} customers and created ${newTickets.length} tickets`,
     });
-    setFile(null);
-    setParsedData([]);
+    
+    navigate('/customers');
   };
 
   const downloadSample = () => {
@@ -159,8 +175,16 @@ export default function CSVImport() {
     URL.revokeObjectURL(url);
   };
 
-  const validCount = parsedData.filter(r => r.isValid).length;
-  const invalidCount = parsedData.filter(r => !r.isValid).length;
+  const validCount = parsedData.filter((r) => r.isValid).length;
+  const invalidCount = parsedData.filter((r) => !r.isValid).length;
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-ZM', {
+      style: 'currency',
+      currency: 'ZMW',
+      minimumFractionDigits: 0,
+    }).format(amount);
+  };
 
   return (
     <div className="space-y-6">
@@ -170,13 +194,23 @@ export default function CSVImport() {
         </Link>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-foreground">Import Customers</h1>
-          <p className="text-muted-foreground">Upload a CSV file to bulk import customers</p>
+          <p className="text-muted-foreground">
+            Upload CSV to auto-create customers and tickets (50/50 agent split)
+          </p>
         </div>
         <Button variant="outline" onClick={downloadSample}>
           <Download className="h-4 w-4 mr-2" />
           Download Sample
         </Button>
       </div>
+
+      <Alert>
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>Required CSV Columns</AlertTitle>
+        <AlertDescription>
+          Your CSV must have these columns: <strong>Customer Name</strong>, <strong>NRC Number</strong>, <strong>Amount Owed</strong>
+        </AlertDescription>
+      </Alert>
 
       {!file && (
         <Card>
@@ -212,7 +246,7 @@ export default function CSVImport() {
 
       {file && parsedData.length > 0 && (
         <>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-4">
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
@@ -221,7 +255,7 @@ export default function CSVImport() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">File</p>
-                    <p className="font-medium">{file.name}</p>
+                    <p className="font-medium truncate max-w-[120px]">{file.name}</p>
                   </div>
                 </div>
               </CardContent>
@@ -252,6 +286,19 @@ export default function CSVImport() {
                 </div>
               </CardContent>
             </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-info/10">
+                    <FileText className="h-5 w-5 text-info" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Agent Split</p>
+                    <p className="font-medium text-info">50/50</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
           {invalidCount > 0 && (
@@ -267,7 +314,9 @@ export default function CSVImport() {
           <Card>
             <CardHeader>
               <CardTitle>Preview Data</CardTitle>
-              <CardDescription>Review the data before importing</CardDescription>
+              <CardDescription>
+                Tickets will be assigned: {settings.agent1Name} & {settings.agent2Name}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="rounded-md border overflow-auto max-h-96">
@@ -275,11 +324,10 @@ export default function CSVImport() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[80px]">Status</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>NRC ID</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead>Arrear Amount</TableHead>
-                      <TableHead>Employer</TableHead>
+                      <TableHead>Customer Name</TableHead>
+                      <TableHead>NRC Number</TableHead>
+                      <TableHead className="text-right">Amount Owed</TableHead>
+                      <TableHead>Assigned To</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -287,18 +335,23 @@ export default function CSVImport() {
                       <TableRow key={index} className={!row.isValid ? 'bg-destructive/5' : ''}>
                         <TableCell>
                           {row.isValid ? (
-                            <Badge className="bg-success/10 text-success">Valid</Badge>
+                            <Badge className="bg-success/10 text-success border-success/20">Valid</Badge>
                           ) : row.isDuplicate ? (
                             <Badge variant="secondary">Duplicate</Badge>
                           ) : (
                             <Badge variant="destructive">Error</Badge>
                           )}
                         </TableCell>
-                        <TableCell>{row.title} {row.name}</TableCell>
-                        <TableCell className="font-mono text-sm">{row.nrcId}</TableCell>
-                        <TableCell>{row.phoneNumber}</TableCell>
-                        <TableCell>{row.arrearAmount}</TableCell>
-                        <TableCell>{row.employerName}</TableCell>
+                        <TableCell className="font-medium">{row.name}</TableCell>
+                        <TableCell className="font-mono text-sm">{row.nrcNumber}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(row.amountOwed)}</TableCell>
+                        <TableCell>
+                          {row.isValid ? (
+                            <Badge variant="outline">
+                              {index % 2 === 0 ? settings.agent1Name : settings.agent2Name}
+                            </Badge>
+                          ) : '-'}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -310,7 +363,7 @@ export default function CSVImport() {
           {isImporting && (
             <Card>
               <CardContent className="p-6">
-                <p className="text-sm text-muted-foreground mb-2">Importing customers...</p>
+                <p className="text-sm text-muted-foreground mb-2">Importing customers and creating tickets...</p>
                 <Progress value={importProgress} />
               </CardContent>
             </Card>
@@ -318,7 +371,7 @@ export default function CSVImport() {
 
           <div className="flex gap-4">
             <Button onClick={handleImport} disabled={isImporting || validCount === 0}>
-              Import {validCount} Customer{validCount !== 1 ? 's' : ''}
+              Import {validCount} Customer{validCount !== 1 ? 's' : ''} & Create Tickets
             </Button>
             <Button variant="outline" onClick={() => { setFile(null); setParsedData([]); }}>
               Cancel

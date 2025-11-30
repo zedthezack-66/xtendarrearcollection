@@ -9,9 +9,10 @@ import Customers from "./pages/Customers";
 import CustomerProfile from "./pages/CustomerProfile";
 import CSVImport from "./pages/CSVImport";
 import Tickets from "./pages/Tickets";
-import CreateTicket from "./pages/CreateTicket";
 import Payments from "./pages/Payments";
 import RecordPayment from "./pages/RecordPayment";
+import Settings from "./pages/Settings";
+import Export from "./pages/Export";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,9 +30,10 @@ const App = () => (
             <Route path="/customers/:id" element={<CustomerProfile />} />
             <Route path="/customers/import" element={<CSVImport />} />
             <Route path="/tickets" element={<Tickets />} />
-            <Route path="/tickets/new" element={<CreateTicket />} />
             <Route path="/payments" element={<Payments />} />
             <Route path="/payments/new" element={<RecordPayment />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/export" element={<Export />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AppLayout>
