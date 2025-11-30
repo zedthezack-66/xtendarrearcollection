@@ -10,7 +10,7 @@ interface StatCardProps {
     value: number;
     isPositive: boolean;
   };
-  variant?: 'default' | 'success' | 'warning' | 'destructive';
+  variant?: 'default' | 'success' | 'warning' | 'destructive' | 'info';
 }
 
 export function StatCard({ title, value, icon: Icon, trend, variant = 'default' }: StatCardProps) {
@@ -19,6 +19,7 @@ export function StatCard({ title, value, icon: Icon, trend, variant = 'default' 
     success: 'bg-success/10 text-success',
     warning: 'bg-warning/10 text-warning',
     destructive: 'bg-destructive/10 text-destructive',
+    info: 'bg-info/10 text-info',
   };
 
   return (

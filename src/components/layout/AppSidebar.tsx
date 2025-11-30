@@ -5,6 +5,7 @@ import {
   CreditCard, 
   Upload,
   Settings,
+  Download,
   LogOut
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
@@ -21,7 +22,6 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { currentUser } from "@/data/mockData";
 
 const mainNavItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -32,6 +32,8 @@ const mainNavItems = [
 
 const toolsNavItems = [
   { title: "CSV Import", url: "/customers/import", icon: Upload },
+  { title: "Export Data", url: "/export", icon: Download },
+  { title: "Settings", url: "/settings", icon: Settings },
 ];
 
 export function AppSidebar() {
@@ -40,11 +42,11 @@ export function AppSidebar() {
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground font-bold">
-            LM
+            LC
           </div>
           <div>
-            <h1 className="font-semibold text-sidebar-foreground">LoanManager</h1>
-            <p className="text-xs text-sidebar-foreground/60">Collections Platform</p>
+            <h1 className="font-semibold text-sidebar-foreground">LoanCollect</h1>
+            <p className="text-xs text-sidebar-foreground/60">Collections Manager</p>
           </div>
         </div>
       </SidebarHeader>
@@ -104,16 +106,13 @@ export function AppSidebar() {
         <div className="flex items-center gap-3">
           <Avatar className="h-8 w-8">
             <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground text-xs">
-              {currentUser.name.split(' ').map(n => n[0]).join('')}
+              AD
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-sidebar-foreground truncate">{currentUser.name}</p>
-            <p className="text-xs text-sidebar-foreground/60 capitalize">{currentUser.role}</p>
+            <p className="text-sm font-medium text-sidebar-foreground truncate">Admin</p>
+            <p className="text-xs text-sidebar-foreground/60 capitalize">Administrator</p>
           </div>
-          <button className="p-2 rounded-md hover:bg-sidebar-accent text-sidebar-foreground/60 hover:text-sidebar-accent-foreground transition-colors">
-            <LogOut className="h-4 w-4" />
-          </button>
         </div>
       </SidebarFooter>
     </Sidebar>

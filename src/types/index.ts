@@ -1,67 +1,63 @@
-export type CustomerStatus = 'active' | 'defaulted' | 'paid_off';
-export type PaymentMethod = 'cash' | 'bank_transfer' | 'mobile_money' | 'check';
-export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
-export type TicketPriority = 'high' | 'medium' | 'low';
-export type UserRole = 'admin' | 'manager' | 'agent' | 'finance';
+export type PaymentStatus = 'Not Paid' | 'Partially Paid' | 'Fully Paid';
+export type TicketStatus = 'Open' | 'In Progress' | 'Resolved';
+export type TicketPriority = 'High' | 'Medium' | 'Low';
+export type AgentName = string;
 
 export interface Customer {
   id: string;
-  title: string;
+  nrcNumber: string;
   name: string;
-  nrcId: string;
-  phoneNumber: string;
-  arrearAmount: number;
-  employerName: string;
-  paymentMethod: PaymentMethod;
-  status: CustomerStatus;
-  createdAt: string;
-  updatedAt: string;
+  amountOwed: number;
+  totalPaid: number;
+  paymentStatus: PaymentStatus;
+  callNotes: string;
+  willPayTomorrow: boolean;
+  noCall: boolean;
+  assignedAgent: AgentName;
+  ticketId: string;
+  createdDate: Date;
+  lastUpdated: Date;
 }
 
 export interface Ticket {
   id: string;
-  reference: string;
   customerId: string;
   customerName: string;
+  nrcNumber: string;
+  amountOwed: number;
   priority: TicketPriority;
   status: TicketStatus;
-  assignedTo: string;
-  assignedToName: string;
-  dueDate: string;
-  loanReference: string;
-  notes: string;
-  createdAt: string;
-  updatedAt: string;
-  resolvedAt?: string;
+  assignedAgent: AgentName;
+  callNotes: string;
+  createdDate: Date;
+  resolvedDate: Date | null;
+  lastUpdated: Date;
 }
 
 export interface Payment {
   id: string;
+  ticketId: string;
   customerId: string;
   customerName: string;
   amount: number;
-  paymentDate: string;
-  paymentMethod: PaymentMethod;
-  referenceNumber: string;
-  recordedBy: string;
-  recordedByName: string;
-  ticketId?: string;
-  createdAt: string;
+  date: Date;
+  notes: string;
+  createdDate: Date;
 }
 
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: UserRole;
-  avatar?: string;
+export interface AppSettings {
+  agent1Name: string;
+  agent2Name: string;
 }
 
 export interface DashboardStats {
   totalCustomers: number;
-  totalDefaulted: number;
-  totalArrearsOutstanding: number;
+  totalOutstanding: number;
+  totalCollected: number;
+  collectionRate: number;
   openTickets: number;
-  paymentsThisMonth: number;
-  ticketsResolvedThisWeek: number;
+  resolvedTickets: number;
+  ticketsByPriority: { priority: TicketPriority; count: number }[];
+  ticketsByStatus: { status: TicketStatus; count: number }[];
+  collectionsByAgent: { agent: string; amount: number }[];
 }
