@@ -1,8 +1,48 @@
 export type PaymentStatus = 'Not Paid' | 'Partially Paid' | 'Fully Paid';
 export type TicketStatus = 'Open' | 'In Progress' | 'Resolved';
 export type TicketPriority = 'High' | 'Medium' | 'Low';
+export type PaymentMethod = 'Mobile Money' | 'Bank';
 export type AgentName = string;
 
+// Batch - represents a CSV upload batch
+export interface Batch {
+  id: string;
+  name: string; // e.g., "MTN Loans Nov 2025"
+  institutionName: string;
+  uploadDate: Date;
+  customerCount: number;
+  totalAmount: number;
+}
+
+// Master Customer - global registry with NRC as unique identifier
+export interface MasterCustomer {
+  id: string;
+  nrcNumber: string; // Unique identifier across all batches
+  name: string;
+  totalPaid: number;
+  totalOwed: number; // Sum of all amounts from all batches
+  outstandingBalance: number;
+  paymentStatus: PaymentStatus;
+  callNotes: string;
+  ticketId: string; // Single global ticket
+  assignedAgent: AgentName;
+  createdDate: Date;
+  lastUpdated: Date;
+}
+
+// Batch Customer - links a batch entry to a master customer
+export interface BatchCustomer {
+  id: string;
+  batchId: string;
+  masterCustomerId: string;
+  nrcNumber: string;
+  name: string;
+  amountOwed: number; // Amount from this specific batch
+  linkedToMaster: boolean;
+  createdDate: Date;
+}
+
+// Legacy Customer type for backwards compatibility
 export interface Customer {
   id: string;
   nrcNumber: string;
@@ -11,8 +51,6 @@ export interface Customer {
   totalPaid: number;
   paymentStatus: PaymentStatus;
   callNotes: string;
-  willPayTomorrow: boolean;
-  noCall: boolean;
   assignedAgent: AgentName;
   ticketId: string;
   createdDate: Date;
@@ -21,7 +59,8 @@ export interface Customer {
 
 export interface Ticket {
   id: string;
-  customerId: string;
+  masterCustomerId: string;
+  customerId: string; // For backwards compatibility
   customerName: string;
   nrcNumber: string;
   amountOwed: number;
@@ -37,9 +76,11 @@ export interface Ticket {
 export interface Payment {
   id: string;
   ticketId: string;
-  customerId: string;
+  masterCustomerId: string;
+  customerId: string; // For backwards compatibility
   customerName: string;
   amount: number;
+  paymentMethod: PaymentMethod;
   date: Date;
   notes: string;
   createdDate: Date;

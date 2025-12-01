@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Plus, Filter, MoreHorizontal, Eye, Ticket, Phone } from "lucide-react";
+import { Search, Filter, MoreHorizontal, Eye, Ticket, Phone } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -51,12 +51,37 @@ const getStatusBadge = (status: PaymentStatus) => {
 };
 
 export default function Customers() {
-  const { customers, settings } = useAppStore();
+  const { masterCustomers, batchCustomers, activeBatchId, settings, batches } = useAppStore();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
 
-  const filteredCustomers = customers.filter((customer) => {
+  // Get customers based on active batch
+  const getDisplayCustomers = () => {
+    if (!activeBatchId) {
+      // Global view - show all master customers
+      return masterCustomers.map(mc => ({
+        ...mc,
+        batchAmount: mc.totalOwed,
+      }));
+    }
+    
+    // Batch view - show customers in this batch with their global data
+    const batchCustomerIds = batchCustomers
+      .filter(bc => bc.batchId === activeBatchId)
+      .map(bc => ({ masterCustomerId: bc.masterCustomerId, batchAmount: bc.amountOwed }));
+    
+    return batchCustomerIds.map(({ masterCustomerId, batchAmount }) => {
+      const master = masterCustomers.find(mc => mc.id === masterCustomerId);
+      if (!master) return null;
+      return { ...master, batchAmount };
+    }).filter(Boolean) as (typeof masterCustomers[0] & { batchAmount: number })[];
+  };
+
+  const displayCustomers = getDisplayCustomers();
+  const activeBatch = batches.find(b => b.id === activeBatchId);
+
+  const filteredCustomers = displayCustomers.filter((customer) => {
     const matchesSearch = 
       customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       customer.nrcNumber.toLowerCase().includes(searchQuery.toLowerCase());
@@ -72,16 +97,9 @@ export default function Customers() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Customers</h1>
-          <p className="text-muted-foreground">Manage your customer database</p>
-        </div>
-        <div className="flex gap-2">
-          <Button asChild variant="outline">
-            <Link to="/csv-import">Import CSV</Link>
-          </Button>
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Customer
-          </Button>
+          <p className="text-muted-foreground">
+            {activeBatch ? `Viewing batch: ${activeBatch.name}` : 'Global customer registry'}
+          </p>
         </div>
       </div>
 
@@ -128,8 +146,10 @@ export default function Customers() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>NRC Number</TableHead>
-                  <TableHead className="text-right">Amount Owed</TableHead>
+                  {activeBatchId && <TableHead className="text-right">Batch Amount</TableHead>}
+                  <TableHead className="text-right">Total Owed</TableHead>
                   <TableHead className="text-right">Total Paid</TableHead>
+                  <TableHead className="text-right">Outstanding</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Agent</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
@@ -138,8 +158,10 @@ export default function Customers() {
               <TableBody>
                 {filteredCustomers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      {customers.length === 0 ? "No customers yet. Import a CSV to get started." : "No customers found"}
+                    <TableCell colSpan={activeBatchId ? 9 : 8} className="text-center py-8 text-muted-foreground">
+                      {masterCustomers.length === 0 
+                        ? "No customers yet. Create a new batch to import customers." 
+                        : "No customers found"}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -147,11 +169,19 @@ export default function Customers() {
                     <TableRow key={customer.id}>
                       <TableCell className="font-medium">{customer.name}</TableCell>
                       <TableCell className="font-mono text-sm">{customer.nrcNumber}</TableCell>
+                      {activeBatchId && (
+                        <TableCell className="text-right font-medium">
+                          {formatCurrency(customer.batchAmount)}
+                        </TableCell>
+                      )}
                       <TableCell className="text-right font-semibold text-destructive">
-                        {formatCurrency(customer.amountOwed)}
+                        {formatCurrency(customer.totalOwed)}
                       </TableCell>
                       <TableCell className="text-right font-semibold text-success">
                         {formatCurrency(customer.totalPaid)}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {formatCurrency(customer.outstandingBalance)}
                       </TableCell>
                       <TableCell>{getStatusBadge(customer.paymentStatus)}</TableCell>
                       <TableCell className="text-muted-foreground">{customer.assignedAgent}</TableCell>
@@ -189,7 +219,7 @@ export default function Customers() {
             </Table>
           </div>
           <div className="mt-4 text-sm text-muted-foreground">
-            Showing {filteredCustomers.length} of {customers.length} customers
+            Showing {filteredCustomers.length} of {displayCustomers.length} customers
           </div>
         </CardContent>
       </Card>

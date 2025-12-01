@@ -1,35 +1,72 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Customer, Ticket, Payment, AppSettings, PaymentStatus } from '@/types';
+import { 
+  Batch, 
+  MasterCustomer, 
+  BatchCustomer, 
+  Ticket, 
+  Payment, 
+  AppSettings, 
+  PaymentStatus,
+  PaymentMethod
+} from '@/types';
 
 interface AppState {
-  customers: Customer[];
+  // Batch system
+  batches: Batch[];
+  activeBatchId: string | null;
+  
+  // Master customer registry (global)
+  masterCustomers: MasterCustomer[];
+  
+  // Batch-specific customers
+  batchCustomers: BatchCustomer[];
+  
+  // Global tickets (one per customer)
   tickets: Ticket[];
+  
+  // Global payments
   payments: Payment[];
+  
   settings: AppSettings;
   
+  // Batch actions
+  createBatch: (name: string, institutionName: string) => string;
+  setActiveBatch: (batchId: string | null) => void;
+  deleteBatch: (batchId: string) => void;
+  
   // Customer actions
-  addCustomers: (customers: Customer[]) => void;
-  updateCustomer: (id: string, updates: Partial<Customer>) => void;
+  addCustomerToBatch: (
+    batchId: string, 
+    nrcNumber: string, 
+    name: string, 
+    amountOwed: number,
+    assignedAgent: string
+  ) => void;
+  updateMasterCustomer: (id: string, updates: Partial<MasterCustomer>) => void;
   
   // Ticket actions
-  addTickets: (tickets: Ticket[]) => void;
   updateTicket: (id: string, updates: Partial<Ticket>) => void;
   
   // Payment actions
-  addPayment: (payment: Payment) => void;
+  addPayment: (payment: Omit<Payment, 'id' | 'createdDate'>) => void;
   
   // Settings actions
   updateSettings: (settings: Partial<AppSettings>) => void;
   
   // Utility
   clearAllData: () => void;
+  
+  // Getters
+  getActiveBatchCustomers: () => (MasterCustomer & { batchAmount: number })[];
+  getBatchById: (batchId: string) => Batch | undefined;
+  getMasterCustomerByNrc: (nrcNumber: string) => MasterCustomer | undefined;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
-const calculatePaymentStatus = (amountOwed: number, totalPaid: number): PaymentStatus => {
-  if (totalPaid >= amountOwed) return 'Fully Paid';
+const calculatePaymentStatus = (totalOwed: number, totalPaid: number): PaymentStatus => {
+  if (totalPaid >= totalOwed) return 'Fully Paid';
   if (totalPaid > 0) return 'Partially Paid';
   return 'Not Paid';
 };
@@ -37,7 +74,10 @@ const calculatePaymentStatus = (amountOwed: number, totalPaid: number): PaymentS
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      customers: [],
+      batches: [],
+      activeBatchId: null,
+      masterCustomers: [],
+      batchCustomers: [],
       tickets: [],
       payments: [],
       settings: {
@@ -45,18 +85,177 @@ export const useAppStore = create<AppState>()(
         agent2Name: 'Agent 2',
       },
       
-      addCustomers: (newCustomers) => set((state) => ({
-        customers: [...state.customers, ...newCustomers],
-      })),
+      createBatch: (name, institutionName) => {
+        const batchId = generateId();
+        const now = new Date();
+        
+        set((state) => ({
+          batches: [
+            ...state.batches,
+            {
+              id: batchId,
+              name,
+              institutionName,
+              uploadDate: now,
+              customerCount: 0,
+              totalAmount: 0,
+            },
+          ],
+          activeBatchId: batchId,
+        }));
+        
+        return batchId;
+      },
       
-      updateCustomer: (id, updates) => set((state) => ({
-        customers: state.customers.map((c) =>
-          c.id === id ? { ...c, ...updates, lastUpdated: new Date() } : c
+      setActiveBatch: (batchId) => set({ activeBatchId: batchId }),
+      
+      deleteBatch: (batchId) => set((state) => {
+        // Remove batch customers but keep master customers and their data
+        const batchCustomersToRemove = state.batchCustomers.filter(bc => bc.batchId === batchId);
+        
+        // Update master customers' totalOwed by subtracting batch amounts
+        const updatedMasterCustomers = state.masterCustomers.map(mc => {
+          const batchCustomer = batchCustomersToRemove.find(bc => bc.masterCustomerId === mc.id);
+          if (batchCustomer) {
+            const newTotalOwed = mc.totalOwed - batchCustomer.amountOwed;
+            return {
+              ...mc,
+              totalOwed: newTotalOwed,
+              outstandingBalance: newTotalOwed - mc.totalPaid,
+              paymentStatus: calculatePaymentStatus(newTotalOwed, mc.totalPaid),
+              lastUpdated: new Date(),
+            };
+          }
+          return mc;
+        });
+        
+        return {
+          batches: state.batches.filter(b => b.id !== batchId),
+          batchCustomers: state.batchCustomers.filter(bc => bc.batchId !== batchId),
+          masterCustomers: updatedMasterCustomers,
+          activeBatchId: state.activeBatchId === batchId ? null : state.activeBatchId,
+        };
+      }),
+      
+      addCustomerToBatch: (batchId, nrcNumber, name, amountOwed, assignedAgent) => {
+        const now = new Date();
+        const existingMaster = get().masterCustomers.find(mc => mc.nrcNumber === nrcNumber);
+        
+        set((state) => {
+          let masterCustomerId: string;
+          let updatedMasterCustomers = [...state.masterCustomers];
+          let updatedTickets = [...state.tickets];
+          
+          if (existingMaster) {
+            // Link to existing master customer
+            masterCustomerId = existingMaster.id;
+            
+            // Update master customer's total owed
+            updatedMasterCustomers = updatedMasterCustomers.map(mc => 
+              mc.id === masterCustomerId
+                ? {
+                    ...mc,
+                    totalOwed: mc.totalOwed + amountOwed,
+                    outstandingBalance: mc.totalOwed + amountOwed - mc.totalPaid,
+                    paymentStatus: calculatePaymentStatus(mc.totalOwed + amountOwed, mc.totalPaid),
+                    lastUpdated: now,
+                  }
+                : mc
+            );
+            
+            // Update existing ticket amount
+            updatedTickets = updatedTickets.map(t =>
+              t.masterCustomerId === masterCustomerId
+                ? {
+                    ...t,
+                    amountOwed: t.amountOwed + amountOwed,
+                    lastUpdated: now,
+                  }
+                : t
+            );
+          } else {
+            // Create new master customer
+            masterCustomerId = generateId();
+            const ticketId = generateId();
+            
+            updatedMasterCustomers.push({
+              id: masterCustomerId,
+              nrcNumber,
+              name,
+              totalPaid: 0,
+              totalOwed: amountOwed,
+              outstandingBalance: amountOwed,
+              paymentStatus: 'Not Paid',
+              callNotes: '',
+              ticketId,
+              assignedAgent,
+              createdDate: now,
+              lastUpdated: now,
+            });
+            
+            // Create new ticket
+            updatedTickets.push({
+              id: ticketId,
+              masterCustomerId,
+              customerId: masterCustomerId,
+              customerName: name,
+              nrcNumber,
+              amountOwed,
+              priority: 'High',
+              status: 'Open',
+              assignedAgent,
+              callNotes: '',
+              createdDate: now,
+              resolvedDate: null,
+              lastUpdated: now,
+            });
+          }
+          
+          // Create batch customer entry
+          const batchCustomer: BatchCustomer = {
+            id: generateId(),
+            batchId,
+            masterCustomerId,
+            nrcNumber,
+            name,
+            amountOwed,
+            linkedToMaster: !!existingMaster,
+            createdDate: now,
+          };
+          
+          // Update batch stats
+          const updatedBatches = state.batches.map(b =>
+            b.id === batchId
+              ? {
+                  ...b,
+                  customerCount: b.customerCount + 1,
+                  totalAmount: b.totalAmount + amountOwed,
+                }
+              : b
+          );
+          
+          return {
+            masterCustomers: updatedMasterCustomers,
+            batchCustomers: [...state.batchCustomers, batchCustomer],
+            tickets: updatedTickets,
+            batches: updatedBatches,
+          };
+        });
+      },
+      
+      updateMasterCustomer: (id, updates) => set((state) => ({
+        masterCustomers: state.masterCustomers.map((mc) =>
+          mc.id === id ? { ...mc, ...updates, lastUpdated: new Date() } : mc
         ),
-      })),
-      
-      addTickets: (newTickets) => set((state) => ({
-        tickets: [...state.tickets, ...newTickets],
+        tickets: state.tickets.map((t) =>
+          t.masterCustomerId === id
+            ? { 
+                ...t, 
+                callNotes: updates.callNotes ?? t.callNotes,
+                lastUpdated: new Date() 
+              }
+            : t
+        ),
       })),
       
       updateTicket: (id, updates) => set((state) => ({
@@ -65,30 +264,35 @@ export const useAppStore = create<AppState>()(
         ),
       })),
       
-      addPayment: (payment) => set((state) => {
-        const customer = state.customers.find((c) => c.id === payment.customerId);
-        const ticket = state.tickets.find((t) => t.id === payment.ticketId);
+      addPayment: (paymentData) => set((state) => {
+        const payment: Payment = {
+          ...paymentData,
+          id: generateId(),
+          createdDate: new Date(),
+        };
         
-        if (!customer || !ticket) return state;
+        const masterCustomer = state.masterCustomers.find(mc => mc.id === payment.masterCustomerId);
+        if (!masterCustomer) return state;
         
-        const newTotalPaid = customer.totalPaid + payment.amount;
-        const newPaymentStatus = calculatePaymentStatus(customer.amountOwed, newTotalPaid);
+        const newTotalPaid = masterCustomer.totalPaid + payment.amount;
+        const newPaymentStatus = calculatePaymentStatus(masterCustomer.totalOwed, newTotalPaid);
         const isFullyPaid = newPaymentStatus === 'Fully Paid';
         
         return {
           payments: [...state.payments, payment],
-          customers: state.customers.map((c) =>
-            c.id === payment.customerId
+          masterCustomers: state.masterCustomers.map((mc) =>
+            mc.id === payment.masterCustomerId
               ? {
-                  ...c,
+                  ...mc,
                   totalPaid: newTotalPaid,
+                  outstandingBalance: mc.totalOwed - newTotalPaid,
                   paymentStatus: newPaymentStatus,
                   lastUpdated: new Date(),
                 }
-              : c
+              : mc
           ),
           tickets: state.tickets.map((t) =>
-            t.id === payment.ticketId
+            t.masterCustomerId === payment.masterCustomerId
               ? {
                   ...t,
                   status: isFullyPaid ? 'Resolved' : t.status,
@@ -105,15 +309,44 @@ export const useAppStore = create<AppState>()(
       })),
       
       clearAllData: () => set({
-        customers: [],
+        batches: [],
+        activeBatchId: null,
+        masterCustomers: [],
+        batchCustomers: [],
         tickets: [],
         payments: [],
       }),
+      
+      getActiveBatchCustomers: () => {
+        const state = get();
+        if (!state.activeBatchId) return [];
+        
+        const batchCustomers = state.batchCustomers.filter(
+          bc => bc.batchId === state.activeBatchId
+        );
+        
+        return batchCustomers.map(bc => {
+          const master = state.masterCustomers.find(mc => mc.id === bc.masterCustomerId);
+          if (!master) return null;
+          return {
+            ...master,
+            batchAmount: bc.amountOwed,
+          };
+        }).filter(Boolean) as (MasterCustomer & { batchAmount: number })[];
+      },
+      
+      getBatchById: (batchId) => get().batches.find(b => b.id === batchId),
+      
+      getMasterCustomerByNrc: (nrcNumber) => 
+        get().masterCustomers.find(mc => mc.nrcNumber === nrcNumber),
     }),
     {
-      name: 'loan-collections-storage',
+      name: 'loan-collections-storage-v2',
       partialize: (state) => ({
-        customers: state.customers,
+        batches: state.batches,
+        activeBatchId: state.activeBatchId,
+        masterCustomers: state.masterCustomers,
+        batchCustomers: state.batchCustomers,
         tickets: state.tickets,
         payments: state.payments,
         settings: state.settings,
@@ -122,52 +355,17 @@ export const useAppStore = create<AppState>()(
   )
 );
 
-// Helper function to create customers and tickets from CSV
-export const createCustomersAndTicketsFromCSV = (
+// Helper function for CSV import
+export const processCSVBatch = (
+  batchId: string,
   rows: { name: string; nrcNumber: string; amountOwed: number }[],
-  settings: AppSettings
-): { customers: Customer[]; tickets: Ticket[] } => {
-  const customers: Customer[] = [];
-  const tickets: Ticket[] = [];
+  settings: AppSettings,
+  addCustomerToBatch: AppState['addCustomerToBatch']
+) => {
   const agents = [settings.agent1Name, settings.agent2Name];
   
   rows.forEach((row, index) => {
-    const customerId = generateId();
-    const ticketId = generateId();
-    const assignedAgent = agents[index % 2]; // 50/50 distribution
-    const now = new Date();
-    
-    customers.push({
-      id: customerId,
-      nrcNumber: row.nrcNumber,
-      name: row.name,
-      amountOwed: row.amountOwed,
-      totalPaid: 0,
-      paymentStatus: 'Not Paid',
-      callNotes: '',
-      willPayTomorrow: false,
-      noCall: false,
-      assignedAgent,
-      ticketId,
-      createdDate: now,
-      lastUpdated: now,
-    });
-    
-    tickets.push({
-      id: ticketId,
-      customerId,
-      customerName: row.name,
-      nrcNumber: row.nrcNumber,
-      amountOwed: row.amountOwed,
-      priority: 'High',
-      status: 'Open',
-      assignedAgent,
-      callNotes: '',
-      createdDate: now,
-      resolvedDate: null,
-      lastUpdated: now,
-    });
+    const assignedAgent = agents[index % 2];
+    addCustomerToBatch(batchId, row.nrcNumber, row.name, row.amountOwed, assignedAgent);
   });
-  
-  return { customers, tickets };
 };

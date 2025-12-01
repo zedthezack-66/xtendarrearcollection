@@ -1,10 +1,8 @@
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Phone, CreditCard, Ticket, Calendar, User, FileText } from "lucide-react";
+import { ArrowLeft, Phone, CreditCard, Ticket, Calendar, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAppStore } from "@/store/useAppStore";
 import { PaymentStatus, TicketStatus } from "@/types";
@@ -54,9 +52,9 @@ const getTicketStatusBadge = (status: TicketStatus) => {
 
 export default function CustomerProfile() {
   const { id } = useParams();
-  const { customers, tickets, payments, updateCustomer } = useAppStore();
+  const { masterCustomers, tickets, payments, batchCustomers, batches, updateMasterCustomer } = useAppStore();
   
-  const customer = customers.find(c => c.id === id);
+  const customer = masterCustomers.find(c => c.id === id);
   const [callNotes, setCallNotes] = useState(customer?.callNotes || '');
   
   if (!customer) {
@@ -73,20 +71,20 @@ export default function CustomerProfile() {
     );
   }
 
-  const customerTicket = tickets.find(t => t.customerId === customer.id);
-  const customerPayments = payments.filter(p => p.customerId === customer.id);
-  const outstandingBalance = customer.amountOwed - customer.totalPaid;
-
-  const handleToggleWillPayTomorrow = (checked: boolean) => {
-    updateCustomer(customer.id, { willPayTomorrow: checked });
-  };
-
-  const handleToggleNoCall = (checked: boolean) => {
-    updateCustomer(customer.id, { noCall: checked });
-  };
+  const customerTicket = tickets.find(t => t.masterCustomerId === customer.id);
+  const customerPayments = payments.filter(p => p.masterCustomerId === customer.id);
+  
+  // Get batches this customer appears in
+  const customerBatches = batchCustomers
+    .filter(bc => bc.masterCustomerId === customer.id)
+    .map(bc => {
+      const batch = batches.find(b => b.id === bc.batchId);
+      return batch ? { ...batch, amount: bc.amountOwed } : null;
+    })
+    .filter(Boolean);
 
   const handleSaveNotes = () => {
-    updateCustomer(customer.id, { callNotes });
+    updateMasterCustomer(customer.id, { callNotes });
   };
 
   return (
@@ -180,6 +178,31 @@ export default function CustomerProfile() {
 
           <Card>
             <CardHeader>
+              <CardTitle className="text-lg">Batch History</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {customerBatches.length === 0 ? (
+                <p className="text-muted-foreground text-sm">No batch associations</p>
+              ) : (
+                <div className="space-y-3">
+                  {customerBatches.map((batch) => (
+                    <div key={batch!.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <div>
+                        <p className="font-medium">{batch!.name}</p>
+                        <p className="text-sm text-muted-foreground">{batch!.institutionName} • {formatDate(batch!.uploadDate)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-destructive">{formatCurrency(batch!.amount)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle className="text-lg">Ticket Information</CardTitle>
             </CardHeader>
             <CardContent>
@@ -215,7 +238,9 @@ export default function CustomerProfile() {
                     <div key={payment.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                       <div>
                         <p className="font-medium">Payment #{payment.id.slice(0, 8)}</p>
-                        <p className="text-sm text-muted-foreground">{formatDate(payment.date)}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {formatDate(payment.date)} • {payment.paymentMethod}
+                        </p>
                       </div>
                       <div className="text-right">
                         <p className="font-semibold text-success">{formatCurrency(payment.amount)}</p>
@@ -240,9 +265,9 @@ export default function CustomerProfile() {
                 {getStatusBadge(customer.paymentStatus)}
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Amount Owed</span>
+                <span className="text-muted-foreground">Total Owed</span>
                 <span className="font-bold text-lg text-destructive">
-                  {formatCurrency(customer.amountOwed)}
+                  {formatCurrency(customer.totalOwed)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
@@ -253,33 +278,9 @@ export default function CustomerProfile() {
               </div>
               <div className="flex items-center justify-between border-t pt-4">
                 <span className="text-muted-foreground">Outstanding Balance</span>
-                <span className={`font-bold text-lg ${outstandingBalance > 0 ? 'text-destructive' : 'text-success'}`}>
-                  {formatCurrency(outstandingBalance)}
+                <span className={`font-bold text-lg ${customer.outstandingBalance > 0 ? 'text-destructive' : 'text-success'}`}>
+                  {formatCurrency(customer.outstandingBalance)}
                 </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Payment Flags</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="willPayTomorrow">Will Pay Tomorrow</Label>
-                <Switch
-                  id="willPayTomorrow"
-                  checked={customer.willPayTomorrow}
-                  onCheckedChange={handleToggleWillPayTomorrow}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="noCall">No Call</Label>
-                <Switch
-                  id="noCall"
-                  checked={customer.noCall}
-                  onCheckedChange={handleToggleNoCall}
-                />
               </div>
             </CardContent>
           </Card>

@@ -14,7 +14,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  Legend,
 } from "recharts";
 
 const formatCurrency = (amount: number) => {
@@ -26,30 +25,50 @@ const formatCurrency = (amount: number) => {
 };
 
 const STATUS_COLORS = {
-  'Open': 'hsl(38, 92%, 50%)',      // warning
-  'In Progress': 'hsl(199, 89%, 48%)', // info
-  'Resolved': 'hsl(142, 76%, 36%)',    // success
+  'Open': 'hsl(38, 92%, 50%)',
+  'In Progress': 'hsl(199, 89%, 48%)',
+  'Resolved': 'hsl(142, 76%, 36%)',
 };
 
 const PRIORITY_COLORS = {
-  'High': 'hsl(0, 84%, 60%)',      // destructive
-  'Medium': 'hsl(38, 92%, 50%)',   // warning
-  'Low': 'hsl(215, 16%, 47%)',     // muted
+  'High': 'hsl(0, 84%, 60%)',
+  'Medium': 'hsl(38, 92%, 50%)',
+  'Low': 'hsl(215, 16%, 47%)',
 };
 
 export default function Dashboard() {
-  const { customers, tickets, payments, settings } = useAppStore();
+  const { masterCustomers, tickets, payments, settings, activeBatchId, batchCustomers, batches } = useAppStore();
+
+  // Get customers based on active batch
+  const getDisplayCustomers = () => {
+    if (!activeBatchId) {
+      return masterCustomers;
+    }
+    const batchCustomerIds = batchCustomers
+      .filter(bc => bc.batchId === activeBatchId)
+      .map(bc => bc.masterCustomerId);
+    return masterCustomers.filter(mc => batchCustomerIds.includes(mc.id));
+  };
+
+  const displayCustomers = getDisplayCustomers();
+  const activeBatch = batches.find(b => b.id === activeBatchId);
 
   // Calculate stats
-  const totalCustomers = customers.length;
-  const totalOutstanding = customers.reduce((sum, c) => sum + (c.amountOwed - c.totalPaid), 0);
-  const totalCollected = payments.reduce((sum, p) => sum + p.amount, 0);
-  const totalOwed = customers.reduce((sum, c) => sum + c.amountOwed, 0);
+  const totalCustomers = displayCustomers.length;
+  const totalOutstanding = displayCustomers.reduce((sum, c) => sum + c.outstandingBalance, 0);
+  const totalCollected = displayCustomers.reduce((sum, c) => sum + c.totalPaid, 0);
+  const totalOwed = displayCustomers.reduce((sum, c) => sum + c.totalOwed, 0);
   const collectionRate = totalOwed > 0 ? (totalCollected / totalOwed) * 100 : 0;
 
-  const openTickets = tickets.filter((t) => t.status === 'Open').length;
-  const inProgressTickets = tickets.filter((t) => t.status === 'In Progress').length;
-  const resolvedTickets = tickets.filter((t) => t.status === 'Resolved').length;
+  // Get relevant tickets
+  const displayCustomerIds = displayCustomers.map(c => c.id);
+  const relevantTickets = activeBatchId 
+    ? tickets.filter(t => displayCustomerIds.includes(t.masterCustomerId))
+    : tickets;
+
+  const openTickets = relevantTickets.filter((t) => t.status === 'Open').length;
+  const inProgressTickets = relevantTickets.filter((t) => t.status === 'In Progress').length;
+  const resolvedTickets = relevantTickets.filter((t) => t.status === 'Resolved').length;
 
   // Tickets by status for pie chart
   const ticketsByStatus = [
@@ -59,22 +78,16 @@ export default function Dashboard() {
   ].filter((d) => d.value > 0);
 
   // Tickets by priority
-  const highPriority = tickets.filter((t) => t.priority === 'High').length;
-  const mediumPriority = tickets.filter((t) => t.priority === 'Medium').length;
-  const lowPriority = tickets.filter((t) => t.priority === 'Low').length;
-
-  const ticketsByPriority = [
-    { name: 'High', value: highPriority, color: PRIORITY_COLORS['High'] },
-    { name: 'Medium', value: mediumPriority, color: PRIORITY_COLORS['Medium'] },
-    { name: 'Low', value: lowPriority, color: PRIORITY_COLORS['Low'] },
-  ].filter((d) => d.value > 0);
+  const highPriority = relevantTickets.filter((t) => t.priority === 'High').length;
+  const mediumPriority = relevantTickets.filter((t) => t.priority === 'Medium').length;
+  const lowPriority = relevantTickets.filter((t) => t.priority === 'Low').length;
 
   // Collections by agent
   const agent1Name = settings.agent1Name;
   const agent2Name = settings.agent2Name;
   
-  const agent1Customers = customers.filter((c) => c.assignedAgent === agent1Name);
-  const agent2Customers = customers.filter((c) => c.assignedAgent === agent2Name);
+  const agent1Customers = displayCustomers.filter((c) => c.assignedAgent === agent1Name);
+  const agent2Customers = displayCustomers.filter((c) => c.assignedAgent === agent2Name);
   
   const agent1Collections = agent1Customers.reduce((sum, c) => sum + c.totalPaid, 0);
   const agent2Collections = agent2Customers.reduce((sum, c) => sum + c.totalPaid, 0);
@@ -85,22 +98,24 @@ export default function Dashboard() {
   ];
 
   // Recent open tickets
-  const recentOpenTickets = tickets
+  const recentOpenTickets = relevantTickets
     .filter((t) => t.status !== 'Resolved')
     .sort((a, b) => new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime())
     .slice(0, 5);
 
   // Top defaulters (highest outstanding)
-  const topDefaulters = customers
+  const topDefaulters = displayCustomers
     .filter((c) => c.paymentStatus !== 'Fully Paid')
-    .sort((a, b) => (b.amountOwed - b.totalPaid) - (a.amountOwed - a.totalPaid))
+    .sort((a, b) => b.outstandingBalance - a.outstandingBalance)
     .slice(0, 5);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-muted-foreground">Overview of your loan collections</p>
+        <p className="text-muted-foreground">
+          {activeBatch ? `Viewing batch: ${activeBatch.name}` : 'Overview of all loan collections'}
+        </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
@@ -142,7 +157,7 @@ export default function Dashboard() {
         />
       </div>
 
-      {tickets.length > 0 && (
+      {relevantTickets.length > 0 && (
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Tickets by Status */}
           <Card>
@@ -264,7 +279,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <p className="font-semibold text-destructive">
-                      {formatCurrency(customer.amountOwed - customer.totalPaid)}
+                      {formatCurrency(customer.outstandingBalance)}
                     </p>
                   </div>
                 ))

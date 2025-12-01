@@ -13,6 +13,8 @@ import Payments from "./pages/Payments";
 import RecordPayment from "./pages/RecordPayment";
 import Settings from "./pages/Settings";
 import Export from "./pages/Export";
+import MasterRegistry from "./pages/MasterRegistry";
+import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,12 +30,14 @@ const App = () => (
             <Route path="/" element={<Dashboard />} />
             <Route path="/customers" element={<Customers />} />
             <Route path="/customers/:id" element={<CustomerProfile />} />
-            <Route path="/customers/import" element={<CSVImport />} />
+            <Route path="/batch/new" element={<CSVImport />} />
             <Route path="/tickets" element={<Tickets />} />
             <Route path="/payments" element={<Payments />} />
             <Route path="/payments/new" element={<RecordPayment />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/export" element={<Export />} />
+            <Route path="/master-registry" element={<MasterRegistry />} />
+            <Route path="/reports" element={<Reports />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AppLayout>
