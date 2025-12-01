@@ -13,29 +13,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
 import { useAppStore } from "@/store/useAppStore";
-
-const generateId = () => Math.random().toString(36).substring(2, 11);
+import { PaymentMethod } from "@/types";
 
 export default function RecordPayment() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
-  const { customers, tickets, addPayment } = useAppStore();
+  const { masterCustomers, tickets, addPayment } = useAppStore();
   
   const preselectedCustomerId = searchParams.get('customerId') || '';
   
   const [formData, setFormData] = useState({
     customerId: preselectedCustomerId,
     amount: '',
+    paymentMethod: 'Mobile Money' as PaymentMethod,
     paymentDate: new Date().toISOString().split('T')[0],
     notes: '',
   });
 
-  const selectedCustomer = customers.find(c => c.id === formData.customerId);
+  const selectedCustomer = masterCustomers.find(c => c.id === formData.customerId);
   const customerTicket = selectedCustomer 
-    ? tickets.find(t => t.customerId === selectedCustomer.id)
+    ? tickets.find(t => t.masterCustomerId === selectedCustomer.id)
     : null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -69,18 +70,16 @@ export default function RecordPayment() {
       return;
     }
 
-    const payment = {
-      id: generateId(),
+    addPayment({
       ticketId: customerTicket.id,
-      customerId: formData.customerId,
-      customerName: selectedCustomer?.name || '',
+      masterCustomerId: selectedCustomer!.id,
+      customerId: selectedCustomer!.id,
+      customerName: selectedCustomer!.name,
       amount,
+      paymentMethod: formData.paymentMethod,
       date: new Date(formData.paymentDate),
       notes: formData.notes,
-      createdDate: new Date(),
-    };
-
-    addPayment(payment);
+    });
     
     toast({
       title: "Payment Recorded",
@@ -126,10 +125,10 @@ export default function RecordPayment() {
                   <SelectValue placeholder="Select a customer" />
                 </SelectTrigger>
                 <SelectContent>
-                  {customers.length === 0 ? (
+                  {masterCustomers.length === 0 ? (
                     <SelectItem value="none" disabled>No customers available</SelectItem>
                   ) : (
-                    customers.map((customer) => (
+                    masterCustomers.map((customer) => (
                       <SelectItem key={customer.id} value={customer.id}>
                         {customer.name} - {customer.nrcNumber}
                       </SelectItem>
@@ -142,8 +141,8 @@ export default function RecordPayment() {
             {selectedCustomer && (
               <div className="p-4 bg-muted rounded-lg space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Amount Owed:</span>
-                  <span className="font-medium text-destructive">{formatCurrency(selectedCustomer.amountOwed)}</span>
+                  <span className="text-muted-foreground">Total Owed:</span>
+                  <span className="font-medium text-destructive">{formatCurrency(selectedCustomer.totalOwed)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Total Paid:</span>
@@ -151,7 +150,7 @@ export default function RecordPayment() {
                 </div>
                 <div className="flex justify-between text-sm border-t pt-2">
                   <span className="text-muted-foreground">Outstanding:</span>
-                  <span className="font-bold">{formatCurrency(selectedCustomer.amountOwed - selectedCustomer.totalPaid)}</span>
+                  <span className="font-bold">{formatCurrency(selectedCustomer.outstandingBalance)}</span>
                 </div>
               </div>
             )}
@@ -179,6 +178,24 @@ export default function RecordPayment() {
                   onChange={(e) => setFormData({ ...formData, paymentDate: e.target.value })}
                 />
               </div>
+            </div>
+
+            <div className="space-y-3">
+              <Label>Payment Method *</Label>
+              <RadioGroup 
+                value={formData.paymentMethod} 
+                onValueChange={(value) => setFormData({ ...formData, paymentMethod: value as PaymentMethod })}
+                className="flex gap-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="Mobile Money" id="mobile" />
+                  <Label htmlFor="mobile" className="font-normal cursor-pointer">Mobile Money</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="Bank" id="bank" />
+                  <Label htmlFor="bank" className="font-normal cursor-pointer">Bank Transfer</Label>
+                </div>
+              </RadioGroup>
             </div>
 
             <div className="space-y-2">

@@ -20,7 +20,7 @@ import { useAppStore } from "@/store/useAppStore";
 
 export default function Settings() {
   const { toast } = useToast();
-  const { settings, customers, tickets, payments, updateSettings, clearAllData } = useAppStore();
+  const { settings, masterCustomers, tickets, payments, batches, updateSettings, clearAllData } = useAppStore();
   
   const [agent1Name, setAgent1Name] = useState(settings.agent1Name);
   const [agent2Name, setAgent2Name] = useState(settings.agent2Name);
@@ -50,7 +50,7 @@ export default function Settings() {
     clearAllData();
     toast({
       title: "Data Cleared",
-      description: "All customers, tickets, and payments have been removed",
+      description: "All batches, customers, tickets, and payments have been removed",
     });
   };
 
@@ -102,9 +102,13 @@ export default function Settings() {
           <CardDescription>Current data stored in the application</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-4">
             <div className="p-4 bg-muted rounded-lg text-center">
-              <p className="text-2xl font-bold">{customers.length}</p>
+              <p className="text-2xl font-bold">{batches.length}</p>
+              <p className="text-sm text-muted-foreground">Batches</p>
+            </div>
+            <div className="p-4 bg-muted rounded-lg text-center">
+              <p className="text-2xl font-bold">{masterCustomers.length}</p>
               <p className="text-sm text-muted-foreground">Customers</p>
             </div>
             <div className="p-4 bg-muted rounded-lg text-center">
@@ -141,7 +145,7 @@ export default function Settings() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will permanently delete all customers, tickets, and payments. 
+                  This will permanently delete all batches, customers, tickets, and payments. 
                   This action cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>

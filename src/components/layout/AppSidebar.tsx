@@ -6,7 +6,8 @@ import {
   Upload,
   Settings,
   Download,
-  LogOut
+  FileText,
+  Database
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -22,6 +23,8 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { BatchSelector } from "@/components/BatchSelector";
+import { Separator } from "@/components/ui/separator";
 
 const mainNavItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -31,8 +34,10 @@ const mainNavItems = [
 ];
 
 const toolsNavItems = [
-  { title: "CSV Import", url: "/customers/import", icon: Upload },
+  { title: "New Batch Import", url: "/batch/new", icon: Upload },
   { title: "Export Data", url: "/export", icon: Download },
+  { title: "Weekly Report", url: "/reports", icon: FileText },
+  { title: "Master Registry", url: "/master-registry", icon: Database },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
@@ -52,6 +57,17 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent className="px-2">
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-sidebar-foreground/60 text-xs uppercase tracking-wider">
+            Active Batch
+          </SidebarGroupLabel>
+          <SidebarGroupContent className="px-2 py-2">
+            <BatchSelector />
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <Separator className="bg-sidebar-border" />
+
         <SidebarGroup>
           <SidebarGroupLabel className="text-sidebar-foreground/60 text-xs uppercase tracking-wider">
             Main Menu
