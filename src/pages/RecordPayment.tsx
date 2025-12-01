@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -13,18 +14,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { mockCustomers, currentUser } from "@/data/mockData";
+import { useAppStore } from "@/store/useAppStore";
 
-const generatePaymentReference = () => {
-  const year = new Date().getFullYear();
-  const random = Math.floor(100 + Math.random() * 900);
-  return `PAY-${year}-${random}`;
-};
+const generateId = () => Math.random().toString(36).substring(2, 11);
 
 export default function RecordPayment() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
+  const { customers, tickets, addPayment } = useAppStore();
   
   const preselectedCustomerId = searchParams.get('customerId') || '';
   
@@ -32,17 +30,21 @@ export default function RecordPayment() {
     customerId: preselectedCustomerId,
     amount: '',
     paymentDate: new Date().toISOString().split('T')[0],
-    paymentMethod: '',
-    referenceNumber: generatePaymentReference(),
+    notes: '',
   });
+
+  const selectedCustomer = customers.find(c => c.id === formData.customerId);
+  const customerTicket = selectedCustomer 
+    ? tickets.find(t => t.customerId === selectedCustomer.id)
+    : null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.customerId || !formData.amount || !formData.paymentMethod) {
+    if (!formData.customerId || !formData.amount) {
       toast({
         title: "Validation Error",
-        description: "Please fill in all required fields",
+        description: "Please select a customer and enter an amount",
         variant: "destructive",
       });
       return;
@@ -57,13 +59,43 @@ export default function RecordPayment() {
       });
       return;
     }
+
+    if (!customerTicket) {
+      toast({
+        title: "Error",
+        description: "No ticket found for this customer",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const payment = {
+      id: generateId(),
+      ticketId: customerTicket.id,
+      customerId: formData.customerId,
+      customerName: selectedCustomer?.name || '',
+      amount,
+      date: new Date(formData.paymentDate),
+      notes: formData.notes,
+      createdDate: new Date(),
+    };
+
+    addPayment(payment);
     
     toast({
       title: "Payment Recorded",
-      description: `Payment ${formData.referenceNumber} has been recorded successfully`,
+      description: `Payment of ZMW ${amount.toLocaleString()} has been recorded successfully`,
     });
     
     navigate('/payments');
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-ZM', {
+      style: 'currency',
+      currency: 'ZMW',
+      minimumFractionDigits: 0,
+    }).format(amount);
   };
 
   return (
@@ -94,14 +126,35 @@ export default function RecordPayment() {
                   <SelectValue placeholder="Select a customer" />
                 </SelectTrigger>
                 <SelectContent>
-                  {mockCustomers.map((customer) => (
-                    <SelectItem key={customer.id} value={customer.id}>
-                      {customer.title} {customer.name} - {customer.nrcId}
-                    </SelectItem>
-                  ))}
+                  {customers.length === 0 ? (
+                    <SelectItem value="none" disabled>No customers available</SelectItem>
+                  ) : (
+                    customers.map((customer) => (
+                      <SelectItem key={customer.id} value={customer.id}>
+                        {customer.name} - {customer.nrcNumber}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
+
+            {selectedCustomer && (
+              <div className="p-4 bg-muted rounded-lg space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Amount Owed:</span>
+                  <span className="font-medium text-destructive">{formatCurrency(selectedCustomer.amountOwed)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Total Paid:</span>
+                  <span className="font-medium text-success">{formatCurrency(selectedCustomer.totalPaid)}</span>
+                </div>
+                <div className="flex justify-between text-sm border-t pt-2">
+                  <span className="text-muted-foreground">Outstanding:</span>
+                  <span className="font-bold">{formatCurrency(selectedCustomer.amountOwed - selectedCustomer.totalPaid)}</span>
+                </div>
+              </div>
+            )}
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -128,39 +181,15 @@ export default function RecordPayment() {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="paymentMethod">Payment Method *</Label>
-                <Select
-                  value={formData.paymentMethod}
-                  onValueChange={(value) => setFormData({ ...formData, paymentMethod: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select method" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                    <SelectItem value="mobile_money">Mobile Money</SelectItem>
-                    <SelectItem value="check">Check</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="referenceNumber">Reference Number</Label>
-                <Input
-                  id="referenceNumber"
-                  value={formData.referenceNumber}
-                  onChange={(e) => setFormData({ ...formData, referenceNumber: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="p-4 bg-muted rounded-lg">
-              <p className="text-sm text-muted-foreground">
-                Recorded by: <span className="font-medium text-foreground">{currentUser.name}</span>
-              </p>
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notes (optional)</Label>
+              <Textarea
+                id="notes"
+                placeholder="Enter any notes about this payment..."
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                rows={3}
+              />
             </div>
 
             <div className="flex gap-4">
