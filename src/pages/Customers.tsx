@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Search, Filter, MoreHorizontal, Eye, Ticket, Phone } from "lucide-react";
+import { Search, Filter, MoreHorizontal, Eye, Ticket, Phone, UserPlus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -25,9 +26,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { useAppStore } from "@/store/useAppStore";
 import { PaymentStatus } from "@/types";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZM', {
@@ -51,10 +62,17 @@ const getStatusBadge = (status: PaymentStatus) => {
 };
 
 export default function Customers() {
-  const { masterCustomers, batchCustomers, activeBatchId, settings, batches } = useAppStore();
+  const { masterCustomers, batchCustomers, activeBatchId, settings, batches, addCustomerToBatch, createBatch } = useAppStore();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
+  
+  // Add customer dialog state
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState("");
+  const [newCustomerNrc, setNewCustomerNrc] = useState("");
+  const [newCustomerAmount, setNewCustomerAmount] = useState("");
+  const [newCustomerAgent, setNewCustomerAgent] = useState(settings.agent1Name);
 
   // Get customers based on active batch
   const getDisplayCustomers = () => {
@@ -81,6 +99,45 @@ export default function Customers() {
   const displayCustomers = getDisplayCustomers();
   const activeBatch = batches.find(b => b.id === activeBatchId);
 
+  const handleAddCustomer = () => {
+    if (!newCustomerName.trim() || !newCustomerNrc.trim() || !newCustomerAmount) {
+      toast.error("Please fill in all fields");
+      return;
+    }
+
+    const amount = parseFloat(newCustomerAmount);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error("Please enter a valid amount");
+      return;
+    }
+
+    // If there's an active batch, add to that batch
+    // Otherwise create a "Walk-in Customers" batch
+    let targetBatchId = activeBatchId;
+    
+    if (!targetBatchId) {
+      // Check if walk-in batch exists
+      const walkInBatch = batches.find(b => b.name === "Walk-in Customers");
+      if (walkInBatch) {
+        targetBatchId = walkInBatch.id;
+      } else {
+        // Create walk-in batch
+        targetBatchId = createBatch("Walk-in Customers", "Direct Payments");
+      }
+    }
+
+    addCustomerToBatch(targetBatchId, newCustomerNrc.trim(), newCustomerName.trim(), amount, newCustomerAgent);
+    
+    toast.success(`Customer ${newCustomerName} added successfully`);
+    
+    // Reset form
+    setNewCustomerName("");
+    setNewCustomerNrc("");
+    setNewCustomerAmount("");
+    setNewCustomerAgent(settings.agent1Name);
+    setIsAddDialogOpen(false);
+  };
+
   const filteredCustomers = displayCustomers.filter((customer) => {
     const matchesSearch = 
       customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -101,6 +158,73 @@ export default function Customers() {
             {activeBatch ? `Viewing batch: ${activeBatch.name}` : 'Global customer registry'}
           </p>
         </div>
+        
+        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <UserPlus className="h-4 w-4 mr-2" />
+              Add Customer
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Add New Customer</DialogTitle>
+              <DialogDescription>
+                Add a walk-in customer who wasn't included in the CSV import. A ticket will be automatically created.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="name">Full Name</Label>
+                <Input
+                  id="name"
+                  placeholder="Enter customer name"
+                  value={newCustomerName}
+                  onChange={(e) => setNewCustomerName(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="nrc">NRC Number</Label>
+                <Input
+                  id="nrc"
+                  placeholder="e.g., 123456/78/1"
+                  value={newCustomerNrc}
+                  onChange={(e) => setNewCustomerNrc(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="amount">Total Amount Owed (ZMW)</Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  placeholder="Enter amount"
+                  value={newCustomerAmount}
+                  onChange={(e) => setNewCustomerAmount(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="agent">Assigned Agent</Label>
+                <Select value={newCustomerAgent} onValueChange={setNewCustomerAgent}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select agent" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={settings.agent1Name}>{settings.agent1Name}</SelectItem>
+                    <SelectItem value={settings.agent2Name}>{settings.agent2Name}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleAddCustomer}>
+                Add Customer
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <Card>
