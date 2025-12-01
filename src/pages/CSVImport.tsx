@@ -16,7 +16,9 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
-import { useAppStore, createCustomersAndTicketsFromCSV } from "@/store/useAppStore";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useAppStore, processCSVBatch } from "@/store/useAppStore";
 
 interface CSVRow {
   'Customer Name'?: string;
@@ -31,7 +33,7 @@ interface ParsedRow {
   amountOwed: number;
   isValid: boolean;
   errors: string[];
-  isDuplicate: boolean;
+  existsInMaster: boolean;
 }
 
 const SAMPLE_CSV = `Customer Name,NRC Number,Amount Owed
@@ -42,15 +44,17 @@ Peter Phiri,345678/30/3,22000`;
 export default function CSVImport() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { customers, settings, addCustomers, addTickets } = useAppStore();
+  const { masterCustomers, settings, createBatch, addCustomerToBatch } = useAppStore();
   
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [parsedData, setParsedData] = useState<ParsedRow[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
+  const [batchName, setBatchName] = useState("");
+  const [institutionName, setInstitutionName] = useState("");
 
-  const existingNrcNumbers = new Set(customers.map((c) => c.nrcNumber));
+  const existingNrcNumbers = new Set(masterCustomers.map((c) => c.nrcNumber));
 
   const parseCSV = (file: File) => {
     Papa.parse<CSVRow>(file, {
@@ -70,11 +74,9 @@ export default function CSVImport() {
           if (isNaN(amountOwed) || amountOwed <= 0) errors.push('Valid Amount Owed is required');
           
           const isDuplicateInFile = seenNrcNumbers.has(nrcNumber);
-          const isDuplicateInDb = existingNrcNumbers.has(nrcNumber);
-          const isDuplicate = isDuplicateInFile || isDuplicateInDb;
+          const existsInMaster = existingNrcNumbers.has(nrcNumber);
           
           if (nrcNumber) seenNrcNumbers.add(nrcNumber);
-          if (isDuplicateInDb) errors.push('NRC already exists in system');
           if (isDuplicateInFile) errors.push('Duplicate NRC in file');
           
           return {
@@ -83,7 +85,7 @@ export default function CSVImport() {
             amountOwed: isNaN(amountOwed) ? 0 : amountOwed,
             isValid: errors.length === 0,
             errors,
-            isDuplicate,
+            existsInMaster,
           };
         });
         setParsedData(parsed);
@@ -124,6 +126,24 @@ export default function CSVImport() {
   };
 
   const handleImport = async () => {
+    if (!batchName.trim()) {
+      toast({
+        title: "Batch Name Required",
+        description: "Please enter a name for this batch",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!institutionName.trim()) {
+      toast({
+        title: "Institution Name Required",
+        description: "Please enter the institution name",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const validRows = parsedData.filter((r) => r.isValid);
     if (validRows.length === 0) {
       toast({
@@ -137,14 +157,19 @@ export default function CSVImport() {
     setIsImporting(true);
     setImportProgress(0);
 
-    // Create customers and tickets with 50/50 agent distribution
-    const { customers: newCustomers, tickets: newTickets } = createCustomersAndTicketsFromCSV(
+    // Create new batch
+    const batchId = createBatch(batchName.trim(), institutionName.trim());
+
+    // Process CSV data and add to batch
+    processCSVBatch(
+      batchId,
       validRows.map((r) => ({
         name: r.name,
         nrcNumber: r.nrcNumber,
         amountOwed: r.amountOwed,
       })),
-      settings
+      settings,
+      addCustomerToBatch
     );
 
     // Simulate progress
@@ -153,13 +178,10 @@ export default function CSVImport() {
       setImportProgress(i);
     }
 
-    addCustomers(newCustomers);
-    addTickets(newTickets);
-
     setIsImporting(false);
     toast({
       title: "Import Complete",
-      description: `Successfully imported ${validRows.length} customers and created ${newTickets.length} tickets`,
+      description: `Successfully created batch "${batchName}" with ${validRows.length} customers`,
     });
     
     navigate('/customers');
@@ -177,6 +199,7 @@ export default function CSVImport() {
 
   const validCount = parsedData.filter((r) => r.isValid).length;
   const invalidCount = parsedData.filter((r) => !r.isValid).length;
+  const existingCount = parsedData.filter((r) => r.existsInMaster && r.isValid).length;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-ZM', {
@@ -193,9 +216,9 @@ export default function CSVImport() {
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-foreground">Import Customers</h1>
+          <h1 className="text-2xl font-bold text-foreground">Create New Batch</h1>
           <p className="text-muted-foreground">
-            Upload CSV to auto-create customers and tickets (50/50 agent split)
+            Upload CSV to create a new batch with customers and tickets
           </p>
         </div>
         <Button variant="outline" onClick={downloadSample}>
@@ -211,6 +234,35 @@ export default function CSVImport() {
           Your CSV must have these columns: <strong>Customer Name</strong>, <strong>NRC Number</strong>, <strong>Amount Owed</strong>
         </AlertDescription>
       </Alert>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Batch Details</CardTitle>
+          <CardDescription>Enter details for this import batch</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="batchName">Batch Name *</Label>
+              <Input
+                id="batchName"
+                placeholder="e.g., MTN Loans Nov 2025"
+                value={batchName}
+                onChange={(e) => setBatchName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="institutionName">Institution Name *</Label>
+              <Input
+                id="institutionName"
+                placeholder="e.g., MTN Mobile Money"
+                value={institutionName}
+                onChange={(e) => setInstitutionName(e.target.value)}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {!file && (
         <Card>
@@ -290,16 +342,26 @@ export default function CSVImport() {
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-info/10">
-                    <FileText className="h-5 w-5 text-info" />
+                    <AlertCircle className="h-5 w-5 text-info" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Agent Split</p>
-                    <p className="font-medium text-info">50/50</p>
+                    <p className="text-sm text-muted-foreground">Existing NRCs</p>
+                    <p className="font-medium text-info">{existingCount}</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
           </div>
+
+          {existingCount > 0 && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Existing Customers Found</AlertTitle>
+              <AlertDescription>
+                {existingCount} customer(s) already exist in the master registry. Their amounts will be added to their total owed.
+              </AlertDescription>
+            </Alert>
+          )}
 
           {invalidCount > 0 && (
             <Alert variant="destructive">
@@ -335,9 +397,11 @@ export default function CSVImport() {
                       <TableRow key={index} className={!row.isValid ? 'bg-destructive/5' : ''}>
                         <TableCell>
                           {row.isValid ? (
-                            <Badge className="bg-success/10 text-success border-success/20">Valid</Badge>
-                          ) : row.isDuplicate ? (
-                            <Badge variant="secondary">Duplicate</Badge>
+                            row.existsInMaster ? (
+                              <Badge className="bg-info/10 text-info border-info/20">Linked</Badge>
+                            ) : (
+                              <Badge className="bg-success/10 text-success border-success/20">New</Badge>
+                            )
                           ) : (
                             <Badge variant="destructive">Error</Badge>
                           )}
@@ -363,15 +427,15 @@ export default function CSVImport() {
           {isImporting && (
             <Card>
               <CardContent className="p-6">
-                <p className="text-sm text-muted-foreground mb-2">Importing customers and creating tickets...</p>
+                <p className="text-sm text-muted-foreground mb-2">Creating batch and importing customers...</p>
                 <Progress value={importProgress} />
               </CardContent>
             </Card>
           )}
 
           <div className="flex gap-4">
-            <Button onClick={handleImport} disabled={isImporting || validCount === 0}>
-              Import {validCount} Customer{validCount !== 1 ? 's' : ''} & Create Tickets
+            <Button onClick={handleImport} disabled={isImporting || validCount === 0 || !batchName.trim() || !institutionName.trim()}>
+              Create Batch with {validCount} Customer{validCount !== 1 ? 's' : ''}
             </Button>
             <Button variant="outline" onClick={() => { setFile(null); setParsedData([]); }}>
               Cancel
