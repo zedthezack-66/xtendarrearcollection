@@ -1,10 +1,14 @@
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Phone, Mail, Building, CreditCard, Ticket, Calendar } from "lucide-react";
+import { ArrowLeft, Phone, CreditCard, Ticket, Calendar, User, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { mockCustomers, mockTickets, mockPayments } from "@/data/mockData";
-import { CustomerStatus } from "@/types";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { useAppStore } from "@/store/useAppStore";
+import { PaymentStatus, TicketStatus } from "@/types";
+import { useState } from "react";
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZM', {
@@ -14,22 +18,35 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
-const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString('en-GB', {
+const formatDate = (date: Date) => {
+  return new Date(date).toLocaleDateString('en-GB', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
   });
 };
 
-const getStatusBadge = (status: CustomerStatus) => {
+const getStatusBadge = (status: PaymentStatus) => {
   switch (status) {
-    case 'active':
-      return <Badge className="bg-success/10 text-success border-success/20">Active</Badge>;
-    case 'defaulted':
-      return <Badge variant="destructive">Defaulted</Badge>;
-    case 'paid_off':
-      return <Badge variant="secondary">Paid Off</Badge>;
+    case 'Fully Paid':
+      return <Badge className="bg-success/10 text-success border-success/20">Fully Paid</Badge>;
+    case 'Partially Paid':
+      return <Badge className="bg-warning/10 text-warning border-warning/20">Partially Paid</Badge>;
+    case 'Not Paid':
+      return <Badge variant="destructive">Not Paid</Badge>;
+    default:
+      return <Badge variant="outline">{status}</Badge>;
+  }
+};
+
+const getTicketStatusBadge = (status: TicketStatus) => {
+  switch (status) {
+    case 'Open':
+      return <Badge className="bg-warning/10 text-warning border-warning/20">Open</Badge>;
+    case 'In Progress':
+      return <Badge className="bg-info/10 text-info border-info/20">In Progress</Badge>;
+    case 'Resolved':
+      return <Badge className="bg-success/10 text-success border-success/20">Resolved</Badge>;
     default:
       return <Badge variant="outline">{status}</Badge>;
   }
@@ -37,7 +54,10 @@ const getStatusBadge = (status: CustomerStatus) => {
 
 export default function CustomerProfile() {
   const { id } = useParams();
-  const customer = mockCustomers.find(c => c.id === id);
+  const { customers, tickets, payments, updateCustomer } = useAppStore();
+  
+  const customer = customers.find(c => c.id === id);
+  const [callNotes, setCallNotes] = useState(customer?.callNotes || '');
   
   if (!customer) {
     return (
@@ -53,8 +73,21 @@ export default function CustomerProfile() {
     );
   }
 
-  const customerTickets = mockTickets.filter(t => t.customerId === customer.id);
-  const customerPayments = mockPayments.filter(p => p.customerId === customer.id);
+  const customerTicket = tickets.find(t => t.customerId === customer.id);
+  const customerPayments = payments.filter(p => p.customerId === customer.id);
+  const outstandingBalance = customer.amountOwed - customer.totalPaid;
+
+  const handleToggleWillPayTomorrow = (checked: boolean) => {
+    updateCustomer(customer.id, { willPayTomorrow: checked });
+  };
+
+  const handleToggleNoCall = (checked: boolean) => {
+    updateCustomer(customer.id, { noCall: checked });
+  };
+
+  const handleSaveNotes = () => {
+    updateCustomer(customer.id, { callNotes });
+  };
 
   return (
     <div className="space-y-6">
@@ -63,16 +96,14 @@ export default function CustomerProfile() {
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-foreground">
-            {customer.title} {customer.name}
-          </h1>
+          <h1 className="text-2xl font-bold text-foreground">{customer.name}</h1>
           <p className="text-muted-foreground">Customer Profile</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" asChild>
-            <Link to={`/tickets/new?customerId=${customer.id}`}>
+            <Link to={`/tickets?customerId=${customer.id}`}>
               <Ticket className="h-4 w-4 mr-2" />
-              Create Ticket
+              View Ticket
             </Link>
           </Button>
           <Button asChild>
@@ -88,34 +119,25 @@ export default function CustomerProfile() {
         <div className="lg:col-span-2 space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Contact Information</CardTitle>
+              <CardTitle className="text-lg">Customer Information</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-muted">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
+                  <User className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Phone Number</p>
-                  <p className="font-medium">{customer.phoneNumber}</p>
+                  <p className="text-sm text-muted-foreground">NRC Number</p>
+                  <p className="font-medium font-mono">{customer.nrcNumber}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-muted">
-                  <CreditCard className="h-4 w-4 text-muted-foreground" />
+                  <User className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">NRC ID</p>
-                  <p className="font-medium font-mono">{customer.nrcId}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-muted">
-                  <Building className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Employer</p>
-                  <p className="font-medium">{customer.employerName}</p>
+                  <p className="text-sm text-muted-foreground">Assigned Agent</p>
+                  <p className="font-medium">{customer.assignedAgent}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -123,8 +145,17 @@ export default function CustomerProfile() {
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Added On</p>
-                  <p className="font-medium">{formatDate(customer.createdAt)}</p>
+                  <p className="text-sm text-muted-foreground">Created Date</p>
+                  <p className="font-medium">{formatDate(customer.createdDate)}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-muted">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Last Updated</p>
+                  <p className="font-medium">{formatDate(customer.lastUpdated)}</p>
                 </div>
               </div>
             </CardContent>
@@ -132,30 +163,41 @@ export default function CustomerProfile() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Recent Tickets</CardTitle>
+              <CardTitle className="text-lg">Call Notes</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Textarea
+                placeholder="Enter notes from customer calls..."
+                value={callNotes}
+                onChange={(e) => setCallNotes(e.target.value)}
+                rows={4}
+              />
+              <Button onClick={handleSaveNotes} size="sm">
+                Save Notes
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Ticket Information</CardTitle>
             </CardHeader>
             <CardContent>
-              {customerTickets.length === 0 ? (
-                <p className="text-muted-foreground text-sm">No tickets found</p>
-              ) : (
-                <div className="space-y-3">
-                  {customerTickets.slice(0, 5).map((ticket) => (
-                    <div key={ticket.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                      <div>
-                        <p className="font-medium">{ticket.reference}</p>
-                        <p className="text-sm text-muted-foreground">{formatDate(ticket.createdAt)}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={ticket.priority === 'high' ? 'destructive' : 'secondary'}>
-                          {ticket.priority}
-                        </Badge>
-                        <Badge variant={ticket.status === 'open' ? 'default' : 'outline'}>
-                          {ticket.status.replace('_', ' ')}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
+              {customerTicket ? (
+                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                  <div>
+                    <p className="font-medium">Ticket #{customerTicket.id.slice(0, 8)}</p>
+                    <p className="text-sm text-muted-foreground">Created: {formatDate(customerTicket.createdDate)}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={customerTicket.priority === 'High' ? 'destructive' : 'secondary'}>
+                      {customerTicket.priority}
+                    </Badge>
+                    {getTicketStatusBadge(customerTicket.status)}
+                  </div>
                 </div>
+              ) : (
+                <p className="text-muted-foreground text-sm">No ticket associated</p>
               )}
             </CardContent>
           </Card>
@@ -169,15 +211,15 @@ export default function CustomerProfile() {
                 <p className="text-muted-foreground text-sm">No payments recorded</p>
               ) : (
                 <div className="space-y-3">
-                  {customerPayments.slice(0, 5).map((payment) => (
+                  {customerPayments.map((payment) => (
                     <div key={payment.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                       <div>
-                        <p className="font-medium">{payment.referenceNumber}</p>
-                        <p className="text-sm text-muted-foreground">{formatDate(payment.paymentDate)}</p>
+                        <p className="font-medium">Payment #{payment.id.slice(0, 8)}</p>
+                        <p className="text-sm text-muted-foreground">{formatDate(payment.date)}</p>
                       </div>
                       <div className="text-right">
                         <p className="font-semibold text-success">{formatCurrency(payment.amount)}</p>
-                        <p className="text-sm text-muted-foreground capitalize">{payment.paymentMethod.replace('_', ' ')}</p>
+                        {payment.notes && <p className="text-sm text-muted-foreground">{payment.notes}</p>}
                       </div>
                     </div>
                   ))}
@@ -195,17 +237,49 @@ export default function CustomerProfile() {
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Status</span>
-                {getStatusBadge(customer.status)}
+                {getStatusBadge(customer.paymentStatus)}
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Arrear Amount</span>
-                <span className={`font-bold text-lg ${customer.arrearAmount > 0 ? 'text-destructive' : 'text-success'}`}>
-                  {formatCurrency(customer.arrearAmount)}
+                <span className="text-muted-foreground">Amount Owed</span>
+                <span className="font-bold text-lg text-destructive">
+                  {formatCurrency(customer.amountOwed)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Payment Method</span>
-                <span className="font-medium capitalize">{customer.paymentMethod.replace('_', ' ')}</span>
+                <span className="text-muted-foreground">Total Paid</span>
+                <span className="font-bold text-lg text-success">
+                  {formatCurrency(customer.totalPaid)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between border-t pt-4">
+                <span className="text-muted-foreground">Outstanding Balance</span>
+                <span className={`font-bold text-lg ${outstandingBalance > 0 ? 'text-destructive' : 'text-success'}`}>
+                  {formatCurrency(outstandingBalance)}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Payment Flags</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="willPayTomorrow">Will Pay Tomorrow</Label>
+                <Switch
+                  id="willPayTomorrow"
+                  checked={customer.willPayTomorrow}
+                  onCheckedChange={handleToggleWillPayTomorrow}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="noCall">No Call</Label>
+                <Switch
+                  id="noCall"
+                  checked={customer.noCall}
+                  onCheckedChange={handleToggleNoCall}
+                />
               </div>
             </CardContent>
           </Card>
@@ -218,12 +292,6 @@ export default function CustomerProfile() {
               <Button variant="outline" className="w-full justify-start">
                 <Phone className="h-4 w-4 mr-2" />
                 Call Customer
-              </Button>
-              <Button variant="outline" className="w-full justify-start" asChild>
-                <Link to={`/tickets/new?customerId=${customer.id}`}>
-                  <Ticket className="h-4 w-4 mr-2" />
-                  Create Ticket
-                </Link>
               </Button>
               <Button variant="outline" className="w-full justify-start" asChild>
                 <Link to={`/payments/new?customerId=${customer.id}`}>

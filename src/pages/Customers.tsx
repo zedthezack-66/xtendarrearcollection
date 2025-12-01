@@ -3,7 +3,7 @@ import { Search, Plus, Filter, MoreHorizontal, Eye, Ticket, Phone } from "lucide
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -25,8 +25,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { mockCustomers } from "@/data/mockData";
-import { Customer, CustomerStatus } from "@/types";
+import { useAppStore } from "@/store/useAppStore";
+import { PaymentStatus } from "@/types";
 import { Link } from "react-router-dom";
 
 const formatCurrency = (amount: number) => {
@@ -37,32 +37,34 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
-const getStatusBadge = (status: CustomerStatus) => {
+const getStatusBadge = (status: PaymentStatus) => {
   switch (status) {
-    case 'active':
-      return <Badge className="bg-success/10 text-success border-success/20">Active</Badge>;
-    case 'defaulted':
-      return <Badge variant="destructive">Defaulted</Badge>;
-    case 'paid_off':
-      return <Badge variant="secondary">Paid Off</Badge>;
+    case 'Fully Paid':
+      return <Badge className="bg-success/10 text-success border-success/20">Fully Paid</Badge>;
+    case 'Partially Paid':
+      return <Badge className="bg-warning/10 text-warning border-warning/20">Partially Paid</Badge>;
+    case 'Not Paid':
+      return <Badge variant="destructive">Not Paid</Badge>;
     default:
       return <Badge variant="outline">{status}</Badge>;
   }
 };
 
 export default function Customers() {
+  const { customers, settings } = useAppStore();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [agentFilter, setAgentFilter] = useState<string>("all");
 
-  const filteredCustomers = mockCustomers.filter((customer) => {
+  const filteredCustomers = customers.filter((customer) => {
     const matchesSearch = 
       customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      customer.nrcId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      customer.phoneNumber.includes(searchQuery);
+      customer.nrcNumber.toLowerCase().includes(searchQuery.toLowerCase());
     
-    const matchesStatus = statusFilter === "all" || customer.status === statusFilter;
+    const matchesStatus = statusFilter === "all" || customer.paymentStatus === statusFilter;
+    const matchesAgent = agentFilter === "all" || customer.assignedAgent === agentFilter;
     
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && matchesAgent;
   });
 
   return (
@@ -74,7 +76,7 @@ export default function Customers() {
         </div>
         <div className="flex gap-2">
           <Button asChild variant="outline">
-            <Link to="/customers/import">Import CSV</Link>
+            <Link to="/csv-import">Import CSV</Link>
           </Button>
           <Button>
             <Plus className="h-4 w-4 mr-2" />
@@ -89,7 +91,7 @@ export default function Customers() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name, NRC ID, or phone..."
+                placeholder="Search by name or NRC number..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -98,13 +100,23 @@ export default function Customers() {
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-[180px]">
                 <Filter className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="Filter by status" />
+                <SelectValue placeholder="Payment Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="defaulted">Defaulted</SelectItem>
-                <SelectItem value="paid_off">Paid Off</SelectItem>
+                <SelectItem value="Not Paid">Not Paid</SelectItem>
+                <SelectItem value="Partially Paid">Partially Paid</SelectItem>
+                <SelectItem value="Fully Paid">Fully Paid</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={agentFilter} onValueChange={setAgentFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Agent" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Agents</SelectItem>
+                <SelectItem value={settings.agent1Name}>{settings.agent1Name}</SelectItem>
+                <SelectItem value={settings.agent2Name}>{settings.agent2Name}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -115,11 +127,11 @@ export default function Customers() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>NRC ID</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Employer</TableHead>
-                  <TableHead className="text-right">Arrear Amount</TableHead>
+                  <TableHead>NRC Number</TableHead>
+                  <TableHead className="text-right">Amount Owed</TableHead>
+                  <TableHead className="text-right">Total Paid</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Agent</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -127,22 +139,22 @@ export default function Customers() {
                 {filteredCustomers.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      No customers found
+                      {customers.length === 0 ? "No customers yet. Import a CSV to get started." : "No customers found"}
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredCustomers.map((customer) => (
                     <TableRow key={customer.id}>
-                      <TableCell className="font-medium">
-                        {customer.title} {customer.name}
+                      <TableCell className="font-medium">{customer.name}</TableCell>
+                      <TableCell className="font-mono text-sm">{customer.nrcNumber}</TableCell>
+                      <TableCell className="text-right font-semibold text-destructive">
+                        {formatCurrency(customer.amountOwed)}
                       </TableCell>
-                      <TableCell className="font-mono text-sm">{customer.nrcId}</TableCell>
-                      <TableCell>{customer.phoneNumber}</TableCell>
-                      <TableCell>{customer.employerName}</TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {formatCurrency(customer.arrearAmount)}
+                      <TableCell className="text-right font-semibold text-success">
+                        {formatCurrency(customer.totalPaid)}
                       </TableCell>
-                      <TableCell>{getStatusBadge(customer.status)}</TableCell>
+                      <TableCell>{getStatusBadge(customer.paymentStatus)}</TableCell>
+                      <TableCell className="text-muted-foreground">{customer.assignedAgent}</TableCell>
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -158,9 +170,9 @@ export default function Customers() {
                               </Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem asChild>
-                              <Link to={`/tickets/new?customerId=${customer.id}`}>
+                              <Link to={`/tickets?customerId=${customer.id}`}>
                                 <Ticket className="h-4 w-4 mr-2" />
-                                Create Ticket
+                                View Ticket
                               </Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem>
@@ -177,7 +189,7 @@ export default function Customers() {
             </Table>
           </div>
           <div className="mt-4 text-sm text-muted-foreground">
-            Showing {filteredCustomers.length} of {mockCustomers.length} customers
+            Showing {filteredCustomers.length} of {customers.length} customers
           </div>
         </CardContent>
       </Card>
