@@ -39,9 +39,9 @@ interface ParsedRow {
 }
 
 const SAMPLE_CSV = `Customer Name,NRC Number,Amount Owed,Mobile Number
-John Mwanza,123456/10/1,15000,0971234567
-Jane Banda,234567/20/2,8500,0972345678
-Peter Phiri,345678/30/3,22000,0973456789`;
+John Mwanza,123456/10/1,15000,260971234567
+Jane Banda,234567/20/2,8500,260972345678
+Peter Phiri,345678/30/3,22000,260973456789`;
 
 export default function CSVImport() {
   const navigate = useNavigate();
