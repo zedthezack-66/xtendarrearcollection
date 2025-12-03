@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Papa from "papaparse";
+import * as XLSX from "xlsx";
 import { ArrowLeft, Upload, FileText, Check, X, Download, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -58,41 +59,45 @@ export default function CSVImport() {
 
   const existingNrcNumbers = new Set(masterCustomers.map((c) => c.nrcNumber));
 
+  const processRows = (data: CSVRow[]) => {
+    const seenNrcNumbers = new Set<string>();
+    const parsed: ParsedRow[] = data.map((row) => {
+      const name = row['Customer Name']?.toString().trim() || '';
+      const nrcNumber = row['NRC Number']?.toString().trim() || '';
+      const amountOwedStr = row['Amount Owed']?.toString().trim() || '0';
+      const amountOwed = parseFloat(amountOwedStr.replace(/[^0-9.-]/g, ''));
+      const mobileNumber = row['Mobile Number']?.toString().trim() || '';
+      
+      const errors: string[] = [];
+      if (!name) errors.push('Customer Name is required');
+      if (!nrcNumber) errors.push('NRC Number is required');
+      if (isNaN(amountOwed) || amountOwed <= 0) errors.push('Valid Amount Owed is required');
+      
+      const isDuplicateInFile = seenNrcNumbers.has(nrcNumber);
+      const existsInMaster = existingNrcNumbers.has(nrcNumber);
+      
+      if (nrcNumber) seenNrcNumbers.add(nrcNumber);
+      if (isDuplicateInFile) errors.push('Duplicate NRC in file');
+      
+      return {
+        name,
+        nrcNumber,
+        amountOwed: isNaN(amountOwed) ? 0 : amountOwed,
+        mobileNumber,
+        isValid: errors.length === 0,
+        errors,
+        existsInMaster,
+      };
+    });
+    setParsedData(parsed);
+  };
+
   const parseCSV = (file: File) => {
     Papa.parse<CSVRow>(file, {
       header: true,
       skipEmptyLines: true,
       complete: (results) => {
-        const seenNrcNumbers = new Set<string>();
-        const parsed: ParsedRow[] = results.data.map((row) => {
-          const name = row['Customer Name']?.trim() || '';
-          const nrcNumber = row['NRC Number']?.trim() || '';
-          const amountOwedStr = row['Amount Owed']?.trim() || '0';
-          const amountOwed = parseFloat(amountOwedStr.replace(/[^0-9.-]/g, ''));
-          const mobileNumber = row['Mobile Number']?.trim() || '';
-          
-          const errors: string[] = [];
-          if (!name) errors.push('Customer Name is required');
-          if (!nrcNumber) errors.push('NRC Number is required');
-          if (isNaN(amountOwed) || amountOwed <= 0) errors.push('Valid Amount Owed is required');
-          
-          const isDuplicateInFile = seenNrcNumbers.has(nrcNumber);
-          const existsInMaster = existingNrcNumbers.has(nrcNumber);
-          
-          if (nrcNumber) seenNrcNumbers.add(nrcNumber);
-          if (isDuplicateInFile) errors.push('Duplicate NRC in file');
-          
-          return {
-            name,
-            nrcNumber,
-            amountOwed: isNaN(amountOwed) ? 0 : amountOwed,
-            mobileNumber,
-            isValid: errors.length === 0,
-            errors,
-            existsInMaster,
-          };
-        });
-        setParsedData(parsed);
+        processRows(results.data);
       },
       error: (error) => {
         toast({
@@ -104,18 +109,55 @@ export default function CSVImport() {
     });
   };
 
+  const parseExcel = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const jsonData = XLSX.utils.sheet_to_json<CSVRow>(worksheet);
+        processRows(jsonData);
+      } catch (error) {
+        toast({
+          title: "Parse Error",
+          description: "Failed to parse Excel file",
+          variant: "destructive",
+        });
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const parseFile = (file: File) => {
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+    if (isExcel) {
+      parseExcel(file);
+    } else {
+      parseCSV(file);
+    }
+  };
+
+  const isValidFile = (file: File) => {
+    return file.type === 'text/csv' || 
+           file.name.endsWith('.csv') || 
+           file.name.endsWith('.xlsx') || 
+           file.name.endsWith('.xls');
+  };
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
 
     const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile && (droppedFile.type === 'text/csv' || droppedFile.name.endsWith('.csv'))) {
+    if (droppedFile && isValidFile(droppedFile)) {
       setFile(droppedFile);
-      parseCSV(droppedFile);
+      parseFile(droppedFile);
     } else {
       toast({
         title: "Invalid File",
-        description: "Please upload a CSV file",
+        description: "Please upload a CSV or Excel file",
         variant: "destructive",
       });
     }
@@ -125,7 +167,7 @@ export default function CSVImport() {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       setFile(selectedFile);
-      parseCSV(selectedFile);
+      parseFile(selectedFile);
     }
   };
 
@@ -281,11 +323,11 @@ export default function CSVImport() {
               onDrop={handleDrop}
             >
               <Upload className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">Drag and drop your CSV file</h3>
-              <p className="text-muted-foreground mb-4">or click to browse</p>
+              <h3 className="text-lg font-medium mb-2">Drag and drop your CSV or Excel file</h3>
+              <p className="text-muted-foreground mb-4">Supports .csv, .xlsx, and .xls files</p>
               <input
                 type="file"
-                accept=".csv"
+                accept=".csv,.xlsx,.xls"
                 onChange={handleFileSelect}
                 className="hidden"
                 id="csv-upload"
@@ -293,7 +335,7 @@ export default function CSVImport() {
               <Button asChild variant="outline">
                 <label htmlFor="csv-upload" className="cursor-pointer">
                   <FileText className="h-4 w-4 mr-2" />
-                  Select CSV File
+                  Select File
                 </label>
               </Button>
             </div>
