@@ -19,6 +19,7 @@ export interface MasterCustomer {
   id: string;
   nrcNumber: string; // Unique identifier across all batches
   name: string;
+  mobileNumber: string; // Contact number
   totalPaid: number;
   totalOwed: number; // Sum of all amounts from all batches
   outstandingBalance: number;
@@ -37,6 +38,7 @@ export interface BatchCustomer {
   masterCustomerId: string;
   nrcNumber: string;
   name: string;
+  mobileNumber: string;
   amountOwed: number; // Amount from this specific batch
   linkedToMaster: boolean;
   createdDate: Date;
@@ -89,6 +91,7 @@ export interface Payment {
 export interface AppSettings {
   agent1Name: string;
   agent2Name: string;
+  agent3Name: string;
 }
 
 export interface DashboardStats {

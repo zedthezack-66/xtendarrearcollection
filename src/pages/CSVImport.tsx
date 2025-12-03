@@ -24,6 +24,7 @@ interface CSVRow {
   'Customer Name'?: string;
   'NRC Number'?: string;
   'Amount Owed'?: string;
+  'Mobile Number'?: string;
   [key: string]: string | undefined;
 }
 
@@ -31,15 +32,16 @@ interface ParsedRow {
   name: string;
   nrcNumber: string;
   amountOwed: number;
+  mobileNumber: string;
   isValid: boolean;
   errors: string[];
   existsInMaster: boolean;
 }
 
-const SAMPLE_CSV = `Customer Name,NRC Number,Amount Owed
-John Mwanza,123456/10/1,15000
-Jane Banda,234567/20/2,8500
-Peter Phiri,345678/30/3,22000`;
+const SAMPLE_CSV = `Customer Name,NRC Number,Amount Owed,Mobile Number
+John Mwanza,123456/10/1,15000,0971234567
+Jane Banda,234567/20/2,8500,0972345678
+Peter Phiri,345678/30/3,22000,0973456789`;
 
 export default function CSVImport() {
   const navigate = useNavigate();
@@ -67,6 +69,7 @@ export default function CSVImport() {
           const nrcNumber = row['NRC Number']?.trim() || '';
           const amountOwedStr = row['Amount Owed']?.trim() || '0';
           const amountOwed = parseFloat(amountOwedStr.replace(/[^0-9.-]/g, ''));
+          const mobileNumber = row['Mobile Number']?.trim() || '';
           
           const errors: string[] = [];
           if (!name) errors.push('Customer Name is required');
@@ -83,6 +86,7 @@ export default function CSVImport() {
             name,
             nrcNumber,
             amountOwed: isNaN(amountOwed) ? 0 : amountOwed,
+            mobileNumber,
             isValid: errors.length === 0,
             errors,
             existsInMaster,
@@ -167,6 +171,7 @@ export default function CSVImport() {
         name: r.name,
         nrcNumber: r.nrcNumber,
         amountOwed: r.amountOwed,
+        mobileNumber: r.mobileNumber,
       })),
       settings,
       addCustomerToBatch
@@ -231,7 +236,7 @@ export default function CSVImport() {
         <AlertCircle className="h-4 w-4" />
         <AlertTitle>Required CSV Columns</AlertTitle>
         <AlertDescription>
-          Your CSV must have these columns: <strong>Customer Name</strong>, <strong>NRC Number</strong>, <strong>Amount Owed</strong>
+          Your CSV must have these columns: <strong>Customer Name</strong>, <strong>NRC Number</strong>, <strong>Amount Owed</strong>, <strong>Mobile Number</strong>
         </AlertDescription>
       </Alert>
 
@@ -376,8 +381,8 @@ export default function CSVImport() {
           <Card>
             <CardHeader>
               <CardTitle>Preview Data</CardTitle>
-              <CardDescription>
-                Tickets will be assigned: {settings.agent1Name} & {settings.agent2Name}
+            <CardDescription>
+                Tickets will be assigned: {settings.agent1Name}, {settings.agent2Name} & {settings.agent3Name}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -388,6 +393,7 @@ export default function CSVImport() {
                       <TableHead className="w-[80px]">Status</TableHead>
                       <TableHead>Customer Name</TableHead>
                       <TableHead>NRC Number</TableHead>
+                      <TableHead>Mobile Number</TableHead>
                       <TableHead className="text-right">Amount Owed</TableHead>
                       <TableHead>Assigned To</TableHead>
                     </TableRow>
@@ -408,11 +414,12 @@ export default function CSVImport() {
                         </TableCell>
                         <TableCell className="font-medium">{row.name}</TableCell>
                         <TableCell className="font-mono text-sm">{row.nrcNumber}</TableCell>
+                        <TableCell className="font-mono text-sm">{row.mobileNumber || '-'}</TableCell>
                         <TableCell className="text-right">{formatCurrency(row.amountOwed)}</TableCell>
                         <TableCell>
                           {row.isValid ? (
                             <Badge variant="outline">
-                              {index % 2 === 0 ? settings.agent1Name : settings.agent2Name}
+                              {[settings.agent1Name, settings.agent2Name, settings.agent3Name][index % 3]}
                             </Badge>
                           ) : '-'}
                         </TableCell>

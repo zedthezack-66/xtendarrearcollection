@@ -24,9 +24,10 @@ export default function Settings() {
   
   const [agent1Name, setAgent1Name] = useState(settings.agent1Name);
   const [agent2Name, setAgent2Name] = useState(settings.agent2Name);
+  const [agent3Name, setAgent3Name] = useState(settings.agent3Name);
 
   const handleSaveAgents = () => {
-    if (!agent1Name.trim() || !agent2Name.trim()) {
+    if (!agent1Name.trim() || !agent2Name.trim() || !agent3Name.trim()) {
       toast({
         title: "Validation Error",
         description: "Agent names cannot be empty",
@@ -38,6 +39,7 @@ export default function Settings() {
     updateSettings({
       agent1Name: agent1Name.trim(),
       agent2Name: agent2Name.trim(),
+      agent3Name: agent3Name.trim(),
     });
     
     toast({
@@ -65,11 +67,11 @@ export default function Settings() {
         <CardHeader>
           <CardTitle>Agent Configuration</CardTitle>
           <CardDescription>
-            Set the names of your collection agents. New CSV imports will distribute tickets 50/50 between these agents.
+            Set the names of your collection agents. New CSV imports will distribute tickets evenly between these agents.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="agent1">Agent 1 Name</Label>
               <Input
@@ -85,6 +87,15 @@ export default function Settings() {
                 id="agent2"
                 value={agent2Name}
                 onChange={(e) => setAgent2Name(e.target.value)}
+                placeholder="Enter agent name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="agent3">Agent 3 Name</Label>
+              <Input
+                id="agent3"
+                value={agent3Name}
+                onChange={(e) => setAgent3Name(e.target.value)}
                 placeholder="Enter agent name"
               />
             </div>
