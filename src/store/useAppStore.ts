@@ -82,9 +82,9 @@ export const useAppStore = create<AppState>()(
       tickets: [],
       payments: [],
       settings: {
-        agent1Name: 'Agent 1',
-        agent2Name: 'Agent 2',
-        agent3Name: 'Agent 3',
+        agent1Name: 'Mike',
+        agent2Name: 'Cathy',
+        agent3Name: 'Martin',
       },
       
       createBatch: (name, institutionName) => {
