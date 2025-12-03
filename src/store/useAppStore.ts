@@ -41,7 +41,8 @@ interface AppState {
     nrcNumber: string, 
     name: string, 
     amountOwed: number,
-    assignedAgent: string
+    assignedAgent: string,
+    mobileNumber?: string
   ) => void;
   updateMasterCustomer: (id: string, updates: Partial<MasterCustomer>) => void;
   
@@ -83,6 +84,7 @@ export const useAppStore = create<AppState>()(
       settings: {
         agent1Name: 'Agent 1',
         agent2Name: 'Agent 2',
+        agent3Name: 'Agent 3',
       },
       
       createBatch: (name, institutionName) => {
@@ -137,7 +139,7 @@ export const useAppStore = create<AppState>()(
         };
       }),
       
-      addCustomerToBatch: (batchId, nrcNumber, name, amountOwed, assignedAgent) => {
+      addCustomerToBatch: (batchId, nrcNumber, name, amountOwed, assignedAgent, mobileNumber = '') => {
         const now = new Date();
         const existingMaster = get().masterCustomers.find(mc => mc.nrcNumber === nrcNumber);
         
@@ -150,7 +152,7 @@ export const useAppStore = create<AppState>()(
             // Link to existing master customer
             masterCustomerId = existingMaster.id;
             
-            // Update master customer's total owed
+            // Update master customer's total owed and mobile number if provided
             updatedMasterCustomers = updatedMasterCustomers.map(mc => 
               mc.id === masterCustomerId
                 ? {
@@ -158,6 +160,7 @@ export const useAppStore = create<AppState>()(
                     totalOwed: mc.totalOwed + amountOwed,
                     outstandingBalance: mc.totalOwed + amountOwed - mc.totalPaid,
                     paymentStatus: calculatePaymentStatus(mc.totalOwed + amountOwed, mc.totalPaid),
+                    mobileNumber: mobileNumber || mc.mobileNumber,
                     lastUpdated: now,
                   }
                 : mc
@@ -182,6 +185,7 @@ export const useAppStore = create<AppState>()(
               id: masterCustomerId,
               nrcNumber,
               name,
+              mobileNumber,
               totalPaid: 0,
               totalOwed: amountOwed,
               outstandingBalance: amountOwed,
@@ -218,6 +222,7 @@ export const useAppStore = create<AppState>()(
             masterCustomerId,
             nrcNumber,
             name,
+            mobileNumber,
             amountOwed,
             linkedToMaster: !!existingMaster,
             createdDate: now,
@@ -358,14 +363,14 @@ export const useAppStore = create<AppState>()(
 // Helper function for CSV import
 export const processCSVBatch = (
   batchId: string,
-  rows: { name: string; nrcNumber: string; amountOwed: number }[],
+  rows: { name: string; nrcNumber: string; amountOwed: number; mobileNumber: string }[],
   settings: AppSettings,
   addCustomerToBatch: AppState['addCustomerToBatch']
 ) => {
-  const agents = [settings.agent1Name, settings.agent2Name];
+  const agents = [settings.agent1Name, settings.agent2Name, settings.agent3Name];
   
   rows.forEach((row, index) => {
-    const assignedAgent = agents[index % 2];
-    addCustomerToBatch(batchId, row.nrcNumber, row.name, row.amountOwed, assignedAgent);
+    const assignedAgent = agents[index % 3];
+    addCustomerToBatch(batchId, row.nrcNumber, row.name, row.amountOwed, assignedAgent, row.mobileNumber);
   });
 };

@@ -71,6 +71,7 @@ export default function Customers() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState("");
   const [newCustomerNrc, setNewCustomerNrc] = useState("");
+  const [newCustomerMobile, setNewCustomerMobile] = useState("");
   const [newCustomerAmount, setNewCustomerAmount] = useState("");
   const [newCustomerAgent, setNewCustomerAgent] = useState(settings.agent1Name);
 
@@ -126,13 +127,14 @@ export default function Customers() {
       }
     }
 
-    addCustomerToBatch(targetBatchId, newCustomerNrc.trim(), newCustomerName.trim(), amount, newCustomerAgent);
+    addCustomerToBatch(targetBatchId, newCustomerNrc.trim(), newCustomerName.trim(), amount, newCustomerAgent, newCustomerMobile.trim());
     
     toast.success(`Customer ${newCustomerName} added successfully`);
     
     // Reset form
     setNewCustomerName("");
     setNewCustomerNrc("");
+    setNewCustomerMobile("");
     setNewCustomerAmount("");
     setNewCustomerAgent(settings.agent1Name);
     setIsAddDialogOpen(false);
@@ -193,6 +195,15 @@ export default function Customers() {
                 />
               </div>
               <div className="grid gap-2">
+                <Label htmlFor="mobile">Mobile Number</Label>
+                <Input
+                  id="mobile"
+                  placeholder="e.g., 0971234567"
+                  value={newCustomerMobile}
+                  onChange={(e) => setNewCustomerMobile(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
                 <Label htmlFor="amount">Total Amount Owed (ZMW)</Label>
                 <Input
                   id="amount"
@@ -211,6 +222,7 @@ export default function Customers() {
                   <SelectContent>
                     <SelectItem value={settings.agent1Name}>{settings.agent1Name}</SelectItem>
                     <SelectItem value={settings.agent2Name}>{settings.agent2Name}</SelectItem>
+                    <SelectItem value={settings.agent3Name}>{settings.agent3Name}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -259,6 +271,7 @@ export default function Customers() {
                 <SelectItem value="all">All Agents</SelectItem>
                 <SelectItem value={settings.agent1Name}>{settings.agent1Name}</SelectItem>
                 <SelectItem value={settings.agent2Name}>{settings.agent2Name}</SelectItem>
+                <SelectItem value={settings.agent3Name}>{settings.agent3Name}</SelectItem>
               </SelectContent>
             </Select>
           </div>
