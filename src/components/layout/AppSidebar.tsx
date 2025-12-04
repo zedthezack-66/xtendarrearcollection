@@ -7,7 +7,9 @@ import {
   Settings,
   Download,
   FileText,
-  Database
+  Database,
+  LogOut,
+  Shield
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -25,6 +27,9 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { BatchSelector } from "@/components/BatchSelector";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
+import { Badge } from "@/components/ui/badge";
 
 const mainNavItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -42,6 +47,17 @@ const toolsNavItems = [
 ];
 
 export function AppSidebar() {
+  const { profile, userRole, signOut, isAdmin } = useAuth();
+
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
   return (
     <Sidebar className="border-r border-sidebar-border">
       <SidebarHeader className="p-4 border-b border-sidebar-border">
@@ -122,13 +138,28 @@ export function AppSidebar() {
         <div className="flex items-center gap-3">
           <Avatar className="h-8 w-8">
             <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground text-xs">
-              AD
+              {profile?.full_name ? getInitials(profile.full_name) : 'U'}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-sidebar-foreground truncate">Admin</p>
-            <p className="text-xs text-sidebar-foreground/60 capitalize">Administrator</p>
+            <p className="text-sm font-medium text-sidebar-foreground truncate">
+              {profile?.full_name || 'User'}
+            </p>
+            <div className="flex items-center gap-1">
+              {isAdmin && <Shield className="h-3 w-3 text-sidebar-foreground/60" />}
+              <p className="text-xs text-sidebar-foreground/60 capitalize">
+                {userRole || 'Agent'}
+              </p>
+            </div>
           </div>
+          <Button 
+            variant="ghost" 
+            size="icon"
+            onClick={signOut}
+            className="h-8 w-8 text-sidebar-foreground/60 hover:text-sidebar-foreground"
+          >
+            <LogOut className="h-4 w-4" />
+          </Button>
         </div>
       </SidebarFooter>
     </Sidebar>
