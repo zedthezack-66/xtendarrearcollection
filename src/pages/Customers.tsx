@@ -143,7 +143,8 @@ export default function Customers() {
   const filteredCustomers = displayCustomers.filter((customer) => {
     const matchesSearch = 
       customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      customer.nrcNumber.toLowerCase().includes(searchQuery.toLowerCase());
+      customer.nrcNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      customer.mobileNumber?.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesStatus = statusFilter === "all" || customer.paymentStatus === statusFilter;
     const matchesAgent = agentFilter === "all" || customer.assignedAgent === agentFilter;
@@ -245,7 +246,7 @@ export default function Customers() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name or NRC number..."
+                placeholder="Search by name, NRC or mobile..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -283,6 +284,7 @@ export default function Customers() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>NRC Number</TableHead>
+                  <TableHead>Mobile</TableHead>
                   {activeBatchId && <TableHead className="text-right">Batch Amount</TableHead>}
                   <TableHead className="text-right">Total Owed</TableHead>
                   <TableHead className="text-right">Total Paid</TableHead>
@@ -295,7 +297,7 @@ export default function Customers() {
               <TableBody>
                 {filteredCustomers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={activeBatchId ? 9 : 8} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={activeBatchId ? 10 : 9} className="text-center py-8 text-muted-foreground">
                       {masterCustomers.length === 0 
                         ? "No customers yet. Create a new batch to import customers." 
                         : "No customers found"}
@@ -306,6 +308,7 @@ export default function Customers() {
                     <TableRow key={customer.id}>
                       <TableCell className="font-medium">{customer.name}</TableCell>
                       <TableCell className="font-mono text-sm">{customer.nrcNumber}</TableCell>
+                      <TableCell className="font-mono text-sm">{customer.mobileNumber || '-'}</TableCell>
                       {activeBatchId && (
                         <TableCell className="text-right font-medium">
                           {formatCurrency(customer.batchAmount)}

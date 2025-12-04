@@ -78,18 +78,28 @@ export default function Tickets() {
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
 
-  const filteredTickets = tickets.filter((ticket) => {
-    const matchesSearch = 
-      ticket.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ticket.nrcNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ticket.id.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = statusFilter === "all" || ticket.status === statusFilter;
-    const matchesPriority = priorityFilter === "all" || ticket.priority === priorityFilter;
-    const matchesAgent = agentFilter === "all" || ticket.assignedAgent === agentFilter;
-    
-    return matchesSearch && matchesStatus && matchesPriority && matchesAgent;
-  });
+  // Sort tickets by status: Open > In Progress > Resolved
+  const statusOrder: Record<TicketStatus, number> = {
+    'Open': 0,
+    'In Progress': 1,
+    'Resolved': 2,
+  };
+
+  const filteredTickets = tickets
+    .filter((ticket) => {
+      const matchesSearch = 
+        ticket.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ticket.nrcNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ticket.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ticket.mobileNumber?.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const matchesStatus = statusFilter === "all" || ticket.status === statusFilter;
+      const matchesPriority = priorityFilter === "all" || ticket.priority === priorityFilter;
+      const matchesAgent = agentFilter === "all" || ticket.assignedAgent === agentFilter;
+      
+      return matchesSearch && matchesStatus && matchesPriority && matchesAgent;
+    })
+    .sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
 
   const handleMarkInProgress = (ticketId: string) => {
     updateTicket(ticketId, { status: 'In Progress' });
@@ -114,7 +124,7 @@ export default function Tickets() {
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by customer or NRC..."
+                placeholder="Search by customer, NRC or mobile..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -162,6 +172,7 @@ export default function Tickets() {
                   <TableHead>Ticket ID</TableHead>
                   <TableHead>Customer</TableHead>
                   <TableHead>NRC Number</TableHead>
+                  <TableHead>Mobile</TableHead>
                   <TableHead className="text-right">Amount Owed</TableHead>
                   <TableHead>Priority</TableHead>
                   <TableHead>Status</TableHead>
@@ -173,7 +184,7 @@ export default function Tickets() {
               <TableBody>
                 {filteredTickets.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                       {tickets.length === 0 ? "No tickets yet. Import a CSV to auto-create tickets." : "No tickets found"}
                     </TableCell>
                   </TableRow>
@@ -185,6 +196,7 @@ export default function Tickets() {
                       </TableCell>
                       <TableCell className="font-medium">{ticket.customerName}</TableCell>
                       <TableCell className="font-mono text-sm">{ticket.nrcNumber}</TableCell>
+                      <TableCell className="font-mono text-sm">{ticket.mobileNumber || '-'}</TableCell>
                       <TableCell className="text-right font-semibold text-destructive">
                         {formatCurrency(ticket.amountOwed)}
                       </TableCell>

@@ -131,6 +131,15 @@ export default function CustomerProfile() {
               </div>
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-muted">
+                  <Phone className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Mobile Number</p>
+                  <p className="font-medium font-mono">{customer.mobileNumber || '-'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-muted">
                   <User className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <div>
