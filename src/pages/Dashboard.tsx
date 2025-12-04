@@ -1,8 +1,9 @@
-import { Users, AlertTriangle, DollarSign, Ticket, TrendingUp, CheckCircle } from "lucide-react";
+import { Users, AlertTriangle, DollarSign, Ticket, TrendingUp, CheckCircle, Loader2 } from "lucide-react";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useAppStore } from "@/store/useAppStore";
+import { useUIStore } from "@/store/useUIStore";
+import { useMasterCustomers, useTickets, usePayments, useBatches, useBatchCustomers, useProfiles } from "@/hooks/useSupabaseData";
 import {
   BarChart,
   Bar,
@@ -30,41 +31,51 @@ const STATUS_COLORS = {
   'Resolved': 'hsl(142, 76%, 36%)',
 };
 
-const PRIORITY_COLORS = {
-  'High': 'hsl(0, 84%, 60%)',
-  'Medium': 'hsl(38, 92%, 50%)',
-  'Low': 'hsl(215, 16%, 47%)',
-};
-
 export default function Dashboard() {
-  const { masterCustomers, tickets, payments, settings, activeBatchId, batchCustomers, batches } = useAppStore();
+  const { activeBatchId } = useUIStore();
+  const { data: masterCustomers, isLoading: loadingCustomers } = useMasterCustomers();
+  const { data: tickets, isLoading: loadingTickets } = useTickets();
+  const { data: payments, isLoading: loadingPayments } = usePayments();
+  const { data: batches } = useBatches();
+  const { data: batchCustomers } = useBatchCustomers();
+  const { data: profiles } = useProfiles();
+
+  const isLoading = loadingCustomers || loadingTickets || loadingPayments;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   // Get customers based on active batch
   const getDisplayCustomers = () => {
-    if (!activeBatchId) {
-      return masterCustomers;
+    if (!activeBatchId || !masterCustomers || !batchCustomers) {
+      return masterCustomers || [];
     }
     const batchCustomerIds = batchCustomers
-      .filter(bc => bc.batchId === activeBatchId)
-      .map(bc => bc.masterCustomerId);
+      .filter(bc => bc.batch_id === activeBatchId)
+      .map(bc => bc.master_customer_id);
     return masterCustomers.filter(mc => batchCustomerIds.includes(mc.id));
   };
 
   const displayCustomers = getDisplayCustomers();
-  const activeBatch = batches.find(b => b.id === activeBatchId);
+  const activeBatch = batches?.find(b => b.id === activeBatchId);
 
   // Calculate stats
   const totalCustomers = displayCustomers.length;
-  const totalOutstanding = displayCustomers.reduce((sum, c) => sum + c.outstandingBalance, 0);
-  const totalCollected = displayCustomers.reduce((sum, c) => sum + c.totalPaid, 0);
-  const totalOwed = displayCustomers.reduce((sum, c) => sum + c.totalOwed, 0);
+  const totalOutstanding = displayCustomers.reduce((sum, c) => sum + Number(c.outstanding_balance || 0), 0);
+  const totalCollected = displayCustomers.reduce((sum, c) => sum + Number(c.total_paid || 0), 0);
+  const totalOwed = displayCustomers.reduce((sum, c) => sum + Number(c.total_owed || 0), 0);
   const collectionRate = totalOwed > 0 ? (totalCollected / totalOwed) * 100 : 0;
 
   // Get relevant tickets
   const displayCustomerIds = displayCustomers.map(c => c.id);
-  const relevantTickets = activeBatchId 
-    ? tickets.filter(t => displayCustomerIds.includes(t.masterCustomerId))
-    : tickets;
+  const relevantTickets = activeBatchId && tickets
+    ? tickets.filter(t => displayCustomerIds.includes(t.master_customer_id))
+    : tickets || [];
 
   const openTickets = relevantTickets.filter((t) => t.status === 'Open').length;
   const inProgressTickets = relevantTickets.filter((t) => t.status === 'In Progress').length;
@@ -77,36 +88,27 @@ export default function Dashboard() {
     { name: 'Resolved', value: resolvedTickets, color: STATUS_COLORS['Resolved'] },
   ].filter((d) => d.value > 0);
 
-  // Tickets by priority
-  const highPriority = relevantTickets.filter((t) => t.priority === 'High').length;
-  const mediumPriority = relevantTickets.filter((t) => t.priority === 'Medium').length;
-  const lowPriority = relevantTickets.filter((t) => t.priority === 'Low').length;
-
   // Collections by agent
-  const agent1Name = settings.agent1Name;
-  const agent2Name = settings.agent2Name;
-  
-  const agent1Customers = displayCustomers.filter((c) => c.assignedAgent === agent1Name);
-  const agent2Customers = displayCustomers.filter((c) => c.assignedAgent === agent2Name);
-  
-  const agent1Collections = agent1Customers.reduce((sum, c) => sum + c.totalPaid, 0);
-  const agent2Collections = agent2Customers.reduce((sum, c) => sum + c.totalPaid, 0);
-
-  const collectionsByAgent = [
-    { name: agent1Name, collected: agent1Collections, tickets: agent1Customers.length },
-    { name: agent2Name, collected: agent2Collections, tickets: agent2Customers.length },
-  ];
+  const collectionsByAgent = profiles?.map(profile => {
+    const agentCustomers = displayCustomers.filter(c => c.assigned_agent === profile.id);
+    const collected = agentCustomers.reduce((sum, c) => sum + Number(c.total_paid || 0), 0);
+    return {
+      name: profile.full_name,
+      collected,
+      tickets: agentCustomers.length,
+    };
+  }).filter(a => a.collected > 0 || a.tickets > 0) || [];
 
   // Recent open tickets
   const recentOpenTickets = relevantTickets
     .filter((t) => t.status !== 'Resolved')
-    .sort((a, b) => new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime())
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 5);
 
   // Top defaulters (highest outstanding)
   const topDefaulters = displayCustomers
-    .filter((c) => c.paymentStatus !== 'Fully Paid')
-    .sort((a, b) => b.outstandingBalance - a.outstandingBalance)
+    .filter((c) => c.payment_status !== 'Fully Paid')
+    .sort((a, b) => Number(b.outstanding_balance) - Number(a.outstanding_balance))
     .slice(0, 5);
 
   return (
@@ -196,26 +198,32 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="h-[250px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={collectionsByAgent}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                    <XAxis dataKey="name" className="text-xs" />
-                    <YAxis 
-                      tickFormatter={(value) => `K${(value / 1000).toFixed(0)}`}
-                      className="text-xs"
-                    />
-                    <Tooltip 
-                      formatter={(value: number) => formatCurrency(value)}
-                      labelStyle={{ color: 'hsl(var(--foreground))' }}
-                      contentStyle={{ 
-                        backgroundColor: 'hsl(var(--card))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '0.5rem',
-                      }}
-                    />
-                    <Bar dataKey="collected" fill="hsl(142, 76%, 36%)" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                {collectionsByAgent.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={collectionsByAgent}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis dataKey="name" className="text-xs" />
+                      <YAxis 
+                        tickFormatter={(value) => `K${(value / 1000).toFixed(0)}`}
+                        className="text-xs"
+                      />
+                      <Tooltip 
+                        formatter={(value: number) => formatCurrency(value)}
+                        labelStyle={{ color: 'hsl(var(--foreground))' }}
+                        contentStyle={{ 
+                          backgroundColor: 'hsl(var(--card))',
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '0.5rem',
+                        }}
+                      />
+                      <Bar dataKey="collected" fill="hsl(142, 76%, 36%)" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    No agent data available
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -235,8 +243,8 @@ export default function Dashboard() {
                 recentOpenTickets.map((ticket) => (
                   <div key={ticket.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                     <div>
-                      <p className="font-medium text-foreground">{ticket.customerName}</p>
-                      <p className="text-sm text-muted-foreground">{formatCurrency(ticket.amountOwed)}</p>
+                      <p className="font-medium text-foreground">{ticket.customer_name}</p>
+                      <p className="text-sm text-muted-foreground">{formatCurrency(Number(ticket.amount_owed))}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant={ticket.priority === 'High' ? 'destructive' : 'secondary'}>
@@ -275,11 +283,11 @@ export default function Dashboard() {
                       </span>
                       <div>
                         <p className="font-medium text-foreground">{customer.name}</p>
-                        <p className="text-sm text-muted-foreground">{customer.nrcNumber}</p>
+                        <p className="text-sm text-muted-foreground">{customer.nrc_number}</p>
                       </div>
                     </div>
                     <p className="font-semibold text-destructive">
-                      {formatCurrency(customer.outstandingBalance)}
+                      {formatCurrency(Number(customer.outstanding_balance))}
                     </p>
                   </div>
                 ))

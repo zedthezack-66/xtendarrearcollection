@@ -14,16 +14,353 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      batch_customers: {
+        Row: {
+          amount_owed: number
+          batch_id: string
+          created_at: string
+          id: string
+          master_customer_id: string
+          mobile_number: string | null
+          name: string
+          nrc_number: string
+        }
+        Insert: {
+          amount_owed?: number
+          batch_id: string
+          created_at?: string
+          id?: string
+          master_customer_id: string
+          mobile_number?: string | null
+          name: string
+          nrc_number: string
+        }
+        Update: {
+          amount_owed?: number
+          batch_id?: string
+          created_at?: string
+          id?: string
+          master_customer_id?: string
+          mobile_number?: string | null
+          name?: string
+          nrc_number?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "batch_customers_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "batch_customers_master_customer_id_fkey"
+            columns: ["master_customer_id"]
+            isOneToOne: false
+            referencedRelation: "master_customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      batches: {
+        Row: {
+          created_at: string
+          customer_count: number
+          id: string
+          institution_name: string
+          name: string
+          total_amount: number
+          upload_date: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          customer_count?: number
+          id?: string
+          institution_name: string
+          name: string
+          total_amount?: number
+          upload_date?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          customer_count?: number
+          id?: string
+          institution_name?: string
+          name?: string
+          total_amount?: number
+          upload_date?: string
+          uploaded_by?: string | null
+        }
+        Relationships: []
+      }
+      call_logs: {
+        Row: {
+          agent_id: string
+          call_outcome: string
+          created_at: string
+          id: string
+          master_customer_id: string
+          notes: string | null
+          promise_to_pay_amount: number | null
+          promise_to_pay_date: string | null
+          ticket_id: string
+        }
+        Insert: {
+          agent_id: string
+          call_outcome: string
+          created_at?: string
+          id?: string
+          master_customer_id: string
+          notes?: string | null
+          promise_to_pay_amount?: number | null
+          promise_to_pay_date?: string | null
+          ticket_id: string
+        }
+        Update: {
+          agent_id?: string
+          call_outcome?: string
+          created_at?: string
+          id?: string
+          master_customer_id?: string
+          notes?: string | null
+          promise_to_pay_amount?: number | null
+          promise_to_pay_date?: string | null
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_logs_master_customer_id_fkey"
+            columns: ["master_customer_id"]
+            isOneToOne: false
+            referencedRelation: "master_customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_logs_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      master_customers: {
+        Row: {
+          assigned_agent: string | null
+          call_notes: string | null
+          created_at: string
+          id: string
+          loan_account_number: string | null
+          mobile_number: string | null
+          name: string
+          nrc_number: string
+          outstanding_balance: number
+          payment_status: string
+          total_owed: number
+          total_paid: number
+          updated_at: string
+        }
+        Insert: {
+          assigned_agent?: string | null
+          call_notes?: string | null
+          created_at?: string
+          id?: string
+          loan_account_number?: string | null
+          mobile_number?: string | null
+          name: string
+          nrc_number: string
+          outstanding_balance?: number
+          payment_status?: string
+          total_owed?: number
+          total_paid?: number
+          updated_at?: string
+        }
+        Update: {
+          assigned_agent?: string | null
+          call_notes?: string | null
+          created_at?: string
+          id?: string
+          loan_account_number?: string | null
+          mobile_number?: string | null
+          name?: string
+          nrc_number?: string
+          outstanding_balance?: number
+          payment_status?: string
+          total_owed?: number
+          total_paid?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      payments: {
+        Row: {
+          amount: number
+          created_at: string
+          customer_name: string
+          id: string
+          master_customer_id: string
+          notes: string | null
+          payment_date: string
+          payment_method: string
+          recorded_by: string | null
+          ticket_id: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          customer_name: string
+          id?: string
+          master_customer_id: string
+          notes?: string | null
+          payment_date?: string
+          payment_method: string
+          recorded_by?: string | null
+          ticket_id?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          customer_name?: string
+          id?: string
+          master_customer_id?: string
+          notes?: string | null
+          payment_date?: string
+          payment_method?: string
+          recorded_by?: string | null
+          ticket_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_master_customer_id_fkey"
+            columns: ["master_customer_id"]
+            isOneToOne: false
+            referencedRelation: "master_customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          full_name: string
+          id: string
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          full_name: string
+          id: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          full_name?: string
+          id?: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      tickets: {
+        Row: {
+          amount_owed: number
+          assigned_agent: string | null
+          call_notes: string | null
+          created_at: string
+          customer_name: string
+          id: string
+          master_customer_id: string
+          mobile_number: string | null
+          nrc_number: string
+          priority: string
+          resolved_date: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          amount_owed?: number
+          assigned_agent?: string | null
+          call_notes?: string | null
+          created_at?: string
+          customer_name: string
+          id?: string
+          master_customer_id: string
+          mobile_number?: string | null
+          nrc_number: string
+          priority?: string
+          resolved_date?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          amount_owed?: number
+          assigned_agent?: string | null
+          call_notes?: string | null
+          created_at?: string
+          customer_name?: string
+          id?: string
+          master_customer_id?: string
+          mobile_number?: string | null
+          nrc_number?: string
+          priority?: string
+          resolved_date?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tickets_master_customer_id_fkey"
+            columns: ["master_customer_id"]
+            isOneToOne: false
+            referencedRelation: "master_customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "agent"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +487,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "agent"],
+    },
   },
 } as const

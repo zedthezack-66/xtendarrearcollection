@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Filter, MoreHorizontal, Eye, Ticket, Phone, UserPlus } from "lucide-react";
+import { Search, Filter, MoreHorizontal, Eye, Ticket, Phone, UserPlus, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,10 +35,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { useAppStore } from "@/store/useAppStore";
-import { PaymentStatus } from "@/types";
+import { useUIStore } from "@/store/useUIStore";
+import { useMasterCustomers, useBatchCustomers, useBatches, useProfiles } from "@/hooks/useSupabaseData";
+import { useAuth } from "@/contexts/AuthContext";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZM', {
@@ -48,7 +51,9 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
-const getStatusBadge = (status: PaymentStatus) => {
+type PaymentStatus = 'Not Paid' | 'Partially Paid' | 'Fully Paid';
+
+const getStatusBadge = (status: string) => {
   switch (status) {
     case 'Fully Paid':
       return <Badge className="bg-success/10 text-success border-success/20">Fully Paid</Badge>;
@@ -62,7 +67,14 @@ const getStatusBadge = (status: PaymentStatus) => {
 };
 
 export default function Customers() {
-  const { masterCustomers, batchCustomers, activeBatchId, settings, batches, addCustomerToBatch, createBatch } = useAppStore();
+  const { activeBatchId } = useUIStore();
+  const { data: masterCustomers, isLoading: loadingCustomers } = useMasterCustomers();
+  const { data: batchCustomers } = useBatchCustomers();
+  const { data: batches } = useBatches();
+  const { data: profiles } = useProfiles();
+  const { isAdmin } = useAuth();
+  const queryClient = useQueryClient();
+  
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
@@ -73,36 +85,43 @@ export default function Customers() {
   const [newCustomerNrc, setNewCustomerNrc] = useState("");
   const [newCustomerMobile, setNewCustomerMobile] = useState("");
   const [newCustomerAmount, setNewCustomerAmount] = useState("");
-  const [newCustomerAgent, setNewCustomerAgent] = useState(settings.agent1Name);
+  const [newCustomerAgent, setNewCustomerAgent] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  if (loadingCustomers) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   // Get customers based on active batch
   const getDisplayCustomers = () => {
-    if (!activeBatchId) {
-      // Global view - show all master customers
-      return masterCustomers.map(mc => ({
+    if (!activeBatchId || !masterCustomers || !batchCustomers) {
+      return (masterCustomers || []).map(mc => ({
         ...mc,
-        batchAmount: mc.totalOwed,
+        batchAmount: Number(mc.total_owed),
       }));
     }
     
-    // Batch view - show customers in this batch with their global data
-    const batchCustomerIds = batchCustomers
-      .filter(bc => bc.batchId === activeBatchId)
-      .map(bc => ({ masterCustomerId: bc.masterCustomerId, batchAmount: bc.amountOwed }));
+    const batchCustomerData = batchCustomers
+      .filter(bc => bc.batch_id === activeBatchId)
+      .map(bc => ({ masterCustomerId: bc.master_customer_id, batchAmount: Number(bc.amount_owed) }));
     
-    return batchCustomerIds.map(({ masterCustomerId, batchAmount }) => {
+    return batchCustomerData.map(({ masterCustomerId, batchAmount }) => {
       const master = masterCustomers.find(mc => mc.id === masterCustomerId);
       if (!master) return null;
       return { ...master, batchAmount };
-    }).filter(Boolean) as (typeof masterCustomers[0] & { batchAmount: number })[];
+    }).filter(Boolean) as (NonNullable<typeof masterCustomers>[0] & { batchAmount: number })[];
   };
 
   const displayCustomers = getDisplayCustomers();
-  const activeBatch = batches.find(b => b.id === activeBatchId);
+  const activeBatch = batches?.find(b => b.id === activeBatchId);
 
-  const handleAddCustomer = () => {
+  const handleAddCustomer = async () => {
     if (!newCustomerName.trim() || !newCustomerNrc.trim() || !newCustomerAmount) {
-      toast.error("Please fill in all fields");
+      toast.error("Please fill in all required fields");
       return;
     }
 
@@ -112,42 +131,112 @@ export default function Customers() {
       return;
     }
 
-    // If there's an active batch, add to that batch
-    // Otherwise create a "Walk-in Customers" batch
-    let targetBatchId = activeBatchId;
-    
-    if (!targetBatchId) {
-      // Check if walk-in batch exists
-      const walkInBatch = batches.find(b => b.name === "Walk-in Customers");
-      if (walkInBatch) {
-        targetBatchId = walkInBatch.id;
-      } else {
-        // Create walk-in batch
-        targetBatchId = createBatch("Walk-in Customers", "Direct Payments");
-      }
-    }
+    setIsSubmitting(true);
 
-    addCustomerToBatch(targetBatchId, newCustomerNrc.trim(), newCustomerName.trim(), amount, newCustomerAgent, newCustomerMobile.trim());
-    
-    toast.success(`Customer ${newCustomerName} added successfully`);
-    
-    // Reset form
-    setNewCustomerName("");
-    setNewCustomerNrc("");
-    setNewCustomerMobile("");
-    setNewCustomerAmount("");
-    setNewCustomerAgent(settings.agent1Name);
-    setIsAddDialogOpen(false);
+    try {
+      // Create or get walk-in batch if no active batch
+      let targetBatchId = activeBatchId;
+      
+      if (!targetBatchId) {
+        const walkInBatch = batches?.find(b => b.name === "Walk-in Customers");
+        if (walkInBatch) {
+          targetBatchId = walkInBatch.id;
+        } else {
+          const { data: newBatch, error: batchError } = await supabase
+            .from('batches')
+            .insert({ name: "Walk-in Customers", institution_name: "Direct Payments" })
+            .select()
+            .single();
+          
+          if (batchError) throw batchError;
+          targetBatchId = newBatch.id;
+        }
+      }
+
+      // Create master customer
+      const { data: customer, error: customerError } = await supabase
+        .from('master_customers')
+        .insert({
+          nrc_number: newCustomerNrc.trim(),
+          name: newCustomerName.trim(),
+          mobile_number: newCustomerMobile.trim() || null,
+          total_owed: amount,
+          outstanding_balance: amount,
+          assigned_agent: newCustomerAgent || null,
+        })
+        .select()
+        .single();
+
+      if (customerError) throw customerError;
+
+      // Create batch customer link
+      await supabase.from('batch_customers').insert({
+        batch_id: targetBatchId,
+        master_customer_id: customer.id,
+        nrc_number: newCustomerNrc.trim(),
+        name: newCustomerName.trim(),
+        mobile_number: newCustomerMobile.trim() || null,
+        amount_owed: amount,
+      });
+
+      // Create ticket
+      await supabase.from('tickets').insert({
+        master_customer_id: customer.id,
+        customer_name: newCustomerName.trim(),
+        nrc_number: newCustomerNrc.trim(),
+        mobile_number: newCustomerMobile.trim() || null,
+        amount_owed: amount,
+        assigned_agent: newCustomerAgent || null,
+      });
+
+      // Update batch totals
+      const currentBatch = batches?.find(b => b.id === targetBatchId);
+      if (currentBatch) {
+        await supabase.from('batches').update({
+          customer_count: (currentBatch.customer_count || 0) + 1,
+          total_amount: Number(currentBatch.total_amount || 0) + amount,
+        }).eq('id', targetBatchId);
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['master_customers'] });
+      queryClient.invalidateQueries({ queryKey: ['batch_customers'] });
+      queryClient.invalidateQueries({ queryKey: ['batches'] });
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+
+      toast.success(`Customer ${newCustomerName} added successfully`);
+      
+      setNewCustomerName("");
+      setNewCustomerNrc("");
+      setNewCustomerMobile("");
+      setNewCustomerAmount("");
+      setNewCustomerAgent("");
+      setIsAddDialogOpen(false);
+    } catch (error: any) {
+      console.error('Error adding customer:', error);
+      if (error.code === '23505') {
+        toast.error("A customer with this NRC number already exists");
+      } else {
+        toast.error("Failed to add customer");
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const getAgentName = (agentId: string | null) => {
+    if (!agentId || !profiles) return '-';
+    const profile = profiles.find(p => p.id === agentId);
+    return profile?.full_name || '-';
   };
 
   const filteredCustomers = displayCustomers.filter((customer) => {
     const matchesSearch = 
       customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      customer.nrcNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      customer.mobileNumber?.toLowerCase().includes(searchQuery.toLowerCase());
+      customer.nrc_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      customer.mobile_number?.toLowerCase().includes(searchQuery.toLowerCase());
     
-    const matchesStatus = statusFilter === "all" || customer.paymentStatus === statusFilter;
-    const matchesAgent = agentFilter === "all" || customer.assignedAgent === agentFilter;
+    const matchesStatus = statusFilter === "all" || customer.payment_status === statusFilter;
+    const matchesAgent = agentFilter === "all" || customer.assigned_agent === agentFilter;
     
     return matchesSearch && matchesStatus && matchesAgent;
   });
@@ -162,82 +251,93 @@ export default function Customers() {
           </p>
         </div>
         
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <UserPlus className="h-4 w-4 mr-2" />
-              Add Customer
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Add New Customer</DialogTitle>
-              <DialogDescription>
-                Add a walk-in customer who wasn't included in the CSV import. A ticket will be automatically created.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="name">Full Name</Label>
-                <Input
-                  id="name"
-                  placeholder="Enter customer name"
-                  value={newCustomerName}
-                  onChange={(e) => setNewCustomerName(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="nrc">NRC Number</Label>
-                <Input
-                  id="nrc"
-                  placeholder="e.g., 123456/78/1"
-                  value={newCustomerNrc}
-                  onChange={(e) => setNewCustomerNrc(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="mobile">Mobile Number</Label>
-                <Input
-                  id="mobile"
-                  placeholder="e.g., 0971234567"
-                  value={newCustomerMobile}
-                  onChange={(e) => setNewCustomerMobile(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="amount">Total Amount Owed (ZMW)</Label>
-                <Input
-                  id="amount"
-                  type="number"
-                  placeholder="Enter amount"
-                  value={newCustomerAmount}
-                  onChange={(e) => setNewCustomerAmount(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="agent">Assigned Agent</Label>
-                <Select value={newCustomerAgent} onValueChange={setNewCustomerAgent}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select agent" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={settings.agent1Name}>{settings.agent1Name}</SelectItem>
-                    <SelectItem value={settings.agent2Name}>{settings.agent2Name}</SelectItem>
-                    <SelectItem value={settings.agent3Name}>{settings.agent3Name}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleAddCustomer}>
+        {isAdmin && (
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <UserPlus className="h-4 w-4 mr-2" />
                 Add Customer
               </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Add New Customer</DialogTitle>
+                <DialogDescription>
+                  Add a walk-in customer who wasn't included in the CSV import. A ticket will be automatically created.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="name">Full Name *</Label>
+                  <Input
+                    id="name"
+                    placeholder="Enter customer name"
+                    value={newCustomerName}
+                    onChange={(e) => setNewCustomerName(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="nrc">NRC Number *</Label>
+                  <Input
+                    id="nrc"
+                    placeholder="e.g., 123456/78/1"
+                    value={newCustomerNrc}
+                    onChange={(e) => setNewCustomerNrc(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="mobile">Mobile Number</Label>
+                  <Input
+                    id="mobile"
+                    placeholder="e.g., 0971234567"
+                    value={newCustomerMobile}
+                    onChange={(e) => setNewCustomerMobile(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="amount">Total Amount Owed (ZMW) *</Label>
+                  <Input
+                    id="amount"
+                    type="number"
+                    placeholder="Enter amount"
+                    value={newCustomerAmount}
+                    onChange={(e) => setNewCustomerAmount(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="agent">Assigned Agent</Label>
+                  <Select value={newCustomerAgent} onValueChange={setNewCustomerAgent}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select agent" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {profiles?.map(profile => (
+                        <SelectItem key={profile.id} value={profile.id}>
+                          {profile.full_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleAddCustomer} disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Adding...
+                    </>
+                  ) : (
+                    'Add Customer'
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <Card>
@@ -270,9 +370,11 @@ export default function Customers() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Agents</SelectItem>
-                <SelectItem value={settings.agent1Name}>{settings.agent1Name}</SelectItem>
-                <SelectItem value={settings.agent2Name}>{settings.agent2Name}</SelectItem>
-                <SelectItem value={settings.agent3Name}>{settings.agent3Name}</SelectItem>
+                {profiles?.map(profile => (
+                  <SelectItem key={profile.id} value={profile.id}>
+                    {profile.full_name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -298,7 +400,7 @@ export default function Customers() {
                 {filteredCustomers.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={activeBatchId ? 10 : 9} className="text-center py-8 text-muted-foreground">
-                      {masterCustomers.length === 0 
+                      {!masterCustomers?.length 
                         ? "No customers yet. Create a new batch to import customers." 
                         : "No customers found"}
                     </TableCell>
@@ -307,24 +409,26 @@ export default function Customers() {
                   filteredCustomers.map((customer) => (
                     <TableRow key={customer.id}>
                       <TableCell className="font-medium">{customer.name}</TableCell>
-                      <TableCell className="font-mono text-sm">{customer.nrcNumber}</TableCell>
-                      <TableCell className="font-mono text-sm">{customer.mobileNumber || '-'}</TableCell>
+                      <TableCell className="font-mono text-sm">{customer.nrc_number}</TableCell>
+                      <TableCell className="font-mono text-sm">{customer.mobile_number || '-'}</TableCell>
                       {activeBatchId && (
                         <TableCell className="text-right font-medium">
                           {formatCurrency(customer.batchAmount)}
                         </TableCell>
                       )}
                       <TableCell className="text-right font-semibold text-destructive">
-                        {formatCurrency(customer.totalOwed)}
+                        {formatCurrency(Number(customer.total_owed))}
                       </TableCell>
                       <TableCell className="text-right font-semibold text-success">
-                        {formatCurrency(customer.totalPaid)}
+                        {formatCurrency(Number(customer.total_paid))}
                       </TableCell>
                       <TableCell className="text-right font-semibold">
-                        {formatCurrency(customer.outstandingBalance)}
+                        {formatCurrency(Number(customer.outstanding_balance))}
                       </TableCell>
-                      <TableCell>{getStatusBadge(customer.paymentStatus)}</TableCell>
-                      <TableCell className="text-muted-foreground">{customer.assignedAgent}</TableCell>
+                      <TableCell>{getStatusBadge(customer.payment_status)}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {getAgentName(customer.assigned_agent)}
+                      </TableCell>
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -345,10 +449,14 @@ export default function Customers() {
                                 View Ticket
                               </Link>
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <Phone className="h-4 w-4 mr-2" />
-                              Call Customer
-                            </DropdownMenuItem>
+                            {customer.mobile_number && (
+                              <DropdownMenuItem asChild>
+                                <a href={`tel:${customer.mobile_number}`}>
+                                  <Phone className="h-4 w-4 mr-2" />
+                                  Call Customer
+                                </a>
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
