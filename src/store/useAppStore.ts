@@ -143,6 +143,15 @@ export const useAppStore = create<AppState>()(
         const now = new Date();
         const existingMaster = get().masterCustomers.find(mc => mc.nrcNumber === nrcNumber);
         
+        // Check if customer already exists in this batch
+        const existingBatchCustomer = get().batchCustomers.find(
+          bc => bc.batchId === batchId && bc.nrcNumber === nrcNumber
+        );
+        if (existingBatchCustomer) {
+          // Skip duplicate in same batch
+          return;
+        }
+        
         set((state) => {
           let masterCustomerId: string;
           let updatedMasterCustomers = [...state.masterCustomers];
@@ -152,26 +161,43 @@ export const useAppStore = create<AppState>()(
             // Link to existing master customer
             masterCustomerId = existingMaster.id;
             
-            // Update master customer's total owed and mobile number if provided
+            // Check if customer already has an entry in this batch
+            const existingInBatch = state.batchCustomers.find(
+              bc => bc.batchId === batchId && bc.masterCustomerId === masterCustomerId
+            );
+            
+            // Calculate old batch amounts for this customer (excluding current batch)
+            const oldBatchAmounts = state.batchCustomers
+              .filter(bc => bc.masterCustomerId === masterCustomerId && bc.batchId !== batchId)
+              .reduce((sum, bc) => sum + bc.amountOwed, 0);
+            
+            // NEW LOGIC: Use arrears from newest batch only (replace, don't sum)
+            // Total owed = old batches + new batch amount
+            const newTotalOwed = oldBatchAmounts + amountOwed;
+            
+            // Sync customer data: update name, mobile if provided
             updatedMasterCustomers = updatedMasterCustomers.map(mc => 
               mc.id === masterCustomerId
                 ? {
                     ...mc,
-                    totalOwed: mc.totalOwed + amountOwed,
-                    outstandingBalance: mc.totalOwed + amountOwed - mc.totalPaid,
-                    paymentStatus: calculatePaymentStatus(mc.totalOwed + amountOwed, mc.totalPaid),
-                    mobileNumber: mobileNumber || mc.mobileNumber,
+                    name: name || mc.name, // Update name if provided
+                    totalOwed: newTotalOwed,
+                    outstandingBalance: newTotalOwed - mc.totalPaid,
+                    paymentStatus: calculatePaymentStatus(newTotalOwed, mc.totalPaid),
+                    mobileNumber: mobileNumber || mc.mobileNumber, // Keep existing if new is empty
                     lastUpdated: now,
                   }
                 : mc
             );
             
-            // Update existing ticket amount
+            // Update existing ticket - sync data and update amount
             updatedTickets = updatedTickets.map(t =>
               t.masterCustomerId === masterCustomerId
                 ? {
                     ...t,
-                    amountOwed: t.amountOwed + amountOwed,
+                    customerName: name || t.customerName,
+                    mobileNumber: mobileNumber || t.mobileNumber,
+                    amountOwed: newTotalOwed,
                     lastUpdated: now,
                   }
                 : t
@@ -204,6 +230,7 @@ export const useAppStore = create<AppState>()(
               customerId: masterCustomerId,
               customerName: name,
               nrcNumber,
+              mobileNumber,
               amountOwed,
               priority: 'High',
               status: 'Open',

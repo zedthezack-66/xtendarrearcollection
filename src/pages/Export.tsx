@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useAppStore } from "@/store/useAppStore";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -19,19 +20,51 @@ type ExportFilter = 'all' | 'outstanding' | 'resolved';
 
 export default function Export() {
   const { toast } = useToast();
-  const { masterCustomers, batches, batchCustomers, tickets } = useAppStore();
+  const { masterCustomers, batches, batchCustomers, tickets, payments } = useAppStore();
   const [exportFilter, setExportFilter] = useState<ExportFilter>('all');
   const [selectedBatchId, setSelectedBatchId] = useState<string>('all');
+  const [exportAll, setExportAll] = useState(false);
+
+  // Check if a ticket has been "worked on"
+  const isTicketWorkedOn = (ticketId: string, masterCustomerId: string) => {
+    const ticket = tickets.find(t => t.id === ticketId);
+    if (!ticket) return false;
+
+    // Check if status changed (not Open anymore)
+    const statusChanged = ticket.status !== 'Open';
+    
+    // Check if notes were added
+    const hasNotes = ticket.callNotes && ticket.callNotes.trim().length > 0;
+    
+    // Check if payments were made
+    const hasPayments = payments.some(p => p.masterCustomerId === masterCustomerId);
+    
+    return statusChanged || hasNotes || hasPayments;
+  };
 
   const getFilteredMasterCustomers = () => {
+    let filtered = masterCustomers;
+
+    // Apply payment status filter
     switch (exportFilter) {
       case 'outstanding':
-        return masterCustomers.filter((c) => c.paymentStatus !== 'Fully Paid');
+        filtered = filtered.filter((c) => c.paymentStatus !== 'Fully Paid');
+        break;
       case 'resolved':
-        return masterCustomers.filter((c) => c.paymentStatus === 'Fully Paid');
-      default:
-        return masterCustomers;
+        filtered = filtered.filter((c) => c.paymentStatus === 'Fully Paid');
+        break;
     }
+
+    // Apply "worked on" filter (unless exportAll is enabled)
+    if (!exportAll) {
+      filtered = filtered.filter((c) => {
+        const ticket = tickets.find(t => t.masterCustomerId === c.id);
+        if (!ticket) return false;
+        return isTicketWorkedOn(ticket.id, c.id);
+      });
+    }
+
+    return filtered;
   };
 
   const getFilteredBatchCustomers = () => {
@@ -51,6 +84,15 @@ export default function Export() {
           : master.paymentStatus === 'Fully Paid';
       });
     }
+
+    // Apply "worked on" filter (unless exportAll is enabled)
+    if (!exportAll) {
+      filtered = filtered.filter(bc => {
+        const ticket = tickets.find(t => t.masterCustomerId === bc.masterCustomerId);
+        if (!ticket) return false;
+        return isTicketWorkedOn(ticket.id, bc.masterCustomerId);
+      });
+    }
     
     return filtered;
   };
@@ -61,7 +103,9 @@ export default function Export() {
     if (filteredCustomers.length === 0) {
       toast({
         title: "No Data",
-        description: "There are no customers to export with the selected filter",
+        description: exportAll 
+          ? "There are no customers to export with the selected filter"
+          : "There are no worked-on tickets to export. Enable 'Export All' to include all tickets.",
         variant: "destructive",
       });
       return;
@@ -70,6 +114,7 @@ export default function Export() {
     const headers = [
       'Customer Name',
       'NRC Number',
+      'Mobile Number',
       'Total Amount Owed',
       'Total Amount Paid',
       'Outstanding Balance',
@@ -85,6 +130,7 @@ export default function Export() {
       return [
         customer.name,
         customer.nrcNumber,
+        customer.mobileNumber || '',
         customer.totalOwed,
         customer.totalPaid,
         customer.outstandingBalance,
@@ -96,7 +142,7 @@ export default function Export() {
     });
 
     const csvContent = [headers.join(','), ...rows].join('\n');
-    downloadCSV(csvContent, `master-customers-${exportFilter}`);
+    downloadCSV(csvContent, `master-customers-${exportFilter}${exportAll ? '-all' : '-worked'}`);
 
     toast({
       title: "Export Complete",
@@ -110,7 +156,9 @@ export default function Export() {
     if (filteredCustomers.length === 0) {
       toast({
         title: "No Data",
-        description: "There are no customers to export with the selected filters",
+        description: exportAll 
+          ? "There are no customers to export with the selected filters"
+          : "There are no worked-on tickets to export. Enable 'Export All' to include all tickets.",
         variant: "destructive",
       });
       return;
@@ -120,6 +168,7 @@ export default function Export() {
       'Batch Name',
       'Customer Name',
       'NRC Number',
+      'Mobile Number',
       'Batch Amount Owed',
       'Total Paid (Global)',
       'Outstanding Balance (Global)',
@@ -138,6 +187,7 @@ export default function Export() {
         batch?.name || 'Unknown',
         bc.name,
         bc.nrcNumber,
+        bc.mobileNumber || '',
         bc.amountOwed,
         master?.totalPaid || 0,
         master?.outstandingBalance || 0,
@@ -150,7 +200,7 @@ export default function Export() {
 
     const csvContent = [headers.join(','), ...rows].join('\n');
     const batchSuffix = selectedBatchId === 'all' ? 'all-batches' : batches.find(b => b.id === selectedBatchId)?.name || selectedBatchId;
-    downloadCSV(csvContent, `batch-export-${batchSuffix}-${exportFilter}`);
+    downloadCSV(csvContent, `batch-export-${batchSuffix}-${exportFilter}${exportAll ? '-all' : '-worked'}`);
 
     toast({
       title: "Export Complete",
@@ -176,12 +226,46 @@ export default function Export() {
   const masterFilteredCount = getFilteredMasterCustomers().length;
   const batchFilteredCount = getFilteredBatchCustomers().length;
 
+  // Count worked-on tickets
+  const workedOnCount = tickets.filter(t => isTicketWorkedOn(t.id, t.masterCustomerId)).length;
+
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Export Data</h1>
         <p className="text-muted-foreground">Download customer and collection data as CSV</p>
       </div>
+
+      {/* Export All Toggle */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="export-all" className="font-medium">Export All Tickets</Label>
+              <p className="text-sm text-muted-foreground">
+                {exportAll 
+                  ? "Exporting all tickets regardless of activity"
+                  : `Exporting only worked-on tickets (${workedOnCount} of ${tickets.length})`}
+              </p>
+            </div>
+            <Switch
+              id="export-all"
+              checked={exportAll}
+              onCheckedChange={setExportAll}
+            />
+          </div>
+          {!exportAll && (
+            <div className="mt-3 p-3 bg-muted rounded-lg text-sm text-muted-foreground">
+              <p className="font-medium mb-1">Worked-on tickets include:</p>
+              <ul className="list-disc list-inside space-y-0.5">
+                <li>Status changed from Open</li>
+                <li>Call notes added</li>
+                <li>Payments recorded</li>
+              </ul>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue="master" className="space-y-4">
         <TabsList className="grid w-full grid-cols-2">
@@ -243,7 +327,7 @@ export default function Export() {
               <div className="p-4 bg-muted rounded-lg">
                 <p className="text-sm text-muted-foreground mb-2">Export includes:</p>
                 <ul className="text-sm space-y-1 text-muted-foreground">
-                  <li>• Customer Name & NRC Number</li>
+                  <li>• Customer Name, NRC & Mobile Number</li>
                   <li>• Total Owed, Total Paid, Outstanding Balance</li>
                   <li>• Payment Status</li>
                   <li>• Call Notes & Assigned Agent</li>
@@ -322,6 +406,7 @@ export default function Export() {
                 <p className="text-sm text-muted-foreground mb-2">Export includes:</p>
                 <ul className="text-sm space-y-1 text-muted-foreground">
                   <li>• Batch Name & Customer Details</li>
+                  <li>• Mobile Number</li>
                   <li>• Batch-specific Amount Owed</li>
                   <li>• Global Payment Status & Totals</li>
                   <li>• Call Notes & Agent Assignment</li>

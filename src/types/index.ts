@@ -65,6 +65,7 @@ export interface Ticket {
   customerId: string; // For backwards compatibility
   customerName: string;
   nrcNumber: string;
+  mobileNumber: string;
   amountOwed: number;
   priority: TicketPriority;
   status: TicketStatus;
