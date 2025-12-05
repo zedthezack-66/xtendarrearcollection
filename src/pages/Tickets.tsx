@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, MoreHorizontal, Eye, CheckCircle, PlayCircle, Loader2, Phone } from "lucide-react";
+import { Search, MoreHorizontal, Eye, CheckCircle, PlayCircle, Loader2, Phone, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -9,12 +9,23 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { useTickets, useUpdateTicket, useProfiles } from "@/hooks/useSupabaseData";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useTickets, useUpdateTicket, useProfiles, useDeleteTicket } from "@/hooks/useSupabaseData";
+import { useAuth } from "@/contexts/AuthContext";
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW', minimumFractionDigits: 0 }).format(amount);
@@ -45,11 +56,14 @@ const getPriorityBadge = (priority: string) => {
 export default function Tickets() {
   const { data: tickets, isLoading } = useTickets();
   const { data: profiles } = useProfiles();
+  const { profile } = useAuth();
   const updateTicket = useUpdateTicket();
+  const deleteTicket = useDeleteTicket();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
+  const [ticketToDelete, setTicketToDelete] = useState<string | null>(null);
 
   if (isLoading) {
     return <div className="flex items-center justify-center min-h-[400px]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -76,9 +90,21 @@ export default function Tickets() {
     })
     .sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
 
+  const handleDeleteTicket = async () => {
+    if (ticketToDelete) {
+      await deleteTicket.mutateAsync(ticketToDelete);
+      setTicketToDelete(null);
+    }
+  };
+
+  const agentFirstName = profile?.full_name?.split(' ')[0] || 'Agent';
+
   return (
     <div className="space-y-6">
-      <div><h1 className="text-2xl font-bold text-foreground">Tickets</h1><p className="text-muted-foreground">Manage collections workflow</p></div>
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">{agentFirstName}'s Tickets</h1>
+        <p className="text-muted-foreground">Manage collections workflow</p>
+      </div>
       <Card>
         <CardHeader className="pb-4">
           <div className="flex flex-col sm:flex-row gap-4 flex-wrap">
@@ -153,6 +179,13 @@ export default function Tickets() {
                             {ticket.mobile_number && <DropdownMenuItem asChild><a href={`tel:${ticket.mobile_number}`}><Phone className="h-4 w-4 mr-2" />Call</a></DropdownMenuItem>}
                             {ticket.status === 'Open' && <DropdownMenuItem onClick={() => updateTicket.mutate({ id: ticket.id, status: 'In Progress' })}><PlayCircle className="h-4 w-4 mr-2" />Mark In Progress</DropdownMenuItem>}
                             {ticket.status !== 'Resolved' && <DropdownMenuItem onClick={() => updateTicket.mutate({ id: ticket.id, status: 'Resolved', resolved_date: new Date().toISOString() })}><CheckCircle className="h-4 w-4 mr-2" />Mark Resolved</DropdownMenuItem>}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem 
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => setTicketToDelete(ticket.id)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />Delete Ticket
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -165,6 +198,23 @@ export default function Tickets() {
           <div className="mt-4 text-sm text-muted-foreground">Showing {filteredTickets.length} of {tickets?.length || 0} tickets</div>
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!ticketToDelete} onOpenChange={(open) => !open && setTicketToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Ticket</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this ticket? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteTicket} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

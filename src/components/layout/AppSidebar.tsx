@@ -29,7 +29,6 @@ import { BatchSelector } from "@/components/BatchSelector";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
-import { Badge } from "@/components/ui/badge";
 
 const mainNavItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -58,15 +57,17 @@ export function AppSidebar() {
       .slice(0, 2);
   };
 
+  const agentFirstName = profile?.full_name?.split(' ')[0] || 'User';
+
   return (
     <Sidebar className="border-r border-sidebar-border">
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground font-bold">
-            LC
+            {getInitials(profile?.full_name || 'LC')}
           </div>
           <div>
-            <h1 className="font-semibold text-sidebar-foreground">LoanCollect</h1>
+            <h1 className="font-semibold text-sidebar-foreground">{agentFirstName}'s Collections</h1>
             <p className="text-xs text-sidebar-foreground/60">Collections Manager</p>
           </div>
         </div>
