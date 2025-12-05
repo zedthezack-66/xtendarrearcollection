@@ -251,8 +251,7 @@ export default function Customers() {
           </p>
         </div>
         
-        {isAdmin && (
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
               <Button>
                 <UserPlus className="h-4 w-4 mr-2" />
@@ -337,7 +336,6 @@ export default function Customers() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-        )}
       </div>
 
       <Card>
