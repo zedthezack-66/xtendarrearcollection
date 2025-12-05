@@ -398,6 +398,63 @@ export function useUpdateProfile() {
   });
 }
 
+// Delete hooks
+export function useDeleteTicket() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (ticketId: string) => {
+      const { error } = await supabase
+        .from('tickets')
+        .delete()
+        .eq('id', ticketId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      toast({ title: 'Ticket deleted successfully' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error deleting ticket', description: error.message, variant: 'destructive' });
+    },
+  });
+}
+
+export function useDeleteBatch() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (batchId: string) => {
+      // First delete batch_customers
+      const { error: bcError } = await supabase
+        .from('batch_customers')
+        .delete()
+        .eq('batch_id', batchId);
+      
+      if (bcError) throw bcError;
+
+      // Then delete the batch
+      const { error } = await supabase
+        .from('batches')
+        .delete()
+        .eq('id', batchId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['batches'] });
+      queryClient.invalidateQueries({ queryKey: ['batch_customers'] });
+      toast({ title: 'Batch deleted successfully' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error deleting batch', description: error.message, variant: 'destructive' });
+    },
+  });
+}
+
 // Combined data for dashboard
 export function useDashboardStats() {
   const { data: customers } = useMasterCustomers();

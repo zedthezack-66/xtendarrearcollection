@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Filter, MoreHorizontal, Eye, Ticket, Phone, UserPlus, Loader2 } from "lucide-react";
+import { Search, Filter, MoreHorizontal, Eye, Ticket, Phone, UserPlus, Loader2, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,8 +35,18 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useUIStore } from "@/store/useUIStore";
-import { useMasterCustomers, useBatchCustomers, useBatches, useProfiles } from "@/hooks/useSupabaseData";
+import { useMasterCustomers, useBatchCustomers, useBatches, useProfiles, useDeleteBatch } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/contexts/AuthContext";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -67,13 +77,14 @@ const getStatusBadge = (status: string) => {
 };
 
 export default function Customers() {
-  const { activeBatchId } = useUIStore();
+  const { activeBatchId, setActiveBatch } = useUIStore();
   const { data: masterCustomers, isLoading: loadingCustomers } = useMasterCustomers();
   const { data: batchCustomers } = useBatchCustomers();
   const { data: batches } = useBatches();
   const { data: profiles } = useProfiles();
-  const { isAdmin } = useAuth();
+  const { isAdmin, profile } = useAuth();
   const queryClient = useQueryClient();
+  const deleteBatch = useDeleteBatch();
   
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -87,6 +98,9 @@ export default function Customers() {
   const [newCustomerAmount, setNewCustomerAmount] = useState("");
   const [newCustomerAgent, setNewCustomerAgent] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Delete batch state
+  const [batchToDelete, setBatchToDelete] = useState<string | null>(null);
 
   if (loadingCustomers) {
     return (
@@ -223,10 +237,21 @@ export default function Customers() {
     }
   };
 
+  const handleDeleteBatch = async () => {
+    if (batchToDelete) {
+      // If deleting active batch, clear the selection
+      if (batchToDelete === activeBatchId) {
+        setActiveBatch(null);
+      }
+      await deleteBatch.mutateAsync(batchToDelete);
+      setBatchToDelete(null);
+    }
+  };
+
   const getAgentName = (agentId: string | null) => {
     if (!agentId || !profiles) return '-';
-    const profile = profiles.find(p => p.id === agentId);
-    return profile?.full_name || '-';
+    const prof = profiles.find(p => p.id === agentId);
+    return prof?.full_name || '-';
   };
 
   const filteredCustomers = displayCustomers.filter((customer) => {
@@ -241,17 +266,30 @@ export default function Customers() {
     return matchesSearch && matchesStatus && matchesAgent;
   });
 
+  const agentFirstName = profile?.full_name?.split(' ')[0] || 'Agent';
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Customers</h1>
+          <h1 className="text-2xl font-bold text-foreground">{agentFirstName}'s Customers</h1>
           <p className="text-muted-foreground">
             {activeBatch ? `Viewing batch: ${activeBatch.name}` : 'Global customer registry'}
           </p>
         </div>
         
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <div className="flex gap-2">
+          {activeBatch && (
+            <Button 
+              variant="destructive" 
+              size="sm"
+              onClick={() => setBatchToDelete(activeBatchId!)}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete Batch
+            </Button>
+          )}
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
               <Button>
                 <UserPlus className="h-4 w-4 mr-2" />
@@ -262,7 +300,7 @@ export default function Customers() {
               <DialogHeader>
                 <DialogTitle>Add New Customer</DialogTitle>
                 <DialogDescription>
-                  Add a walk-in customer who wasn't included in the CSV import. A ticket will be automatically created.
+                  Add a walk-in customer who was not included in the CSV import. A ticket will be automatically created.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
@@ -310,9 +348,9 @@ export default function Customers() {
                       <SelectValue placeholder="Select agent" />
                     </SelectTrigger>
                     <SelectContent>
-                      {profiles?.map(profile => (
-                        <SelectItem key={profile.id} value={profile.id}>
-                          {profile.full_name}
+                      {profiles?.map(prof => (
+                        <SelectItem key={prof.id} value={prof.id}>
+                          {prof.full_name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -336,6 +374,7 @@ export default function Customers() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+        </div>
       </div>
 
       <Card>
@@ -368,9 +407,9 @@ export default function Customers() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Agents</SelectItem>
-                {profiles?.map(profile => (
-                  <SelectItem key={profile.id} value={profile.id}>
-                    {profile.full_name}
+                {profiles?.map(prof => (
+                  <SelectItem key={prof.id} value={prof.id}>
+                    {prof.full_name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -469,6 +508,23 @@ export default function Customers() {
           </div>
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!batchToDelete} onOpenChange={(open) => !open && setBatchToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Batch</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this batch? This will remove the batch and all customer associations. The customers themselves will remain in the master registry.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteBatch} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete Batch
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

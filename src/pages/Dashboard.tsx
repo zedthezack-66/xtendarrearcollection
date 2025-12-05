@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useUIStore } from "@/store/useUIStore";
 import { useMasterCustomers, useTickets, usePayments, useBatches, useBatchCustomers, useProfiles } from "@/hooks/useSupabaseData";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   BarChart,
   Bar,
@@ -33,6 +34,7 @@ const STATUS_COLORS = {
 
 export default function Dashboard() {
   const { activeBatchId } = useUIStore();
+  const { profile } = useAuth();
   const { data: masterCustomers, isLoading: loadingCustomers } = useMasterCustomers();
   const { data: tickets, isLoading: loadingTickets } = useTickets();
   const { data: payments, isLoading: loadingPayments } = usePayments();
@@ -111,10 +113,12 @@ export default function Dashboard() {
     .sort((a, b) => Number(b.outstanding_balance) - Number(a.outstanding_balance))
     .slice(0, 5);
 
+  const agentFirstName = profile?.full_name?.split(' ')[0] || 'Agent';
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+        <h1 className="text-2xl font-bold text-foreground">{agentFirstName}'s Collection Dashboard</h1>
         <p className="text-muted-foreground">
           {activeBatch ? `Viewing batch: ${activeBatch.name}` : 'Overview of all loan collections'}
         </p>
