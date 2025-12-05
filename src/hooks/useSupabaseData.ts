@@ -134,7 +134,7 @@ export function useUpdateMasterCustomer() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { id: string } & Partial<MasterCustomerInsert>) => {
+    mutationFn: async ({ id, ...updates }: { id: string } & Partial<MasterCustomerInsert & { call_notes?: string }>) => {
       const { data, error } = await supabase
         .from('master_customers')
         .update(updates)

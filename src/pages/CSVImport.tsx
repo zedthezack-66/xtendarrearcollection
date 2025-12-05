@@ -19,7 +19,9 @@ import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAppStore, processCSVBatch } from "@/store/useAppStore";
+import { useMasterCustomers, useCreateBatch, useProfiles } from "@/hooks/useSupabaseData";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface CSVRow {
   'Customer Name'?: string;
@@ -47,7 +49,10 @@ Peter Phiri,345678/30/3,22000,260973456789`;
 export default function CSVImport() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { masterCustomers, settings, createBatch, addCustomerToBatch } = useAppStore();
+  const { user } = useAuth();
+  const { data: masterCustomers = [] } = useMasterCustomers();
+  const { data: profiles = [] } = useProfiles();
+  const createBatch = useCreateBatch();
   
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -57,7 +62,8 @@ export default function CSVImport() {
   const [batchName, setBatchName] = useState("");
   const [institutionName, setInstitutionName] = useState("");
 
-  const existingNrcNumbers = new Set(masterCustomers.map((c) => c.nrcNumber));
+  const existingNrcNumbers = new Set(masterCustomers.map((c) => c.nrc_number));
+  const agents = profiles.filter(p => p.id !== user?.id).slice(0, 3);
 
   const processRows = (data: CSVRow[]) => {
     const seenNrcNumbers = new Set<string>();
@@ -173,65 +179,98 @@ export default function CSVImport() {
 
   const handleImport = async () => {
     if (!batchName.trim()) {
-      toast({
-        title: "Batch Name Required",
-        description: "Please enter a name for this batch",
-        variant: "destructive",
-      });
+      toast({ title: "Batch Name Required", description: "Please enter a name for this batch", variant: "destructive" });
       return;
     }
 
     if (!institutionName.trim()) {
-      toast({
-        title: "Institution Name Required",
-        description: "Please enter the institution name",
-        variant: "destructive",
-      });
+      toast({ title: "Institution Name Required", description: "Please enter the institution name", variant: "destructive" });
       return;
     }
 
     const validRows = parsedData.filter((r) => r.isValid);
     if (validRows.length === 0) {
-      toast({
-        title: "No Valid Data",
-        description: "There are no valid rows to import",
-        variant: "destructive",
-      });
+      toast({ title: "No Valid Data", description: "There are no valid rows to import", variant: "destructive" });
       return;
     }
 
     setIsImporting(true);
     setImportProgress(0);
 
-    // Create new batch
-    const batchId = createBatch(batchName.trim(), institutionName.trim());
+    try {
+      // Create batch
+      const batch = await createBatch.mutateAsync({
+        name: batchName.trim(),
+        institution_name: institutionName.trim(),
+        customer_count: validRows.length,
+        total_amount: validRows.reduce((sum, r) => sum + r.amountOwed, 0),
+      });
 
-    // Process CSV data and add to batch
-    processCSVBatch(
-      batchId,
-      validRows.map((r) => ({
-        name: r.name,
-        nrcNumber: r.nrcNumber,
-        amountOwed: r.amountOwed,
-        mobileNumber: r.mobileNumber,
-      })),
-      settings,
-      addCustomerToBatch
-    );
+      setImportProgress(20);
 
-    // Simulate progress
-    for (let i = 0; i <= 100; i += 10) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      setImportProgress(i);
+      // Process each row
+      for (let i = 0; i < validRows.length; i++) {
+        const row = validRows[i];
+        const assignedAgentId = agents[i % agents.length]?.id || user?.id;
+        
+        // Check if master customer exists
+        const existingMaster = masterCustomers.find(mc => mc.nrc_number === row.nrcNumber);
+        let masterCustomerId: string;
+
+        if (existingMaster) {
+          masterCustomerId = existingMaster.id;
+          // Update master customer totals
+          await supabase.from('master_customers').update({
+            total_owed: Number(existingMaster.total_owed) + row.amountOwed,
+            outstanding_balance: Number(existingMaster.outstanding_balance) + row.amountOwed,
+            mobile_number: row.mobileNumber || existingMaster.mobile_number,
+          }).eq('id', masterCustomerId);
+        } else {
+          // Create new master customer
+          const { data: newCustomer, error } = await supabase.from('master_customers').insert({
+            nrc_number: row.nrcNumber,
+            name: row.name,
+            mobile_number: row.mobileNumber || null,
+            total_owed: row.amountOwed,
+            outstanding_balance: row.amountOwed,
+            assigned_agent: assignedAgentId,
+          }).select().single();
+
+          if (error) throw error;
+          masterCustomerId = newCustomer.id;
+
+          // Create ticket for new customer
+          await supabase.from('tickets').insert({
+            master_customer_id: masterCustomerId,
+            customer_name: row.name,
+            nrc_number: row.nrcNumber,
+            mobile_number: row.mobileNumber || null,
+            amount_owed: row.amountOwed,
+            assigned_agent: assignedAgentId,
+          });
+        }
+
+        // Create batch customer entry
+        await supabase.from('batch_customers').insert({
+          batch_id: batch.id,
+          master_customer_id: masterCustomerId,
+          nrc_number: row.nrcNumber,
+          name: row.name,
+          mobile_number: row.mobileNumber || null,
+          amount_owed: row.amountOwed,
+        });
+
+        setImportProgress(20 + Math.round((i / validRows.length) * 80));
+      }
+
+      setImportProgress(100);
+      toast({ title: "Import Complete", description: `Successfully created batch "${batchName}" with ${validRows.length} customers` });
+      navigate('/customers');
+    } catch (error: any) {
+      toast({ title: "Import Failed", description: error.message, variant: "destructive" });
+    } finally {
+      setIsImporting(false);
     }
-
-    setIsImporting(false);
-    toast({
-      title: "Import Complete",
-      description: `Successfully created batch "${batchName}" with ${validRows.length} customers`,
-    });
-    
-    navigate('/customers');
   };
 
   const downloadSample = () => {
@@ -249,11 +288,7 @@ export default function CSVImport() {
   const existingCount = parsedData.filter((r) => r.existsInMaster && r.isValid).length;
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-ZM', {
-      style: 'currency',
-      currency: 'ZMW',
-      minimumFractionDigits: 0,
-    }).format(amount);
+    return new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW', minimumFractionDigits: 0 }).format(amount);
   };
 
   return (
@@ -264,9 +299,7 @@ export default function CSVImport() {
         </Link>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-foreground">Create New Batch</h1>
-          <p className="text-muted-foreground">
-            Upload CSV to create a new batch with customers and tickets
-          </p>
+          <p className="text-muted-foreground">Upload CSV to create a new batch with customers and tickets</p>
         </div>
         <Button variant="outline" onClick={downloadSample}>
           <Download className="h-4 w-4 mr-2" />
@@ -291,21 +324,11 @@ export default function CSVImport() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="batchName">Batch Name *</Label>
-              <Input
-                id="batchName"
-                placeholder="e.g., MTN Loans Nov 2025"
-                value={batchName}
-                onChange={(e) => setBatchName(e.target.value)}
-              />
+              <Input id="batchName" placeholder="e.g., MTN Loans Nov 2025" value={batchName} onChange={(e) => setBatchName(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="institutionName">Institution Name *</Label>
-              <Input
-                id="institutionName"
-                placeholder="e.g., MTN Mobile Money"
-                value={institutionName}
-                onChange={(e) => setInstitutionName(e.target.value)}
-              />
+              <Input id="institutionName" placeholder="e.g., MTN Mobile Money" value={institutionName} onChange={(e) => setInstitutionName(e.target.value)} />
             </div>
           </div>
         </CardContent>
@@ -315,9 +338,7 @@ export default function CSVImport() {
         <Card>
           <CardContent className="p-6">
             <div
-              className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
-                isDragging ? 'border-primary bg-primary/5' : 'border-muted-foreground/25'
-              }`}
+              className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${isDragging ? 'border-primary bg-primary/5' : 'border-muted-foreground/25'}`}
               onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
               onDragLeave={() => setIsDragging(false)}
               onDrop={handleDrop}
@@ -325,13 +346,7 @@ export default function CSVImport() {
               <Upload className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium mb-2">Drag and drop your CSV or Excel file</h3>
               <p className="text-muted-foreground mb-4">Supports .csv, .xlsx, and .xls files</p>
-              <input
-                type="file"
-                accept=".csv,.xlsx,.xls"
-                onChange={handleFileSelect}
-                className="hidden"
-                id="csv-upload"
-              />
+              <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileSelect} className="hidden" id="csv-upload" />
               <Button asChild variant="outline">
                 <label htmlFor="csv-upload" className="cursor-pointer">
                   <FileText className="h-4 w-4 mr-2" />
@@ -346,67 +361,17 @@ export default function CSVImport() {
       {file && parsedData.length > 0 && (
         <>
           <div className="grid gap-4 md:grid-cols-4">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-muted">
-                    <FileText className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">File</p>
-                    <p className="font-medium truncate max-w-[120px]">{file.name}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-success/10">
-                    <Check className="h-5 w-5 text-success" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Valid Rows</p>
-                    <p className="font-medium text-success">{validCount}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-destructive/10">
-                    <X className="h-5 w-5 text-destructive" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Invalid Rows</p>
-                    <p className="font-medium text-destructive">{invalidCount}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-info/10">
-                    <AlertCircle className="h-5 w-5 text-info" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Existing NRCs</p>
-                    <p className="font-medium text-info">{existingCount}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-muted"><FileText className="h-5 w-5 text-muted-foreground" /></div><div><p className="text-sm text-muted-foreground">File</p><p className="font-medium truncate max-w-[120px]">{file.name}</p></div></div></CardContent></Card>
+            <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-success/10"><Check className="h-5 w-5 text-success" /></div><div><p className="text-sm text-muted-foreground">Valid Rows</p><p className="font-medium text-success">{validCount}</p></div></div></CardContent></Card>
+            <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-destructive/10"><X className="h-5 w-5 text-destructive" /></div><div><p className="text-sm text-muted-foreground">Invalid Rows</p><p className="font-medium text-destructive">{invalidCount}</p></div></div></CardContent></Card>
+            <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-info/10"><AlertCircle className="h-5 w-5 text-info" /></div><div><p className="text-sm text-muted-foreground">Existing NRCs</p><p className="font-medium text-info">{existingCount}</p></div></div></CardContent></Card>
           </div>
 
           {existingCount > 0 && (
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>Existing Customers Found</AlertTitle>
-              <AlertDescription>
-                {existingCount} customer(s) already exist in the master registry. Their amounts will be added to their total owed.
-              </AlertDescription>
+              <AlertDescription>{existingCount} customer(s) already exist in the master registry. Their amounts will be added to their total owed.</AlertDescription>
             </Alert>
           )}
 
@@ -414,18 +379,14 @@ export default function CSVImport() {
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>Validation Errors</AlertTitle>
-              <AlertDescription>
-                {invalidCount} row(s) have errors and will be skipped during import.
-              </AlertDescription>
+              <AlertDescription>{invalidCount} row(s) have errors and will be skipped during import.</AlertDescription>
             </Alert>
           )}
 
           <Card>
             <CardHeader>
               <CardTitle>Preview Data</CardTitle>
-            <CardDescription>
-                Tickets will be assigned: {settings.agent1Name}, {settings.agent2Name} & {settings.agent3Name}
-              </CardDescription>
+              <CardDescription>Tickets will be assigned to available agents</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="rounded-md border overflow-auto max-h-96">
@@ -460,9 +421,7 @@ export default function CSVImport() {
                         <TableCell className="text-right">{formatCurrency(row.amountOwed)}</TableCell>
                         <TableCell>
                           {row.isValid ? (
-                            <Badge variant="outline">
-                              {[settings.agent1Name, settings.agent2Name, settings.agent3Name][index % 3]}
-                            </Badge>
+                            <Badge variant="outline">{agents[index % agents.length]?.full_name || 'Auto'}</Badge>
                           ) : '-'}
                         </TableCell>
                       </TableRow>
@@ -487,7 +446,7 @@ export default function CSVImport() {
               Create Batch with {validCount} Customer{validCount !== 1 ? 's' : ''}
             </Button>
             <Button variant="outline" onClick={() => { setFile(null); setParsedData([]); }}>
-              Cancel
+              Clear & Start Over
             </Button>
           </div>
         </>

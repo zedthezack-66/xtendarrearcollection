@@ -1,8 +1,5 @@
-import { useState } from "react";
-import { Save, Trash2, AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   AlertDialog,
@@ -16,43 +13,23 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { useAppStore } from "@/store/useAppStore";
+import { useMasterCustomers, useTickets, usePayments, useBatches, useProfiles } from "@/hooks/useSupabaseData";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function Settings() {
   const { toast } = useToast();
-  const { settings, masterCustomers, tickets, payments, batches, updateSettings, clearAllData } = useAppStore();
-  
-  const [agent1Name, setAgent1Name] = useState(settings.agent1Name);
-  const [agent2Name, setAgent2Name] = useState(settings.agent2Name);
-  const [agent3Name, setAgent3Name] = useState(settings.agent3Name);
-
-  const handleSaveAgents = () => {
-    if (!agent1Name.trim() || !agent2Name.trim() || !agent3Name.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Agent names cannot be empty",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    updateSettings({
-      agent1Name: agent1Name.trim(),
-      agent2Name: agent2Name.trim(),
-      agent3Name: agent3Name.trim(),
-    });
-    
-    toast({
-      title: "Settings Saved",
-      description: "Agent names have been updated",
-    });
-  };
+  const { user, profile, userRole } = useAuth();
+  const { data: masterCustomers = [] } = useMasterCustomers();
+  const { data: tickets = [] } = useTickets();
+  const { data: payments = [] } = usePayments();
+  const { data: batches = [] } = useBatches();
+  const { data: profiles = [] } = useProfiles();
 
   const handleClearData = () => {
-    clearAllData();
     toast({
-      title: "Data Cleared",
-      description: "All batches, customers, tickets, and payments have been removed",
+      title: "Action Not Available",
+      description: "Data clearing is managed by administrators. Contact your admin if needed.",
+      variant: "destructive",
     });
   };
 
@@ -60,57 +37,62 @@ export default function Settings() {
     <div className="space-y-6 max-w-2xl">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-        <p className="text-muted-foreground">Configure application settings</p>
+        <p className="text-muted-foreground">View application settings and statistics</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Agent Configuration</CardTitle>
-          <CardDescription>
-            Set the names of your collection agents. New CSV imports will distribute tickets evenly between these agents.
-          </CardDescription>
+          <CardTitle>Your Profile</CardTitle>
+          <CardDescription>Your account information</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="agent1">Agent 1 Name</Label>
-              <Input
-                id="agent1"
-                value={agent1Name}
-                onChange={(e) => setAgent1Name(e.target.value)}
-                placeholder="Enter agent name"
-              />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="p-4 bg-muted rounded-lg">
+              <p className="text-sm text-muted-foreground">Name</p>
+              <p className="font-medium">{profile?.full_name || 'Not set'}</p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="agent2">Agent 2 Name</Label>
-              <Input
-                id="agent2"
-                value={agent2Name}
-                onChange={(e) => setAgent2Name(e.target.value)}
-                placeholder="Enter agent name"
-              />
+            <div className="p-4 bg-muted rounded-lg">
+              <p className="text-sm text-muted-foreground">Email</p>
+              <p className="font-medium">{user?.email}</p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="agent3">Agent 3 Name</Label>
-              <Input
-                id="agent3"
-                value={agent3Name}
-                onChange={(e) => setAgent3Name(e.target.value)}
-                placeholder="Enter agent name"
-              />
+            <div className="p-4 bg-muted rounded-lg">
+              <p className="text-sm text-muted-foreground">Role</p>
+              <p className="font-medium capitalize">{userRole || 'Agent'}</p>
+            </div>
+            <div className="p-4 bg-muted rounded-lg">
+              <p className="text-sm text-muted-foreground">Phone</p>
+              <p className="font-medium">{profile?.phone || 'Not set'}</p>
             </div>
           </div>
-          <Button onClick={handleSaveAgents}>
-            <Save className="h-4 w-4 mr-2" />
-            Save Agent Names
-          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Team Members</CardTitle>
+          <CardDescription>Users with access to the system</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {profiles.map((p) => (
+              <div key={p.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                <div>
+                  <p className="font-medium">{p.full_name}</p>
+                  <p className="text-sm text-muted-foreground">{p.phone || 'No phone'}</p>
+                </div>
+              </div>
+            ))}
+            {profiles.length === 0 && (
+              <p className="text-muted-foreground text-sm">No team members found</p>
+            )}
+          </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
           <CardTitle>Data Statistics</CardTitle>
-          <CardDescription>Current data stored in the application</CardDescription>
+          <CardDescription>Current data stored in the system</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-4">
@@ -134,42 +116,38 @@ export default function Settings() {
         </CardContent>
       </Card>
 
-      <Card className="border-destructive/50">
-        <CardHeader>
-          <CardTitle className="text-destructive flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5" />
-            Danger Zone
-          </CardTitle>
-          <CardDescription>
-            Irreversible actions that will delete your data
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive">
-                <Trash2 className="h-4 w-4 mr-2" />
-                Clear All Data
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will permanently delete all batches, customers, tickets, and payments. 
-                  This action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleClearData} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                  Yes, delete everything
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </CardContent>
-      </Card>
+      {userRole === 'admin' && (
+        <Card className="border-destructive/50">
+          <CardHeader>
+            <CardTitle className="text-destructive flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5" />
+              Danger Zone
+            </CardTitle>
+            <CardDescription>Administrative actions (use with caution)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive">Clear All Data</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete all data from the database.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleClearData} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                    Yes, delete everything
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
