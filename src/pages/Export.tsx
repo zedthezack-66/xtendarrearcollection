@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useMasterCustomers, useBatches, useBatchCustomers, useTickets, usePayments } from "@/hooks/useSupabaseData";
+import { useMasterCustomers, useBatches, useBatchCustomers, useTickets, usePayments, useProfiles } from "@/hooks/useSupabaseData";
 
 type ExportFilter = 'all' | 'outstanding' | 'resolved';
 
@@ -19,10 +19,16 @@ export default function Export() {
   const { data: batchCustomers = [] } = useBatchCustomers();
   const { data: tickets = [] } = useTickets();
   const { data: payments = [] } = usePayments();
+  const { data: profiles = [] } = useProfiles();
   
   const [exportFilter, setExportFilter] = useState<ExportFilter>('all');
   const [selectedBatchId, setSelectedBatchId] = useState<string>('all');
   const [exportAll, setExportAll] = useState(false);
+
+  const getAgentName = (agentId: string | null) => {
+    if (!agentId) return '-';
+    return profiles.find(p => p.id === agentId)?.full_name || '-';
+  };
 
   const isTicketWorkedOn = (ticketId: string, masterCustomerId: string) => {
     const ticket = tickets.find(t => t.id === ticketId);
@@ -88,10 +94,21 @@ export default function Export() {
       return;
     }
 
-    const headers = ['Customer Name', 'NRC Number', 'Mobile Number', 'Total Amount Owed', 'Total Amount Paid', 'Outstanding Balance', 'Payment Status', 'Call Notes', 'Ticket Status'];
+    const headers = ['Customer Name', 'NRC Number', 'Mobile Number', 'Total Amount Owed', 'Total Amount Paid', 'Outstanding Balance', 'Payment Status', 'Assigned Agent', 'Call Notes', 'Ticket Status'];
     const rows = filteredCustomers.map((customer) => {
       const ticket = tickets.find((t) => t.master_customer_id === customer.id);
-      return [customer.name, customer.nrc_number, customer.mobile_number || '', customer.total_owed, customer.total_paid, customer.outstanding_balance, customer.payment_status, `"${(customer.call_notes || '').replace(/"/g, '""')}"`, ticket?.status || 'N/A'].join(',');
+      return [
+        customer.name,
+        customer.nrc_number,
+        customer.mobile_number || '',
+        customer.total_owed,
+        customer.total_paid,
+        customer.outstanding_balance,
+        customer.payment_status,
+        getAgentName(customer.assigned_agent),
+        `"${(customer.call_notes || '').replace(/"/g, '""')}"`,
+        ticket?.status || 'N/A'
+      ].join(',');
     });
 
     downloadCSV([headers.join(','), ...rows].join('\n'), `master-customers-${exportFilter}${exportAll ? '-all' : '-worked'}`);
@@ -105,12 +122,24 @@ export default function Export() {
       return;
     }
 
-    const headers = ['Batch Name', 'Customer Name', 'NRC Number', 'Mobile Number', 'Batch Amount Owed', 'Total Paid (Global)', 'Outstanding Balance (Global)', 'Payment Status', 'Call Notes', 'Ticket Status'];
+    const headers = ['Batch Name', 'Customer Name', 'NRC Number', 'Mobile Number', 'Batch Amount Owed', 'Total Paid (Global)', 'Outstanding Balance (Global)', 'Payment Status', 'Assigned Agent', 'Call Notes', 'Ticket Status'];
     const rows = filteredCustomers.map((bc) => {
       const master = masterCustomers.find(mc => mc.id === bc.master_customer_id);
       const batch = batches.find(b => b.id === bc.batch_id);
       const ticket = tickets.find((t) => t.master_customer_id === bc.master_customer_id);
-      return [batch?.name || 'Unknown', bc.name, bc.nrc_number, bc.mobile_number || '', bc.amount_owed, master?.total_paid || 0, master?.outstanding_balance || 0, master?.payment_status || 'N/A', `"${(master?.call_notes || '').replace(/"/g, '""')}"`, ticket?.status || 'N/A'].join(',');
+      return [
+        batch?.name || 'Unknown',
+        bc.name,
+        bc.nrc_number,
+        bc.mobile_number || '',
+        bc.amount_owed,
+        master?.total_paid || 0,
+        master?.outstanding_balance || 0,
+        master?.payment_status || 'N/A',
+        getAgentName(master?.assigned_agent || null),
+        `"${(master?.call_notes || '').replace(/"/g, '""')}"`,
+        ticket?.status || 'N/A'
+      ].join(',');
     });
 
     const batchSuffix = selectedBatchId === 'all' ? 'all-batches' : batches.find(b => b.id === selectedBatchId)?.name || selectedBatchId;

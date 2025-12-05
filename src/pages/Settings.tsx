@@ -1,6 +1,9 @@
-import { AlertTriangle } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,7 +16,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { useMasterCustomers, useTickets, usePayments, useBatches, useProfiles } from "@/hooks/useSupabaseData";
+import { useMasterCustomers, useTickets, usePayments, useBatches, useProfiles, useUpdateProfile } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function Settings() {
@@ -24,6 +27,25 @@ export default function Settings() {
   const { data: payments = [] } = usePayments();
   const { data: batches = [] } = useBatches();
   const { data: profiles = [] } = useProfiles();
+  const updateProfile = useUpdateProfile();
+
+  const [fullName, setFullName] = useState(profile?.full_name || '');
+  const [phone, setPhone] = useState(profile?.phone || '');
+
+  const handleSaveProfile = async () => {
+    if (!user?.id) return;
+    
+    try {
+      await updateProfile.mutateAsync({
+        id: user.id,
+        full_name: fullName.trim(),
+        phone: phone.trim() || null,
+      });
+      toast({ title: "Profile updated successfully" });
+    } catch (error: any) {
+      toast({ title: "Error updating profile", description: error.message, variant: "destructive" });
+    }
+  };
 
   const handleClearData = () => {
     toast({
@@ -37,20 +59,36 @@ export default function Settings() {
     <div className="space-y-6 max-w-2xl">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-        <p className="text-muted-foreground">View application settings and statistics</p>
+        <p className="text-muted-foreground">Manage your profile and view application statistics</p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Your Profile</CardTitle>
-          <CardDescription>Your account information</CardDescription>
+          <CardDescription>Update your account information</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="p-4 bg-muted rounded-lg">
-              <p className="text-sm text-muted-foreground">Name</p>
-              <p className="font-medium">{profile?.full_name || 'Not set'}</p>
+            <div className="space-y-2">
+              <Label htmlFor="fullName">Full Name</Label>
+              <Input 
+                id="fullName" 
+                value={fullName} 
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Enter your full name"
+              />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone Number</Label>
+              <Input 
+                id="phone" 
+                value={phone} 
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Enter your phone number"
+              />
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="p-4 bg-muted rounded-lg">
               <p className="text-sm text-muted-foreground">Email</p>
               <p className="font-medium">{user?.email}</p>
@@ -59,11 +97,11 @@ export default function Settings() {
               <p className="text-sm text-muted-foreground">Role</p>
               <p className="font-medium capitalize">{userRole || 'Agent'}</p>
             </div>
-            <div className="p-4 bg-muted rounded-lg">
-              <p className="text-sm text-muted-foreground">Phone</p>
-              <p className="font-medium">{profile?.phone || 'Not set'}</p>
-            </div>
           </div>
+          <Button onClick={handleSaveProfile} disabled={updateProfile.isPending}>
+            <Save className="h-4 w-4 mr-2" />
+            {updateProfile.isPending ? 'Saving...' : 'Save Profile'}
+          </Button>
         </CardContent>
       </Card>
 

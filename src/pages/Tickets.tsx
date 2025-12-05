@@ -55,7 +55,8 @@ export default function Tickets() {
     return <div className="flex items-center justify-center min-h-[400px]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
 
-  const statusOrder: Record<string, number> = { 'Open': 0, 'In Progress': 1, 'Resolved': 2 };
+  // Sort order: In Progress (top), Open (middle), Resolved (bottom)
+  const statusOrder: Record<string, number> = { 'In Progress': 0, 'Open': 1, 'Resolved': 2 };
 
   const getAgentName = (agentId: string | null) => {
     if (!agentId || !profiles) return '-';

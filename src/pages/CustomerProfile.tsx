@@ -1,11 +1,11 @@
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Phone, CreditCard, Ticket, Calendar, User } from "lucide-react";
+import { ArrowLeft, Phone, CreditCard, Ticket, Calendar, User, PlayCircle, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
-import { useMasterCustomers, useTickets, usePayments, useBatchCustomers, useBatches, useUpdateMasterCustomer } from "@/hooks/useSupabaseData";
+import { useMasterCustomers, useTickets, usePayments, useBatchCustomers, useBatches, useUpdateMasterCustomer, useUpdateTicket } from "@/hooks/useSupabaseData";
 import { useToast } from "@/hooks/use-toast";
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW', minimumFractionDigits: 0 }).format(amount);
@@ -38,6 +38,7 @@ export default function CustomerProfile() {
   const { data: batchCustomers = [] } = useBatchCustomers();
   const { data: batches = [] } = useBatches();
   const updateCustomer = useUpdateMasterCustomer();
+  const updateTicket = useUpdateTicket();
   
   const customer = masterCustomers.find(c => c.id === id);
   const [callNotes, setCallNotes] = useState(customer?.call_notes || '');
@@ -67,6 +68,19 @@ export default function CustomerProfile() {
       toast({ title: "Notes saved successfully" });
     } catch (error: any) {
       toast({ title: "Error saving notes", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const handleUpdateTicketStatus = async (status: string) => {
+    if (!customerTicket) return;
+    try {
+      await updateTicket.mutateAsync({
+        id: customerTicket.id,
+        status,
+        resolved_date: status === 'Resolved' ? new Date().toISOString() : null,
+      });
+    } catch (error: any) {
+      toast({ title: "Error updating ticket", description: error.message, variant: "destructive" });
     }
   };
 
@@ -126,11 +140,37 @@ export default function CustomerProfile() {
             <CardHeader><CardTitle className="text-lg">Ticket Information</CardTitle></CardHeader>
             <CardContent>
               {customerTicket ? (
-                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                  <div><p className="font-medium">Ticket #{customerTicket.id.slice(0, 8)}</p><p className="text-sm text-muted-foreground">Created: {formatDate(customerTicket.created_at)}</p></div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={customerTicket.priority === 'High' ? 'destructive' : 'secondary'}>{customerTicket.priority}</Badge>
-                    {getTicketStatusBadge(customerTicket.status)}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                    <div><p className="font-medium">Ticket #{customerTicket.id.slice(0, 8)}</p><p className="text-sm text-muted-foreground">Created: {formatDate(customerTicket.created_at)}</p></div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={customerTicket.priority === 'High' ? 'destructive' : 'secondary'}>{customerTicket.priority}</Badge>
+                      {getTicketStatusBadge(customerTicket.status)}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    {customerTicket.status === 'Open' && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleUpdateTicketStatus('In Progress')}
+                        disabled={updateTicket.isPending}
+                      >
+                        <PlayCircle className="h-4 w-4 mr-2" />
+                        Mark In Progress
+                      </Button>
+                    )}
+                    {customerTicket.status !== 'Resolved' && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleUpdateTicketStatus('Resolved')}
+                        disabled={updateTicket.isPending}
+                      >
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        Mark Resolved
+                      </Button>
+                    )}
                   </div>
                 </div>
               ) : (
