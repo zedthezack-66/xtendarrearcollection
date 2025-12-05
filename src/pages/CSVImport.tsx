@@ -198,7 +198,7 @@ export default function CSVImport() {
     setImportProgress(0);
 
     try {
-      // Create batch
+      // Create batch first
       const batch = await createBatch.mutateAsync({
         name: batchName.trim(),
         institution_name: institutionName.trim(),
@@ -206,61 +206,102 @@ export default function CSVImport() {
         total_amount: validRows.reduce((sum, r) => sum + r.amountOwed, 0),
       });
 
-      setImportProgress(20);
+      setImportProgress(10);
 
-      // Process each row
-      for (let i = 0; i < validRows.length; i++) {
-        const row = validRows[i];
-        const assignedAgentId = agents[i % agents.length]?.id || user?.id;
-        
-        // Check if master customer exists
-        const existingMaster = masterCustomers.find(mc => mc.nrc_number === row.nrcNumber);
-        let masterCustomerId: string;
+      // Separate new customers from existing ones
+      const newCustomerRows = validRows.filter(r => !r.existsInMaster);
+      const existingCustomerRows = validRows.filter(r => r.existsInMaster);
 
-        if (existingMaster) {
-          masterCustomerId = existingMaster.id;
-          // Update master customer totals
-          await supabase.from('master_customers').update({
-            total_owed: Number(existingMaster.total_owed) + row.amountOwed,
-            outstanding_balance: Number(existingMaster.outstanding_balance) + row.amountOwed,
-            mobile_number: row.mobileNumber || existingMaster.mobile_number,
-          }).eq('id', masterCustomerId);
-        } else {
-          // Create new master customer
-          const { data: newCustomer, error } = await supabase.from('master_customers').insert({
-            nrc_number: row.nrcNumber,
-            name: row.name,
-            mobile_number: row.mobileNumber || null,
-            total_owed: row.amountOwed,
-            outstanding_balance: row.amountOwed,
-            assigned_agent: assignedAgentId,
-          }).select().single();
-
-          if (error) throw error;
-          masterCustomerId = newCustomer.id;
-
-          // Create ticket for new customer
-          await supabase.from('tickets').insert({
-            master_customer_id: masterCustomerId,
-            customer_name: row.name,
-            nrc_number: row.nrcNumber,
-            mobile_number: row.mobileNumber || null,
-            amount_owed: row.amountOwed,
-            assigned_agent: assignedAgentId,
-          });
-        }
-
-        // Create batch customer entry
-        await supabase.from('batch_customers').insert({
-          batch_id: batch.id,
-          master_customer_id: masterCustomerId,
+      // Batch insert new master customers
+      if (newCustomerRows.length > 0) {
+        const newMasterCustomers = newCustomerRows.map((row, index) => ({
           nrc_number: row.nrcNumber,
           name: row.name,
           mobile_number: row.mobileNumber || null,
-          amount_owed: row.amountOwed,
-        });
+          total_owed: row.amountOwed,
+          outstanding_balance: row.amountOwed,
+          assigned_agent: agents[index % agents.length]?.id || user?.id,
+        }));
 
-        setImportProgress(20 + Math.round((i / validRows.length) * 80));
+        const { data: insertedCustomers, error: customersError } = await supabase
+          .from('master_customers')
+          .insert(newMasterCustomers)
+          .select();
+
+        if (customersError) throw customersError;
+
+        setImportProgress(40);
+
+        // Create tickets for new customers in batch
+        if (insertedCustomers && insertedCustomers.length > 0) {
+          const newTickets = insertedCustomers.map(mc => ({
+            master_customer_id: mc.id,
+            customer_name: mc.name,
+            nrc_number: mc.nrc_number,
+            mobile_number: mc.mobile_number,
+            amount_owed: Number(mc.total_owed),
+            assigned_agent: mc.assigned_agent,
+          }));
+
+          const { error: ticketsError } = await supabase
+            .from('tickets')
+            .insert(newTickets);
+
+          if (ticketsError) throw ticketsError;
+
+          // Create batch_customers entries for new customers
+          const newBatchCustomers = insertedCustomers.map(mc => ({
+            batch_id: batch.id,
+            master_customer_id: mc.id,
+            nrc_number: mc.nrc_number,
+            name: mc.name,
+            mobile_number: mc.mobile_number,
+            amount_owed: Number(mc.total_owed),
+          }));
+
+          const { error: batchCustError } = await supabase
+            .from('batch_customers')
+            .insert(newBatchCustomers);
+
+          if (batchCustError) throw batchCustError;
+        }
+      }
+
+      setImportProgress(70);
+
+      // Handle existing customers - update totals and create batch_customer entries
+      if (existingCustomerRows.length > 0) {
+        const batchCustomersForExisting = [];
+
+        for (const row of existingCustomerRows) {
+          const existingMaster = masterCustomers.find(mc => mc.nrc_number === row.nrcNumber);
+          if (existingMaster) {
+            // Update master customer totals
+            await supabase.from('master_customers').update({
+              total_owed: Number(existingMaster.total_owed) + row.amountOwed,
+              outstanding_balance: Number(existingMaster.outstanding_balance) + row.amountOwed,
+              mobile_number: row.mobileNumber || existingMaster.mobile_number,
+            }).eq('id', existingMaster.id);
+
+            batchCustomersForExisting.push({
+              batch_id: batch.id,
+              master_customer_id: existingMaster.id,
+              nrc_number: row.nrcNumber,
+              name: row.name,
+              mobile_number: row.mobileNumber || null,
+              amount_owed: row.amountOwed,
+            });
+          }
+        }
+
+        // Batch insert batch_customers for existing
+        if (batchCustomersForExisting.length > 0) {
+          const { error: existingBatchError } = await supabase
+            .from('batch_customers')
+            .insert(batchCustomersForExisting);
+
+          if (existingBatchError) throw existingBatchError;
+        }
       }
 
       setImportProgress(100);
@@ -435,18 +476,23 @@ export default function CSVImport() {
           {isImporting && (
             <Card>
               <CardContent className="p-6">
-                <p className="text-sm text-muted-foreground mb-2">Creating batch and importing customers...</p>
-                <Progress value={importProgress} />
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Importing...</span>
+                    <span>{importProgress}%</span>
+                  </div>
+                  <Progress value={importProgress} />
+                </div>
               </CardContent>
             </Card>
           )}
 
-          <div className="flex gap-4">
-            <Button onClick={handleImport} disabled={isImporting || validCount === 0 || !batchName.trim() || !institutionName.trim()}>
-              Create Batch with {validCount} Customer{validCount !== 1 ? 's' : ''}
+          <div className="flex gap-4 justify-end">
+            <Button variant="outline" onClick={() => { setFile(null); setParsedData([]); }} disabled={isImporting}>
+              Start Over
             </Button>
-            <Button variant="outline" onClick={() => { setFile(null); setParsedData([]); }}>
-              Clear & Start Over
+            <Button onClick={handleImport} disabled={validCount === 0 || isImporting || !batchName.trim() || !institutionName.trim()}>
+              {isImporting ? 'Importing...' : `Create Batch (${validCount} customers)`}
             </Button>
           </div>
         </>
