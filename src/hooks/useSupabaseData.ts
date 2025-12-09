@@ -401,6 +401,62 @@ export function useUpdateProfile() {
 }
 
 // Delete hooks
+export function useDeletePayment() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (paymentId: string) => {
+      // Get payment details first to update customer balance
+      const { data: payment, error: fetchError } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('id', paymentId)
+        .single();
+      
+      if (fetchError) throw fetchError;
+
+      // Delete the payment
+      const { error } = await supabase
+        .from('payments')
+        .delete()
+        .eq('id', paymentId);
+      
+      if (error) throw error;
+
+      // Update customer totals
+      if (payment) {
+        const { data: customer } = await supabase
+          .from('master_customers')
+          .select('total_paid, outstanding_balance')
+          .eq('id', payment.master_customer_id)
+          .single();
+        
+        if (customer) {
+          await supabase
+            .from('master_customers')
+            .update({
+              total_paid: Math.max(0, Number(customer.total_paid) - Number(payment.amount)),
+              outstanding_balance: Number(customer.outstanding_balance) + Number(payment.amount),
+              payment_status: Number(customer.total_paid) - Number(payment.amount) <= 0 ? 'Not Paid' : 'Partially Paid',
+            })
+            .eq('id', payment.master_customer_id);
+        }
+      }
+
+      return payment;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['master_customers'] });
+      toast({ title: 'Payment deleted successfully' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error deleting payment', description: error.message, variant: 'destructive' });
+    },
+  });
+}
+
 export function useDeleteTicket() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
