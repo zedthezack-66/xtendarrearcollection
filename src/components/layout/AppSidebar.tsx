@@ -57,17 +57,17 @@ export function AppSidebar() {
       .slice(0, 2);
   };
 
-  const agentFirstName = profile?.full_name?.split(' ')[0] || 'User';
+  const displayName = profile?.display_name || profile?.full_name?.split(' ')[0] || 'User';
 
   return (
     <Sidebar className="border-r border-sidebar-border">
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground font-bold">
-            {getInitials(profile?.full_name || 'LC')}
+            {getInitials(profile?.display_name || profile?.full_name || 'LC')}
           </div>
           <div>
-            <h1 className="font-semibold text-sidebar-foreground">{agentFirstName}'s Collections</h1>
+            <h1 className="font-semibold text-sidebar-foreground">{displayName}'s Collections</h1>
             <p className="text-xs text-sidebar-foreground/60">Collections Manager</p>
           </div>
         </div>
@@ -139,12 +139,12 @@ export function AppSidebar() {
         <div className="flex items-center gap-3">
           <Avatar className="h-8 w-8">
             <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground text-xs">
-              {profile?.full_name ? getInitials(profile.full_name) : 'U'}
+              {profile?.display_name ? getInitials(profile.display_name) : profile?.full_name ? getInitials(profile.full_name) : 'U'}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-sidebar-foreground truncate">
-              {profile?.full_name || 'User'}
+              {profile?.display_name || profile?.full_name || 'User'}
             </p>
             <div className="flex items-center gap-1">
               {isAdmin && <Shield className="h-3 w-3 text-sidebar-foreground/60" />}

@@ -27,7 +27,8 @@ export default function Export() {
 
   const getAgentName = (agentId: string | null) => {
     if (!agentId) return '-';
-    return profiles.find(p => p.id === agentId)?.full_name || '-';
+    const prof = profiles.find(p => p.id === agentId);
+    return prof?.display_name || prof?.full_name || '-';
   };
 
   const isTicketWorkedOn = (ticketId: string, masterCustomerId: string) => {

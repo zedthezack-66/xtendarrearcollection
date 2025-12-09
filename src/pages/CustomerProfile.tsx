@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
-import { useMasterCustomers, useTickets, usePayments, useBatchCustomers, useBatches, useUpdateMasterCustomer, useUpdateTicket } from "@/hooks/useSupabaseData";
+import { useMasterCustomers, useTickets, usePayments, useBatchCustomers, useBatches, useUpdateMasterCustomer, useUpdateTicket, useProfiles } from "@/hooks/useSupabaseData";
 import { useToast } from "@/hooks/use-toast";
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW', minimumFractionDigits: 0 }).format(amount);
@@ -37,8 +37,15 @@ export default function CustomerProfile() {
   const { data: payments = [] } = usePayments();
   const { data: batchCustomers = [] } = useBatchCustomers();
   const { data: batches = [] } = useBatches();
+  const { data: profiles = [] } = useProfiles();
   const updateCustomer = useUpdateMasterCustomer();
   const updateTicket = useUpdateTicket();
+  
+  const getAgentName = (agentId: string | null) => {
+    if (!agentId) return '-';
+    const prof = profiles.find(p => p.id === agentId);
+    return prof?.display_name || prof?.full_name || '-';
+  };
   
   const customer = masterCustomers.find(c => c.id === id);
   const [callNotes, setCallNotes] = useState(customer?.call_notes || '');
@@ -105,8 +112,8 @@ export default function CustomerProfile() {
             <CardContent className="grid gap-4 sm:grid-cols-2">
               <div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-muted"><User className="h-4 w-4 text-muted-foreground" /></div><div><p className="text-sm text-muted-foreground">NRC Number</p><p className="font-medium font-mono">{customer.nrc_number}</p></div></div>
               <div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-muted"><Phone className="h-4 w-4 text-muted-foreground" /></div><div><p className="text-sm text-muted-foreground">Mobile Number</p><p className="font-medium font-mono">{customer.mobile_number || '-'}</p></div></div>
+              <div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-muted"><User className="h-4 w-4 text-muted-foreground" /></div><div><p className="text-sm text-muted-foreground">Assigned Agent</p><p className="font-medium">{getAgentName(customer.assigned_agent)}</p></div></div>
               <div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-muted"><Calendar className="h-4 w-4 text-muted-foreground" /></div><div><p className="text-sm text-muted-foreground">Created Date</p><p className="font-medium">{formatDate(customer.created_at)}</p></div></div>
-              <div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-muted"><Calendar className="h-4 w-4 text-muted-foreground" /></div><div><p className="text-sm text-muted-foreground">Last Updated</p><p className="font-medium">{formatDate(customer.updated_at)}</p></div></div>
             </CardContent>
           </Card>
 
