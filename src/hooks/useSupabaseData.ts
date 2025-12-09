@@ -22,6 +22,7 @@ export interface MasterCustomerInsert {
 
 export interface TicketInsert {
   master_customer_id: string;
+  batch_id?: string;
   customer_name: string;
   nrc_number: string;
   mobile_number?: string;
@@ -94,7 +95,7 @@ export function useCreateBatch() {
   });
 }
 
-// Master Customers hooks
+// Master Customers hooks - RLS will filter based on role
 export function useMasterCustomers() {
   return useQuery({
     queryKey: ['master_customers'],
@@ -151,7 +152,7 @@ export function useUpdateMasterCustomer() {
   });
 }
 
-// Batch Customers hooks
+// Batch Customers hooks - RLS will filter based on assigned_agent_id
 export function useBatchCustomers(batchId?: string) {
   return useQuery({
     queryKey: ['batch_customers', batchId],
@@ -181,6 +182,7 @@ export function useCreateBatchCustomer() {
       name: string;
       mobile_number?: string;
       amount_owed?: number;
+      assigned_agent_id?: string;
     }) => {
       const { data, error } = await supabase
         .from('batch_customers')
@@ -197,7 +199,7 @@ export function useCreateBatchCustomer() {
   });
 }
 
-// Tickets hooks
+// Tickets hooks - RLS will filter based on assigned_agent
 export function useTickets() {
   return useQuery({
     queryKey: ['tickets'],
@@ -266,7 +268,7 @@ export function useUpdateTicket() {
   });
 }
 
-// Payments hooks
+// Payments hooks - RLS will filter based on recorded_by
 export function usePayments() {
   return useQuery({
     queryKey: ['payments'],
@@ -381,7 +383,7 @@ export function useUpdateProfile() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { id: string; full_name?: string; phone?: string | null }) => {
+    mutationFn: async ({ id, ...updates }: { id: string; full_name?: string; phone?: string | null; display_name?: string }) => {
       const { data, error } = await supabase
         .from('profiles')
         .update(updates)
@@ -422,32 +424,32 @@ export function useDeleteTicket() {
   });
 }
 
+// Safe batch delete using RPC for chunked deletion
 export function useDeleteBatch() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async (batchId: string) => {
-      // First delete batch_customers
-      const { error: bcError } = await supabase
-        .from('batch_customers')
-        .delete()
-        .eq('batch_id', batchId);
-      
-      if (bcError) throw bcError;
-
-      // Then delete the batch
-      const { error } = await supabase
-        .from('batches')
-        .delete()
-        .eq('id', batchId);
+      const { data, error } = await supabase.rpc('safe_delete_batch', {
+        p_batch_id: batchId,
+        p_chunk_size: 500
+      });
       
       if (error) throw error;
+      return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['batches'] });
       queryClient.invalidateQueries({ queryKey: ['batch_customers'] });
-      toast({ title: 'Batch deleted successfully' });
+      queryClient.invalidateQueries({ queryKey: ['master_customers'] });
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['call_logs'] });
+      toast({ 
+        title: 'Batch deleted successfully',
+        description: `Deleted ${(data as any)?.deleted_tickets || 0} tickets, ${(data as any)?.deleted_customers || 0} customers`
+      });
     },
     onError: (error: Error) => {
       toast({ title: 'Error deleting batch', description: error.message, variant: 'destructive' });
