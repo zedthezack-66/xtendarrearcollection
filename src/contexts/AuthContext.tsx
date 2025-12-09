@@ -8,7 +8,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   userRole: UserRole | null;
-  profile: { id: string; full_name: string; phone: string | null } | null;
+  profile: { id: string; full_name: string; display_name: string | null; phone: string | null } | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
@@ -22,7 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
-  const [profile, setProfile] = useState<{ id: string; full_name: string; phone: string | null } | null>(null);
+  const [profile, setProfile] = useState<{ id: string; full_name: string; display_name: string | null; phone: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -64,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Fetch profile
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('id, full_name, phone')
+        .select('id, full_name, display_name, phone')
         .eq('id', userId)
         .maybeSingle();
 

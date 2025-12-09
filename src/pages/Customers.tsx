@@ -251,7 +251,7 @@ export default function Customers() {
   const getAgentName = (agentId: string | null) => {
     if (!agentId || !profiles) return '-';
     const prof = profiles.find(p => p.id === agentId);
-    return prof?.full_name || '-';
+    return prof?.display_name || prof?.full_name || '-';
   };
 
   const filteredCustomers = displayCustomers.filter((customer) => {
@@ -266,13 +266,13 @@ export default function Customers() {
     return matchesSearch && matchesStatus && matchesAgent;
   });
 
-  const agentFirstName = profile?.full_name?.split(' ')[0] || 'Agent';
+  const displayName = profile?.display_name || profile?.full_name?.split(' ')[0] || 'Agent';
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">{agentFirstName}'s Customers</h1>
+          <h1 className="text-2xl font-bold text-foreground">{displayName}'s Customers</h1>
           <p className="text-muted-foreground">
             {activeBatch ? `Viewing batch: ${activeBatch.name}` : 'Global customer registry'}
           </p>
@@ -350,7 +350,7 @@ export default function Customers() {
                     <SelectContent>
                       {profiles?.map(prof => (
                         <SelectItem key={prof.id} value={prof.id}>
-                          {prof.full_name}
+                          {prof.display_name || prof.full_name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -409,7 +409,7 @@ export default function Customers() {
                 <SelectItem value="all">All Agents</SelectItem>
                 {profiles?.map(prof => (
                   <SelectItem key={prof.id} value={prof.id}>
-                    {prof.full_name}
+                    {prof.display_name || prof.full_name}
                   </SelectItem>
                 ))}
               </SelectContent>
