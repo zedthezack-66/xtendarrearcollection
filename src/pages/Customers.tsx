@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, Filter, MoreHorizontal, Eye, Ticket, Phone, UserPlus, Loader2, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -102,6 +102,26 @@ export default function Customers() {
   // Delete batch state
   const [batchToDelete, setBatchToDelete] = useState<string | null>(null);
 
+  // Realtime subscription for customers and tickets
+  useEffect(() => {
+    const channel = supabase
+      .channel('customers-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'master_customers' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['master_customers'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'batch_customers' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['batch_customers'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
   if (loadingCustomers) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -139,6 +159,12 @@ export default function Customers() {
       return;
     }
 
+    // Require active batch selection for walk-in customers
+    if (!activeBatchId) {
+      toast.error("Please select a batch first to add customers");
+      return;
+    }
+
     const amount = parseFloat(newCustomerAmount);
     if (isNaN(amount) || amount <= 0) {
       toast.error("Please enter a valid amount");
@@ -148,24 +174,7 @@ export default function Customers() {
     setIsSubmitting(true);
 
     try {
-      // Create or get walk-in batch if no active batch
-      let targetBatchId = activeBatchId;
-      
-      if (!targetBatchId) {
-        const walkInBatch = batches?.find(b => b.name === "Walk-in Customers");
-        if (walkInBatch) {
-          targetBatchId = walkInBatch.id;
-        } else {
-          const { data: newBatch, error: batchError } = await supabase
-            .from('batches')
-            .insert({ name: "Walk-in Customers", institution_name: "Direct Payments" })
-            .select()
-            .single();
-          
-          if (batchError) throw batchError;
-          targetBatchId = newBatch.id;
-        }
-      }
+      const targetBatchId = activeBatchId;
 
       // Create master customer
       const { data: customer, error: customerError } = await supabase
@@ -183,7 +192,7 @@ export default function Customers() {
 
       if (customerError) throw customerError;
 
-      // Create batch customer link
+      // Create batch customer link with assigned agent
       await supabase.from('batch_customers').insert({
         batch_id: targetBatchId,
         master_customer_id: customer.id,
@@ -191,16 +200,19 @@ export default function Customers() {
         name: newCustomerName.trim(),
         mobile_number: newCustomerMobile.trim() || null,
         amount_owed: amount,
+        assigned_agent_id: newCustomerAgent || null,
       });
 
-      // Create ticket
+      // Create ticket with batch_id
       await supabase.from('tickets').insert({
         master_customer_id: customer.id,
+        batch_id: targetBatchId,
         customer_name: newCustomerName.trim(),
         nrc_number: newCustomerNrc.trim(),
         mobile_number: newCustomerMobile.trim() || null,
         amount_owed: amount,
         assigned_agent: newCustomerAgent || null,
+        priority: 'High',
       });
 
       // Update batch totals
