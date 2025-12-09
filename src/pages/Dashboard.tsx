@@ -34,7 +34,7 @@ const STATUS_COLORS = {
 
 export default function Dashboard() {
   const { activeBatchId } = useUIStore();
-  const { profile } = useAuth();
+  const { profile, isAdmin, userRole } = useAuth();
   const { data: masterCustomers, isLoading: loadingCustomers } = useMasterCustomers();
   const { data: tickets, isLoading: loadingTickets } = useTickets();
   const { data: payments, isLoading: loadingPayments } = usePayments();
@@ -91,11 +91,11 @@ export default function Dashboard() {
   ].filter((d) => d.value > 0);
 
   // Collections by agent
-  const collectionsByAgent = profiles?.map(profile => {
-    const agentCustomers = displayCustomers.filter(c => c.assigned_agent === profile.id);
+  const collectionsByAgent = profiles?.map(p => {
+    const agentCustomers = displayCustomers.filter(c => c.assigned_agent === p.id);
     const collected = agentCustomers.reduce((sum, c) => sum + Number(c.total_paid || 0), 0);
     return {
-      name: profile.full_name,
+      name: (p as any).display_name || p.full_name,
       collected,
       tickets: agentCustomers.length,
     };
@@ -113,14 +113,20 @@ export default function Dashboard() {
     .sort((a, b) => Number(b.outstanding_balance) - Number(a.outstanding_balance))
     .slice(0, 5);
 
-  const agentFirstName = profile?.full_name?.split(' ')[0] || 'Agent';
+  // Get current profile with display_name
+  const currentProfile = profiles?.find(p => p.id === profile?.id);
+  const displayName = (currentProfile as any)?.display_name || profile?.full_name?.split(' ')[0] || 'Agent';
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">{agentFirstName}'s Collection Dashboard</h1>
+        <h1 className="text-2xl font-bold text-foreground">
+          {displayName}'s Collection Dashboard
+          {isAdmin && <Badge className="ml-2 align-middle">Admin</Badge>}
+        </h1>
         <p className="text-muted-foreground">
-          {activeBatch ? `Viewing batch: ${activeBatch.name}` : 'Overview of all loan collections'}
+          {activeBatch ? `Viewing batch: ${activeBatch.name}` : 
+           isAdmin ? 'Overview of all loan collections' : 'Your assigned collections'}
         </p>
       </div>
 

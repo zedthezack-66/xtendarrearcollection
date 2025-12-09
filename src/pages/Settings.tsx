@@ -1,9 +1,10 @@
-import { useState } from "react";
-import { AlertTriangle, Save } from "lucide-react";
+import { useState, useEffect } from "react";
+import { AlertTriangle, Save, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,10 +19,11 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useMasterCustomers, useTickets, usePayments, useBatches, useProfiles, useUpdateProfile } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function Settings() {
   const { toast } = useToast();
-  const { user, profile, userRole } = useAuth();
+  const { user, profile, userRole, isAdmin } = useAuth();
   const { data: masterCustomers = [] } = useMasterCustomers();
   const { data: tickets = [] } = useTickets();
   const { data: payments = [] } = usePayments();
@@ -29,30 +31,87 @@ export default function Settings() {
   const { data: profiles = [] } = useProfiles();
   const updateProfile = useUpdateProfile();
 
-  const [fullName, setFullName] = useState(profile?.full_name || '');
-  const [phone, setPhone] = useState(profile?.phone || '');
+  const [fullName, setFullName] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [isClearing, setIsClearing] = useState(false);
+
+  // Get current user's profile from profiles list to include display_name
+  const currentProfile = profiles.find(p => p.id === user?.id);
+
+  useEffect(() => {
+    if (currentProfile) {
+      setFullName(currentProfile.full_name || '');
+      setDisplayName((currentProfile as any).display_name || '');
+      setPhone(currentProfile.phone || '');
+    } else if (profile) {
+      setFullName(profile.full_name || '');
+      setPhone(profile.phone || '');
+    }
+  }, [currentProfile, profile]);
 
   const handleSaveProfile = async () => {
     if (!user?.id) return;
     
+    if (!displayName.trim()) {
+      toast({ title: "Display name required", description: "Please enter a unique display name for CSV imports", variant: "destructive" });
+      return;
+    }
+
+    // Check if display name is unique
+    const existingWithName = profiles.find(p => 
+      p.id !== user.id && 
+      (p as any).display_name?.toLowerCase() === displayName.trim().toLowerCase()
+    );
+    
+    if (existingWithName) {
+      toast({ title: "Display name taken", description: "This display name is already used by another agent", variant: "destructive" });
+      return;
+    }
+    
     try {
-      await updateProfile.mutateAsync({
-        id: user.id,
-        full_name: fullName.trim(),
-        phone: phone.trim() || null,
-      });
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          full_name: fullName.trim(),
+          display_name: displayName.trim(),
+          phone: phone.trim() || null,
+        })
+        .eq('id', user.id);
+
+      if (error) throw error;
+      
       toast({ title: "Profile updated successfully" });
     } catch (error: any) {
-      toast({ title: "Error updating profile", description: error.message, variant: "destructive" });
+      if (error.code === '23505') {
+        toast({ title: "Display name taken", description: "This display name is already used by another agent", variant: "destructive" });
+      } else {
+        toast({ title: "Error updating profile", description: error.message, variant: "destructive" });
+      }
     }
   };
 
-  const handleClearData = () => {
-    toast({
-      title: "Action Not Available",
-      description: "Data clearing is managed by administrators. Contact your admin if needed.",
-      variant: "destructive",
-    });
+  const handleClearData = async () => {
+    if (!isAdmin) {
+      toast({ title: "Access Denied", description: "Only admins can clear all data", variant: "destructive" });
+      return;
+    }
+
+    setIsClearing(true);
+    try {
+      const { data, error } = await supabase.rpc('clear_all_data');
+      
+      if (error) throw error;
+      
+      toast({ title: "Data Cleared", description: "All data has been successfully cleared" });
+      
+      // Refresh the page to reflect changes
+      window.location.reload();
+    } catch (error: any) {
+      toast({ title: "Error clearing data", description: error.message, variant: "destructive" });
+    } finally {
+      setIsClearing(false);
+    }
   };
 
   return (
@@ -65,7 +124,7 @@ export default function Settings() {
       <Card>
         <CardHeader>
           <CardTitle>Your Profile</CardTitle>
-          <CardDescription>Update your account information</CardDescription>
+          <CardDescription>Update your account information. Your display name is used for CSV imports.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -79,6 +138,20 @@ export default function Settings() {
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="displayName">Display Name (for CSV imports) *</Label>
+              <Input 
+                id="displayName" 
+                value={displayName} 
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="e.g., Ziba, Mary, John"
+              />
+              <p className="text-xs text-muted-foreground">
+                This name will be used in the "Assigned Agent" column during CSV imports
+              </p>
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
               <Label htmlFor="phone">Phone Number</Label>
               <Input 
                 id="phone" 
@@ -87,15 +160,20 @@ export default function Settings() {
                 placeholder="Enter your phone number"
               />
             </div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
             <div className="p-4 bg-muted rounded-lg">
               <p className="text-sm text-muted-foreground">Email</p>
               <p className="font-medium">{user?.email}</p>
             </div>
-            <div className="p-4 bg-muted rounded-lg">
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="p-4 bg-muted rounded-lg flex-1">
               <p className="text-sm text-muted-foreground">Role</p>
-              <p className="font-medium capitalize">{userRole || 'Agent'}</p>
+              <Badge variant={userRole === 'admin' ? 'default' : 'secondary'} className="mt-1">
+                {userRole === 'admin' ? 'Admin' : 'Agent'}
+              </Badge>
+              {userRole === 'admin' && (
+                <p className="text-xs text-muted-foreground mt-1">You have full access to all data</p>
+              )}
             </div>
           </div>
           <Button onClick={handleSaveProfile} disabled={updateProfile.isPending}>
@@ -115,7 +193,14 @@ export default function Settings() {
             {profiles.map((p) => (
               <div key={p.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                 <div>
-                  <p className="font-medium">{p.full_name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium">{p.full_name}</p>
+                    {(p as any).display_name && (
+                      <Badge variant="outline" className="text-xs">
+                        {(p as any).display_name}
+                      </Badge>
+                    )}
+                  </div>
                   <p className="text-sm text-muted-foreground">{p.phone || 'No phone'}</p>
                 </div>
               </div>
@@ -154,7 +239,7 @@ export default function Settings() {
         </CardContent>
       </Card>
 
-      {userRole === 'admin' && (
+      {isAdmin && (
         <Card className="border-destructive/50">
           <CardHeader>
             <CardTitle className="text-destructive flex items-center gap-2">
@@ -166,13 +251,22 @@ export default function Settings() {
           <CardContent>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="destructive">Clear All Data</Button>
+                <Button variant="destructive" disabled={isClearing}>
+                  {isClearing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Clearing...
+                    </>
+                  ) : (
+                    'Clear All Data'
+                  )}
+                </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete all data from the database.
+                    This action cannot be undone. This will permanently delete all batches, customers, tickets, payments, and call logs from the database.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

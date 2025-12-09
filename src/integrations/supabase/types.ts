@@ -17,6 +17,7 @@ export type Database = {
       batch_customers: {
         Row: {
           amount_owed: number
+          assigned_agent_id: string | null
           batch_id: string
           created_at: string
           id: string
@@ -27,6 +28,7 @@ export type Database = {
         }
         Insert: {
           amount_owed?: number
+          assigned_agent_id?: string | null
           batch_id: string
           created_at?: string
           id?: string
@@ -37,6 +39,7 @@ export type Database = {
         }
         Update: {
           amount_owed?: number
+          assigned_agent_id?: string | null
           batch_id?: string
           created_at?: string
           id?: string
@@ -46,6 +49,13 @@ export type Database = {
           nrc_number?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "batch_customers_assigned_agent_id_fkey"
+            columns: ["assigned_agent_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "batch_customers_batch_id_fkey"
             columns: ["batch_id"]
@@ -251,6 +261,7 @@ export type Database = {
       profiles: {
         Row: {
           created_at: string
+          display_name: string | null
           full_name: string
           id: string
           phone: string | null
@@ -258,6 +269,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          display_name?: string | null
           full_name: string
           id: string
           phone?: string | null
@@ -265,6 +277,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          display_name?: string | null
           full_name?: string
           id?: string
           phone?: string | null
@@ -276,6 +289,7 @@ export type Database = {
         Row: {
           amount_owed: number
           assigned_agent: string | null
+          batch_id: string | null
           call_notes: string | null
           created_at: string
           customer_name: string
@@ -291,6 +305,7 @@ export type Database = {
         Insert: {
           amount_owed?: number
           assigned_agent?: string | null
+          batch_id?: string | null
           call_notes?: string | null
           created_at?: string
           customer_name: string
@@ -306,6 +321,7 @@ export type Database = {
         Update: {
           amount_owed?: number
           assigned_agent?: string | null
+          batch_id?: string | null
           call_notes?: string | null
           created_at?: string
           customer_name?: string
@@ -319,6 +335,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "tickets_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "batches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tickets_master_customer_id_fkey"
             columns: ["master_customer_id"]
@@ -351,12 +374,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      clear_all_data: { Args: never; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
+      }
+      safe_delete_batch: {
+        Args: { p_batch_id: string; p_chunk_size?: number }
+        Returns: Json
       }
     }
     Enums: {

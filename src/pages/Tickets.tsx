@@ -74,7 +74,8 @@ export default function Tickets() {
 
   const getAgentName = (agentId: string | null) => {
     if (!agentId || !profiles) return '-';
-    return profiles.find(p => p.id === agentId)?.full_name || '-';
+    const p = profiles.find(p => p.id === agentId);
+    return (p as any)?.display_name || p?.full_name || '-';
   };
 
   const filteredTickets = (tickets || [])
@@ -97,12 +98,13 @@ export default function Tickets() {
     }
   };
 
-  const agentFirstName = profile?.full_name?.split(' ')[0] || 'Agent';
+  const currentProfile = profiles?.find(p => p.id === profile?.id);
+  const displayName = (currentProfile as any)?.display_name || profile?.full_name?.split(' ')[0] || 'Agent';
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">{agentFirstName}'s Tickets</h1>
+        <h1 className="text-2xl font-bold text-foreground">{displayName}'s Tickets</h1>
         <p className="text-muted-foreground">Manage collections workflow</p>
       </div>
       <Card>
