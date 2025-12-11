@@ -71,8 +71,12 @@ export function AppSidebar() {
             />
           </div>
           <div>
-            <h1 className="font-semibold text-sidebar-foreground">{displayName}'s Collections</h1>
-            <p className="text-xs text-sidebar-foreground/60">Xtenda Arrears</p>
+            <h1 className="font-semibold text-sidebar-foreground">
+              {isAdmin ? `${displayName} — ADMIN'S DASHBOARD` : `${displayName}'s Collections`}
+            </h1>
+            <p className="text-xs text-sidebar-foreground/60">
+              {isAdmin ? 'Xtenda Arrears • Admin' : 'Xtenda Arrears'}
+            </p>
           </div>
         </div>
       </SidebarHeader>
@@ -166,6 +170,7 @@ export function AppSidebar() {
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
+        <p className="mt-3 text-[11px] text-sidebar-foreground/60 text-center">Powered by ZEDZACK TECH</p>
       </SidebarFooter>
     </Sidebar>
   );

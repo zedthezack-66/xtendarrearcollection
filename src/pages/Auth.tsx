@@ -223,6 +223,9 @@ export default function Auth() {
             </TabsContent>
           </Tabs>
         </CardContent>
+        <div className="px-6 pb-6 text-center">
+          <p className="text-xs text-slate-500">Powered by ZEDZACK TECH</p>
+        </div>
       </Card>
     </div>
   );
