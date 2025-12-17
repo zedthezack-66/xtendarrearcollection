@@ -63,20 +63,12 @@ export function AppSidebar() {
     <Sidebar className="border-r border-sidebar-border">
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-white shadow-sm">
-            <img
-              src="/xtenda_full_logo.png"
-              alt="Xtenda - Now you can"
-              className="h-10 w-auto object-contain"
-            />
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground font-bold">
+            {getInitials(profile?.display_name || profile?.full_name || 'LC')}
           </div>
           <div>
-            <h1 className="font-semibold text-sidebar-foreground">
-              {isAdmin ? `${displayName} — ADMIN'S DASHBOARD` : `${displayName}'s Collections`}
-            </h1>
-            <p className="text-xs text-sidebar-foreground/60">
-              {isAdmin ? 'Xtenda Arrears • Admin' : 'Xtenda Arrears'}
-            </p>
+            <h1 className="font-semibold text-sidebar-foreground">{displayName}'s Collections</h1>
+            <p className="text-xs text-sidebar-foreground/60">Collections Manager</p>
           </div>
         </div>
       </SidebarHeader>
@@ -170,7 +162,6 @@ export function AppSidebar() {
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
-        <p className="mt-3 text-[11px] text-sidebar-foreground/60 text-center">Powered by ZEDZACK TECH</p>
       </SidebarFooter>
     </Sidebar>
   );

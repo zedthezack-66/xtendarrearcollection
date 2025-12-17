@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, DollarSign } from 'lucide-react';
 import { z } from 'zod';
 
 const emailSchema = z.string().email('Please enter a valid email address');
@@ -110,20 +110,16 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f5f7fa] p-4">
-      <Card className="w-full max-w-md border border-slate-200 shadow-lg">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="p-3 rounded-lg bg-white shadow-sm">
-              <img
-                src="/xtenda_full_logo.png"
-                alt="Xtenda - Now you can"
-                className="h-16 w-auto"
-              />
+            <div className="p-3 bg-primary rounded-lg">
+              <DollarSign className="h-8 w-8 text-primary-foreground" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold tracking-wide text-[#f47920] uppercase">Arrears Collection</CardTitle>
-          <CardDescription className="text-slate-600">Sign in to manage Xtenda arrears collections</CardDescription>
+          <CardTitle className="text-2xl">Loan Collections</CardTitle>
+          <CardDescription>Sign in to manage your loan collections</CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="signin" className="w-full">
@@ -223,9 +219,6 @@ export default function Auth() {
             </TabsContent>
           </Tabs>
         </CardContent>
-        <div className="px-6 pb-6 text-center">
-          <p className="text-xs text-slate-500">Powered by ZEDZACK TECH</p>
-        </div>
       </Card>
     </div>
   );
