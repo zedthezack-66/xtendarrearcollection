@@ -115,8 +115,8 @@ export default function Auth() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="p-3 bg-primary rounded-lg">
-              <img src={xtendaLogo} alt="Xtenda Logo" className="h-8 w-8 object-contain" />
+            <div className="p-4 bg-primary rounded-lg">
+              <img src={xtendaLogo} alt="Xtenda Logo" className="h-16 w-16 object-contain" />
             </div>
           </div>
           <CardTitle className="text-2xl">Xtenda Arrears Collection</CardTitle>
