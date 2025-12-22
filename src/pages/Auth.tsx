@@ -7,8 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, DollarSign } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { z } from 'zod';
+import xtendaLogo from '@/assests/xtenda-logo.png';
 
 const emailSchema = z.string().email('Please enter a valid email address');
 const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
@@ -115,7 +116,7 @@ export default function Auth() {
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
             <div className="p-3 bg-primary rounded-lg">
-              <DollarSign className="h-8 w-8 text-primary-foreground" />
+              <img src={xtendaLogo} alt="Xtenda Logo" className="h-8 w-8 object-contain" />
             </div>
           </div>
           <CardTitle className="text-2xl">Xtenda Arrears Collection</CardTitle>
