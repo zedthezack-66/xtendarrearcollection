@@ -263,9 +263,22 @@ export default function CSVImport() {
 
       setImportProgress(10);
 
-      // Separate new customers from existing ones
+      // Fetch existing batch_customers for this batch to check for duplicates
+      const { data: existingBatchCustomers } = await supabase
+        .from('batch_customers')
+        .select('nrc_number, master_customer_id')
+        .eq('batch_id', batch.id);
+      
+      const existingNrcsInBatch = new Set(existingBatchCustomers?.map(bc => bc.nrc_number) || []);
+
+      // Separate rows into: new to master, existing in master but new to batch, already in batch
       const newCustomerRows = validRows.filter(r => !r.existsInMaster);
-      const existingCustomerRows = validRows.filter(r => r.existsInMaster);
+      const existingInMasterRows = validRows.filter(r => r.existsInMaster && !existingNrcsInBatch.has(r.nrcNumber));
+      const alreadyInBatchRows = validRows.filter(r => existingNrcsInBatch.has(r.nrcNumber));
+
+      let newlyAddedCount = 0;
+      let updatedCount = 0;
+      let skippedCount = alreadyInBatchRows.length;
 
       // Process new customers in chunks
       if (newCustomerRows.length > 0) {
@@ -290,6 +303,8 @@ export default function CSVImport() {
           if (customersError) throw customersError;
 
           if (insertedCustomers && insertedCustomers.length > 0) {
+            newlyAddedCount += insertedCustomers.length;
+
             // Create tickets for new customers - amount from row, not master
             const newTickets = insertedCustomers.map(mc => {
               const row = chunk.find(r => r.nrcNumber === mc.nrc_number);
@@ -333,26 +348,27 @@ export default function CSVImport() {
             if (batchCustError) throw batchCustError;
           }
 
-          setImportProgress(10 + (i / newCustomerRows.length) * 50);
+          setImportProgress(10 + (i / newCustomerRows.length) * 40);
         }
       }
 
-      setImportProgress(60);
+      setImportProgress(50);
 
-      // Handle existing customers - update totals and create batch_customer entries
-      if (existingCustomerRows.length > 0) {
-        for (let i = 0; i < existingCustomerRows.length; i += CHUNK_SIZE) {
-          const chunk = existingCustomerRows.slice(i, i + CHUNK_SIZE);
+      // Handle existing master customers that are NEW to this batch (not duplicates)
+      if (existingInMasterRows.length > 0) {
+        for (let i = 0; i < existingInMasterRows.length; i += CHUNK_SIZE) {
+          const chunk = existingInMasterRows.slice(i, i + CHUNK_SIZE);
           const batchCustomersForExisting = [];
 
           for (const row of chunk) {
             const existingMaster = masterCustomers.find(mc => mc.nrc_number === row.nrcNumber);
             if (existingMaster) {
-              // Only update if mobile is missing - don't double count arrears
+              // Only update missing fields on master - NEVER overwrite existing data
               if (!existingMaster.mobile_number && row.mobileNumber) {
                 await supabase.from('master_customers').update({
                   mobile_number: row.mobileNumber,
                 }).eq('id', existingMaster.id);
+                updatedCount++;
               }
 
               batchCustomersForExisting.push({
@@ -365,7 +381,9 @@ export default function CSVImport() {
                 assigned_agent_id: row.assignedAgentId,
               });
 
-              // Create ticket for this batch
+              newlyAddedCount++;
+
+              // Create ticket for this batch - new ticket since customer is new to this batch
               await supabase.from('tickets').insert({
                 master_customer_id: existingMaster.id,
                 batch_id: batch.id,
@@ -388,22 +406,55 @@ export default function CSVImport() {
             if (existingBatchError) throw existingBatchError;
           }
 
-          setImportProgress(60 + (i / existingCustomerRows.length) * 35);
+          setImportProgress(50 + (i / existingInMasterRows.length) * 30);
         }
       }
 
-      // Update batch totals if adding to existing batch
-      if (uploadMode === "existing") {
+      setImportProgress(85);
+
+      // Handle customers already in this batch - update ONLY changed fields, never overwrite
+      if (alreadyInBatchRows.length > 0) {
+        for (const row of alreadyInBatchRows) {
+          const existingMaster = masterCustomers.find(mc => mc.nrc_number === row.nrcNumber);
+          if (existingMaster) {
+            // Only update mobile if it was missing
+            if (!existingMaster.mobile_number && row.mobileNumber) {
+              await supabase.from('master_customers').update({
+                mobile_number: row.mobileNumber,
+              }).eq('id', existingMaster.id);
+              
+              // Also update batch_customers mobile if missing
+              await supabase.from('batch_customers').update({
+                mobile_number: row.mobileNumber,
+              }).eq('batch_id', batch.id).eq('nrc_number', row.nrcNumber);
+              
+              updatedCount++;
+            }
+            // NEVER create new tickets or overwrite existing ticket data for duplicates
+          }
+        }
+      }
+
+      // Update batch totals - only count newly added customers
+      if (uploadMode === "existing" && newlyAddedCount > 0) {
+        const addedAmount = [...newCustomerRows, ...existingInMasterRows].reduce((sum, r) => sum + r.amountOwed, 0);
         await supabase.from('batches').update({
-          customer_count: batch.customer_count + validRows.length,
-          total_amount: batch.total_amount + validRows.reduce((sum, r) => sum + r.amountOwed, 0),
+          customer_count: batch.customer_count + newlyAddedCount,
+          total_amount: batch.total_amount + addedAmount,
         }).eq('id', batch.id);
       }
 
       setImportProgress(100);
-      const message = uploadMode === "new" 
-        ? `Successfully created batch "${batchName}" with ${validRows.length} customers`
-        : `Successfully added ${validRows.length} customers to batch "${batch.name}"`;
+      
+      let message: string;
+      if (uploadMode === "new") {
+        message = `Successfully created batch "${batchName}" with ${newlyAddedCount} customers`;
+      } else {
+        const parts = [`Added ${newlyAddedCount} new customers`];
+        if (updatedCount > 0) parts.push(`updated ${updatedCount} records`);
+        if (skippedCount > 0) parts.push(`skipped ${skippedCount} duplicates`);
+        message = `${parts.join(', ')} in batch "${batch.name}"`;
+      }
       toast({ title: "Import Complete", description: message });
       navigate('/customers');
     } catch (error: any) {
