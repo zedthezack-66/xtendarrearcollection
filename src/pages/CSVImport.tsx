@@ -19,9 +19,17 @@ import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useMasterCustomers, useCreateBatch, useProfiles } from "@/hooks/useSupabaseData";
+import { useMasterCustomers, useCreateBatch, useProfiles, useBatches } from "@/hooks/useSupabaseData";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface CSVRow {
   'Customer Name'?: string;
@@ -57,6 +65,8 @@ export default function CSVImport() {
   const { data: profiles = [] } = useProfiles();
   const createBatch = useCreateBatch();
   
+  const { data: batches = [] } = useBatches();
+  
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [parsedData, setParsedData] = useState<ParsedRow[]>([]);
@@ -64,6 +74,8 @@ export default function CSVImport() {
   const [importProgress, setImportProgress] = useState(0);
   const [batchName, setBatchName] = useState("");
   const [institutionName, setInstitutionName] = useState("");
+  const [uploadMode, setUploadMode] = useState<"new" | "existing">("new");
+  const [selectedBatchId, setSelectedBatchId] = useState<string>("");
 
   const existingNrcNumbers = new Set(masterCustomers.map((c) => c.nrc_number));
   
@@ -197,14 +209,20 @@ export default function CSVImport() {
   };
 
   const handleImport = async () => {
-    if (!batchName.trim()) {
-      toast({ title: "Batch Name Required", description: "Please enter a name for this batch", variant: "destructive" });
-      return;
-    }
-
-    if (!institutionName.trim()) {
-      toast({ title: "Institution Name Required", description: "Please enter the institution name", variant: "destructive" });
-      return;
+    if (uploadMode === "new") {
+      if (!batchName.trim()) {
+        toast({ title: "Batch Name Required", description: "Please enter a name for this batch", variant: "destructive" });
+        return;
+      }
+      if (!institutionName.trim()) {
+        toast({ title: "Institution Name Required", description: "Please enter the institution name", variant: "destructive" });
+        return;
+      }
+    } else {
+      if (!selectedBatchId) {
+        toast({ title: "Batch Required", description: "Please select an existing batch", variant: "destructive" });
+        return;
+      }
     }
 
     const validRows = parsedData.filter((r) => r.isValid);
@@ -219,13 +237,29 @@ export default function CSVImport() {
     const CHUNK_SIZE = 100;
 
     try {
-      // Create batch first
-      const batch = await createBatch.mutateAsync({
-        name: batchName.trim(),
-        institution_name: institutionName.trim(),
-        customer_count: validRows.length,
-        total_amount: validRows.reduce((sum, r) => sum + r.amountOwed, 0),
-      });
+      let batch: { id: string; name: string; customer_count: number; total_amount: number };
+      
+      if (uploadMode === "new") {
+        // Create new batch
+        batch = await createBatch.mutateAsync({
+          name: batchName.trim(),
+          institution_name: institutionName.trim(),
+          customer_count: validRows.length,
+          total_amount: validRows.reduce((sum, r) => sum + r.amountOwed, 0),
+        });
+      } else {
+        // Use existing batch
+        const existingBatch = batches.find(b => b.id === selectedBatchId);
+        if (!existingBatch) {
+          throw new Error("Selected batch not found");
+        }
+        batch = {
+          id: existingBatch.id,
+          name: existingBatch.name,
+          customer_count: existingBatch.customer_count,
+          total_amount: Number(existingBatch.total_amount),
+        };
+      }
 
       setImportProgress(10);
 
@@ -358,8 +392,19 @@ export default function CSVImport() {
         }
       }
 
+      // Update batch totals if adding to existing batch
+      if (uploadMode === "existing") {
+        await supabase.from('batches').update({
+          customer_count: batch.customer_count + validRows.length,
+          total_amount: batch.total_amount + validRows.reduce((sum, r) => sum + r.amountOwed, 0),
+        }).eq('id', batch.id);
+      }
+
       setImportProgress(100);
-      toast({ title: "Import Complete", description: `Successfully created batch "${batchName}" with ${validRows.length} customers` });
+      const message = uploadMode === "new" 
+        ? `Successfully created batch "${batchName}" with ${validRows.length} customers`
+        : `Successfully added ${validRows.length} customers to batch "${batch.name}"`;
+      toast({ title: "Import Complete", description: message });
       navigate('/customers');
     } catch (error: any) {
       toast({ title: "Import Failed", description: error.message, variant: "destructive" });
@@ -443,19 +488,51 @@ export default function CSVImport() {
       <Card>
         <CardHeader>
           <CardTitle>Batch Details</CardTitle>
-          <CardDescription>Enter details for this import batch</CardDescription>
+          <CardDescription>Choose to create a new batch or add to an existing one</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="batchName">Batch Name *</Label>
-              <Input id="batchName" placeholder="e.g., MTN Loans Nov 2025" value={batchName} onChange={(e) => setBatchName(e.target.value)} />
+          <RadioGroup value={uploadMode} onValueChange={(v) => setUploadMode(v as "new" | "existing")} className="flex gap-4">
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="new" id="new-batch" />
+              <Label htmlFor="new-batch">Create New Batch</Label>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="institutionName">Institution Name *</Label>
-              <Input id="institutionName" placeholder="e.g., MTN Mobile Money" value={institutionName} onChange={(e) => setInstitutionName(e.target.value)} />
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="existing" id="existing-batch" />
+              <Label htmlFor="existing-batch">Add to Existing Batch</Label>
             </div>
-          </div>
+          </RadioGroup>
+
+          {uploadMode === "new" ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="batchName">Batch Name *</Label>
+                <Input id="batchName" placeholder="e.g., MTN Loans Nov 2025" value={batchName} onChange={(e) => setBatchName(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="institutionName">Institution Name *</Label>
+                <Input id="institutionName" placeholder="e.g., MTN Mobile Money" value={institutionName} onChange={(e) => setInstitutionName(e.target.value)} />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="existingBatch">Select Batch *</Label>
+              <Select value={selectedBatchId} onValueChange={setSelectedBatchId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose an existing batch" />
+                </SelectTrigger>
+                <SelectContent>
+                  {batches.map(b => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name} ({b.customer_count} customers)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {batches.length === 0 && (
+                <p className="text-sm text-muted-foreground">No existing batches. Create a new batch first.</p>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
