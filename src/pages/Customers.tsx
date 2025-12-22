@@ -176,15 +176,15 @@ export default function Customers() {
     try {
       const targetBatchId = activeBatchId;
 
-      // Create master customer
+      // Create master customer - no arrears at master level
       const { data: customer, error: customerError } = await supabase
         .from('master_customers')
         .insert({
           nrc_number: newCustomerNrc.trim(),
           name: newCustomerName.trim(),
           mobile_number: newCustomerMobile.trim() || null,
-          total_owed: amount,
-          outstanding_balance: amount,
+          total_owed: 0,
+          outstanding_balance: 0,
           assigned_agent: newCustomerAgent || null,
         })
         .select()

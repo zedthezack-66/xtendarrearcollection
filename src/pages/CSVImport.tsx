@@ -242,8 +242,9 @@ export default function CSVImport() {
             nrc_number: row.nrcNumber,
             name: row.name,
             mobile_number: row.mobileNumber || null,
-            total_owed: row.amountOwed,
-            outstanding_balance: row.amountOwed,
+            // No arrears at master level - set to 0
+            total_owed: 0,
+            outstanding_balance: 0,
             assigned_agent: row.assignedAgentId,
           }));
 
@@ -255,18 +256,21 @@ export default function CSVImport() {
           if (customersError) throw customersError;
 
           if (insertedCustomers && insertedCustomers.length > 0) {
-            // Create tickets for new customers
-            const newTickets = insertedCustomers.map(mc => ({
-              master_customer_id: mc.id,
-              batch_id: batch.id,
-              customer_name: mc.name,
-              nrc_number: mc.nrc_number,
-              mobile_number: mc.mobile_number,
-              amount_owed: Number(mc.total_owed),
-              assigned_agent: mc.assigned_agent,
-              priority: 'High',
-              status: 'Open',
-            }));
+            // Create tickets for new customers - amount from row, not master
+            const newTickets = insertedCustomers.map(mc => {
+              const row = chunk.find(r => r.nrcNumber === mc.nrc_number);
+              return {
+                master_customer_id: mc.id,
+                batch_id: batch.id,
+                customer_name: mc.name,
+                nrc_number: mc.nrc_number,
+                mobile_number: mc.mobile_number,
+                amount_owed: row?.amountOwed || 0,
+                assigned_agent: mc.assigned_agent,
+                priority: 'High',
+                status: 'Open',
+              };
+            });
 
             const { error: ticketsError } = await supabase
               .from('tickets')
@@ -274,7 +278,7 @@ export default function CSVImport() {
 
             if (ticketsError) throw ticketsError;
 
-            // Create batch_customers entries
+            // Create batch_customers entries - arrears stored here per batch
             const newBatchCustomers = insertedCustomers.map(mc => {
               const row = chunk.find(r => r.nrcNumber === mc.nrc_number);
               return {
@@ -283,7 +287,7 @@ export default function CSVImport() {
                 nrc_number: mc.nrc_number,
                 name: mc.name,
                 mobile_number: mc.mobile_number,
-                amount_owed: Number(mc.total_owed),
+                amount_owed: row?.amountOwed || 0,
                 assigned_agent_id: row?.assignedAgentId,
               };
             });
