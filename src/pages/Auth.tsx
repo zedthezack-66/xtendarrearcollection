@@ -118,8 +118,8 @@ export default function Auth() {
               <DollarSign className="h-8 w-8 text-primary-foreground" />
             </div>
           </div>
-          <CardTitle className="text-2xl">Loan Collections</CardTitle>
-          <CardDescription>Sign in to manage your loan collections</CardDescription>
+          <CardTitle className="text-2xl">Xtenda Arrears Collection</CardTitle>
+          <CardDescription>Sign in to manage your arrears collections</CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="signin" className="w-full">
