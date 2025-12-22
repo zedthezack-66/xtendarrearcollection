@@ -3,8 +3,10 @@ import xtendaLogo from "@/assests/xtenda-logo.png";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useUIStore } from "@/store/useUIStore";
-import { useMasterCustomers, useTickets, usePayments, useBatches, useBatchCustomers, useProfiles } from "@/hooks/useSupabaseData";
+import { useBatches, useProfiles } from "@/hooks/useSupabaseData";
+import { useDashboardStats, useCollectionsByAgent, useRecentTickets, useTopDefaulters } from "@/hooks/useDashboardData";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   BarChart,
@@ -33,90 +35,343 @@ const STATUS_COLORS = {
   'Resolved': 'hsl(142, 76%, 36%)',
 };
 
-export default function Dashboard() {
-  const { activeBatchId } = useUIStore();
-  const { profile, isAdmin, userRole } = useAuth();
-  const { data: masterCustomers, isLoading: loadingCustomers } = useMasterCustomers();
-  const { data: tickets, isLoading: loadingTickets } = useTickets();
-  const { data: payments, isLoading: loadingPayments } = usePayments();
-  const { data: batches } = useBatches();
-  const { data: batchCustomers } = useBatchCustomers();
-  const { data: profiles } = useProfiles();
-
-  const isLoading = loadingCustomers || loadingTickets || loadingPayments;
+// Independent widget components that load their own data
+function StatsWidget({ batchId }: { batchId: string | null }) {
+  const { data: stats, isLoading } = useDashboardStats(batchId);
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        {[...Array(6)].map((_, i) => (
+          <Card key={i} className="animate-pulse">
+            <CardContent className="p-6">
+              <Skeleton className="h-4 w-20 mb-2" />
+              <Skeleton className="h-8 w-24" />
+            </CardContent>
+          </Card>
+        ))}
       </div>
     );
   }
 
-  // Get customers based on active batch
-  const getDisplayCustomers = () => {
-    if (!activeBatchId || !masterCustomers || !batchCustomers) {
-      return masterCustomers || [];
-    }
-    const batchCustomerIds = batchCustomers
-      .filter(bc => bc.batch_id === activeBatchId)
-      .map(bc => bc.master_customer_id);
-    return masterCustomers.filter(mc => batchCustomerIds.includes(mc.id));
-  };
+  const openAndInProgress = (stats?.open_tickets || 0) + (stats?.in_progress_tickets || 0);
 
-  const displayCustomers = getDisplayCustomers();
-  const activeBatch = batches?.find(b => b.id === activeBatchId);
+  return (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <StatCard
+        title="Total Customers"
+        value={stats?.total_customers || 0}
+        icon={Users}
+        variant="default"
+      />
+      <StatCard
+        title="Total Outstanding"
+        value={formatCurrency(stats?.total_outstanding || 0)}
+        icon={AlertTriangle}
+        variant="destructive"
+      />
+      <StatCard
+        title="Total Collected"
+        value={formatCurrency(stats?.total_collected || 0)}
+        imageSrc={xtendaLogo}
+        variant="success"
+      />
+      <StatCard
+        title="Collection Rate"
+        value={`${stats?.collection_rate || 0}%`}
+        icon={TrendingUp}
+        variant="info"
+      />
+      <StatCard
+        title="Open Tickets"
+        value={openAndInProgress}
+        icon={Ticket}
+        variant="warning"
+      />
+      <StatCard
+        title="Resolved Tickets"
+        value={stats?.resolved_tickets || 0}
+        icon={CheckCircle}
+        variant="success"
+      />
+    </div>
+  );
+}
 
-  // Calculate stats
-  const totalCustomers = displayCustomers.length;
-  const totalOutstanding = displayCustomers.reduce((sum, c) => sum + Number(c.outstanding_balance || 0), 0);
-  const totalCollected = displayCustomers.reduce((sum, c) => sum + Number(c.total_paid || 0), 0);
-  const totalOwed = displayCustomers.reduce((sum, c) => sum + Number(c.total_owed || 0), 0);
-  const collectionRate = totalOwed > 0 ? (totalCollected / totalOwed) * 100 : 0;
+function TicketsPieChart({ batchId }: { batchId: string | null }) {
+  const { data: stats, isLoading } = useDashboardStats(batchId);
 
-  // Get relevant tickets
-  const displayCustomerIds = displayCustomers.map(c => c.id);
-  const relevantTickets = activeBatchId && tickets
-    ? tickets.filter(t => displayCustomerIds.includes(t.master_customer_id))
-    : tickets || [];
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Tickets by Status</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[250px] flex items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
-  const openTickets = relevantTickets.filter((t) => t.status === 'Open').length;
-  const inProgressTickets = relevantTickets.filter((t) => t.status === 'In Progress').length;
-  const resolvedTickets = relevantTickets.filter((t) => t.status === 'Resolved').length;
-
-  // Tickets by status for pie chart
   const ticketsByStatus = [
-    { name: 'Open', value: openTickets, color: STATUS_COLORS['Open'] },
-    { name: 'In Progress', value: inProgressTickets, color: STATUS_COLORS['In Progress'] },
-    { name: 'Resolved', value: resolvedTickets, color: STATUS_COLORS['Resolved'] },
+    { name: 'Open', value: stats?.open_tickets || 0, color: STATUS_COLORS['Open'] },
+    { name: 'In Progress', value: stats?.in_progress_tickets || 0, color: STATUS_COLORS['In Progress'] },
+    { name: 'Resolved', value: stats?.resolved_tickets || 0, color: STATUS_COLORS['Resolved'] },
   ].filter((d) => d.value > 0);
 
-  // Collections by agent
-  const collectionsByAgent = profiles?.map(p => {
-    const agentCustomers = displayCustomers.filter(c => c.assigned_agent === p.id);
-    const collected = agentCustomers.reduce((sum, c) => sum + Number(c.total_paid || 0), 0);
-    return {
-      name: (p as any).display_name || p.full_name,
-      collected,
-      tickets: agentCustomers.length,
-    };
-  }).filter(a => a.collected > 0 || a.tickets > 0) || [];
+  if (ticketsByStatus.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Tickets by Status</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+            No ticket data available
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
-  // Recent open tickets
-  const recentOpenTickets = relevantTickets
-    .filter((t) => t.status !== 'Resolved')
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, 5);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Tickets by Status</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="h-[250px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={ticketsByStatus}
+                cx="50%"
+                cy="50%"
+                innerRadius={60}
+                outerRadius={80}
+                paddingAngle={5}
+                dataKey="value"
+                label={({ name, value }) => `${name}: ${value}`}
+              >
+                {ticketsByStatus.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
-  // Top defaulters (highest outstanding)
-  const topDefaulters = displayCustomers
-    .filter((c) => c.payment_status !== 'Fully Paid')
-    .sort((a, b) => Number(b.outstanding_balance) - Number(a.outstanding_balance))
-    .slice(0, 5);
+function CollectionsByAgentChart({ batchId }: { batchId: string | null }) {
+  const { data: collectionsByAgent, isLoading } = useCollectionsByAgent(batchId);
 
-  // Get current profile with display_name
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Collections by Agent</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[250px] flex items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!collectionsByAgent || collectionsByAgent.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Collections by Agent</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+            No agent data available
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Collections by Agent</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="h-[250px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={collectionsByAgent}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+              <XAxis dataKey="name" className="text-xs" />
+              <YAxis 
+                tickFormatter={(value) => `K${(value / 1000).toFixed(0)}`}
+                className="text-xs"
+              />
+              <Tooltip 
+                formatter={(value: number) => formatCurrency(value)}
+                labelStyle={{ color: 'hsl(var(--foreground))' }}
+                contentStyle={{ 
+                  backgroundColor: 'hsl(var(--card))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '0.5rem',
+                }}
+              />
+              <Bar dataKey="collected" fill="hsl(142, 76%, 36%)" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RecentTicketsWidget({ batchId }: { batchId: string | null }) {
+  const { data: recentTickets, isLoading } = useRecentTickets(batchId, undefined, 5);
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Recent Open Tickets</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                <div>
+                  <Skeleton className="h-4 w-32 mb-1" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+                <Skeleton className="h-6 w-16" />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const openTickets = recentTickets?.filter(t => t.status !== 'Resolved') || [];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Recent Open Tickets</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          {openTickets.length === 0 ? (
+            <p className="text-muted-foreground text-sm text-center py-4">No open tickets</p>
+          ) : (
+            openTickets.map((ticket) => (
+              <div key={ticket.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                <div>
+                  <p className="font-medium text-foreground">{ticket.customer_name}</p>
+                  <p className="text-sm text-muted-foreground">{formatCurrency(Number(ticket.amount_owed))}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant={ticket.priority === 'High' ? 'destructive' : 'secondary'}>
+                    {ticket.priority}
+                  </Badge>
+                  <Badge 
+                    className={
+                      ticket.status === 'Open' ? 'bg-warning/10 text-warning border-warning/20' :
+                      'bg-info/10 text-info border-info/20'
+                    }
+                  >
+                    {ticket.status}
+                  </Badge>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TopDefaultersWidget({ batchId }: { batchId: string | null }) {
+  const { data: topDefaulters, isLoading } = useTopDefaulters(batchId, 5);
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Top Defaulters</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-8 w-8 rounded-full" />
+                  <div>
+                    <Skeleton className="h-4 w-32 mb-1" />
+                    <Skeleton className="h-3 w-20" />
+                  </div>
+                </div>
+                <Skeleton className="h-4 w-20" />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Top Defaulters</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          {(!topDefaulters || topDefaulters.length === 0) ? (
+            <p className="text-muted-foreground text-sm text-center py-4">No defaulters</p>
+          ) : (
+            topDefaulters.map((customer, index) => (
+              <div key={customer.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-destructive/10 text-destructive font-semibold text-sm">
+                    {index + 1}
+                  </span>
+                  <div>
+                    <p className="font-medium text-foreground">{customer.name}</p>
+                    <p className="text-sm text-muted-foreground">{customer.nrc_number}</p>
+                  </div>
+                </div>
+                <p className="font-semibold text-destructive">
+                  {formatCurrency(Number(customer.outstanding_balance))}
+                </p>
+              </div>
+            ))
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function Dashboard() {
+  const { activeBatchId } = useUIStore();
+  const { profile, isAdmin } = useAuth();
+  const { data: batches } = useBatches();
+  const { data: profiles } = useProfiles();
+
+  const activeBatch = batches?.find(b => b.id === activeBatchId);
   const currentProfile = profiles?.find(p => p.id === profile?.id);
-  const displayName = (currentProfile as any)?.display_name || profile?.full_name?.split(' ')[0] || 'Agent';
+  const displayName = currentProfile?.display_name || profile?.full_name?.split(' ')[0] || 'Agent';
 
   return (
     <div className="space-y-6">
@@ -131,181 +386,17 @@ export default function Dashboard() {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <StatCard
-          title="Total Customers"
-          value={totalCustomers}
-          icon={Users}
-          variant="default"
-        />
-        <StatCard
-          title="Total Outstanding"
-          value={formatCurrency(totalOutstanding)}
-          icon={AlertTriangle}
-          variant="destructive"
-        />
-        <StatCard
-          title="Total Collected"
-          value={formatCurrency(totalCollected)}
-          imageSrc={xtendaLogo}
-          variant="success"
-        />
-        <StatCard
-          title="Collection Rate"
-          value={`${collectionRate.toFixed(1)}%`}
-          icon={TrendingUp}
-          variant="info"
-        />
-        <StatCard
-          title="Open Tickets"
-          value={openTickets + inProgressTickets}
-          icon={Ticket}
-          variant="warning"
-        />
-        <StatCard
-          title="Resolved Tickets"
-          value={resolvedTickets}
-          icon={CheckCircle}
-          variant="success"
-        />
-      </div>
-
-      {relevantTickets.length > 0 && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* Tickets by Status */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Tickets by Status</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[250px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={ticketsByStatus}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
-                      paddingAngle={5}
-                      dataKey="value"
-                      label={({ name, value }) => `${name}: ${value}`}
-                    >
-                      {ticketsByStatus.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Collections by Agent */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Collections by Agent</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[250px]">
-                {collectionsByAgent.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={collectionsByAgent}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis dataKey="name" className="text-xs" />
-                      <YAxis 
-                        tickFormatter={(value) => `K${(value / 1000).toFixed(0)}`}
-                        className="text-xs"
-                      />
-                      <Tooltip 
-                        formatter={(value: number) => formatCurrency(value)}
-                        labelStyle={{ color: 'hsl(var(--foreground))' }}
-                        contentStyle={{ 
-                          backgroundColor: 'hsl(var(--card))',
-                          border: '1px solid hsl(var(--border))',
-                          borderRadius: '0.5rem',
-                        }}
-                      />
-                      <Bar dataKey="collected" fill="hsl(142, 76%, 36%)" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="flex items-center justify-center h-full text-muted-foreground">
-                    No agent data available
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      {/* Each widget loads independently - no blocking */}
+      <StatsWidget batchId={activeBatchId} />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Recent Open Tickets</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {recentOpenTickets.length === 0 ? (
-                <p className="text-muted-foreground text-sm text-center py-4">No open tickets</p>
-              ) : (
-                recentOpenTickets.map((ticket) => (
-                  <div key={ticket.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                    <div>
-                      <p className="font-medium text-foreground">{ticket.customer_name}</p>
-                      <p className="text-sm text-muted-foreground">{formatCurrency(Number(ticket.amount_owed))}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={ticket.priority === 'High' ? 'destructive' : 'secondary'}>
-                        {ticket.priority}
-                      </Badge>
-                      <Badge 
-                        className={
-                          ticket.status === 'Open' ? 'bg-warning/10 text-warning border-warning/20' :
-                          'bg-info/10 text-info border-info/20'
-                        }
-                      >
-                        {ticket.status}
-                      </Badge>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        <TicketsPieChart batchId={activeBatchId} />
+        <CollectionsByAgentChart batchId={activeBatchId} />
+      </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Top Defaulters</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {topDefaulters.length === 0 ? (
-                <p className="text-muted-foreground text-sm text-center py-4">No defaulters</p>
-              ) : (
-                topDefaulters.map((customer, index) => (
-                  <div key={customer.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-destructive/10 text-destructive font-semibold text-sm">
-                        {index + 1}
-                      </span>
-                      <div>
-                        <p className="font-medium text-foreground">{customer.name}</p>
-                        <p className="text-sm text-muted-foreground">{customer.nrc_number}</p>
-                      </div>
-                    </div>
-                    <p className="font-semibold text-destructive">
-                      {formatCurrency(Number(customer.outstanding_balance))}
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <RecentTicketsWidget batchId={activeBatchId} />
+        <TopDefaultersWidget batchId={activeBatchId} />
       </div>
     </div>
   );
