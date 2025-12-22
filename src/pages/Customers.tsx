@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Search, Filter, MoreHorizontal, Eye, Ticket, Phone, UserPlus, Loader2, Trash2 } from "lucide-react";
+import { Search, Filter, MoreHorizontal, Eye, Ticket, Phone, UserPlus, Loader2, Trash2, Archive } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -101,6 +101,8 @@ export default function Customers() {
   
   // Delete batch state
   const [batchToDelete, setBatchToDelete] = useState<string | null>(null);
+  const [archiveBeforeDelete, setArchiveBeforeDelete] = useState(false);
+  const [deleteProgress, setDeleteProgress] = useState<{ stage: string; isDeleting: boolean }>({ stage: '', isDeleting: false });
 
   // Realtime subscription for customers and tickets
   useEffect(() => {
@@ -250,13 +252,44 @@ export default function Customers() {
   };
 
   const handleDeleteBatch = async () => {
-    if (batchToDelete) {
+    if (!batchToDelete) return;
+    
+    try {
+      setDeleteProgress({ stage: 'Preparing deletion...', isDeleting: true });
+      
       // If deleting active batch, clear the selection
       if (batchToDelete === activeBatchId) {
         setActiveBatch(null);
       }
-      await deleteBatch.mutateAsync(batchToDelete);
+      
+      setDeleteProgress({ stage: archiveBeforeDelete ? 'Archiving batch data...' : 'Deleting call logs...', isDeleting: true });
+      
+      const result = await deleteBatch.mutateAsync({ batchId: batchToDelete, archive: archiveBeforeDelete });
+      
+      // If archive was requested, download the JSON file
+      if (archiveBeforeDelete && result?.archive_data) {
+        setDeleteProgress({ stage: 'Downloading archive...', isDeleting: true });
+        const archiveBlob = new Blob([JSON.stringify(result.archive_data, null, 2)], { type: 'application/json' });
+        const archiveUrl = URL.createObjectURL(archiveBlob);
+        const archiveLink = document.createElement('a');
+        archiveLink.href = archiveUrl;
+        archiveLink.download = `batch-archive-${batches?.find(b => b.id === batchToDelete)?.name || 'batch'}-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(archiveLink);
+        archiveLink.click();
+        document.body.removeChild(archiveLink);
+        URL.revokeObjectURL(archiveUrl);
+      }
+      
+      toast.success('Batch deleted successfully', {
+        description: `Deleted ${result?.deleted_tickets || 0} tickets, ${result?.deleted_payments || 0} payments`
+      });
+      
       setBatchToDelete(null);
+      setArchiveBeforeDelete(false);
+    } catch (error: any) {
+      toast.error('Failed to delete batch', { description: error.message });
+    } finally {
+      setDeleteProgress({ stage: '', isDeleting: false });
     }
   };
 
@@ -521,18 +554,57 @@ export default function Customers() {
         </CardContent>
       </Card>
 
-      <AlertDialog open={!!batchToDelete} onOpenChange={(open) => !open && setBatchToDelete(null)}>
+      <AlertDialog open={!!batchToDelete} onOpenChange={(open) => { if (!open && !deleteProgress.isDeleting) { setBatchToDelete(null); setArchiveBeforeDelete(false); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Batch</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this batch? This will remove the batch and all customer associations. The customers themselves will remain in the master registry.
+            <AlertDialogDescription asChild>
+              <div className="space-y-4">
+                <p>
+                  Are you sure you want to delete this batch? This will remove the batch and all associated data (tickets, payments, call logs). The customers themselves will remain in the master registry if they exist in other batches.
+                </p>
+                
+                {deleteProgress.isDeleting ? (
+                  <div className="flex items-center gap-3 p-4 bg-muted rounded-lg">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    <div>
+                      <p className="font-medium">Deleting batch...</p>
+                      <p className="text-sm text-muted-foreground">{deleteProgress.stage}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg border">
+                    <input
+                      type="checkbox"
+                      id="archive-before-delete"
+                      checked={archiveBeforeDelete}
+                      onChange={(e) => setArchiveBeforeDelete(e.target.checked)}
+                      className="h-4 w-4 rounded border-border"
+                    />
+                    <label htmlFor="archive-before-delete" className="flex items-center gap-2 cursor-pointer">
+                      <Archive className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">Download JSON archive before deletion</span>
+                    </label>
+                  </div>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteBatch} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete Batch
+            <AlertDialogCancel disabled={deleteProgress.isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteBatch} 
+              disabled={deleteProgress.isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteProgress.isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete Batch'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
