@@ -1,5 +1,4 @@
-import { Users, AlertTriangle, Ticket, TrendingUp, CheckCircle, Loader2 } from "lucide-react";
-import xtendaLogo from "@/assests/xtenda-logo.png";
+import { Users, AlertTriangle, Ticket, TrendingUp, CheckCircle, Loader2, DollarSign } from "lucide-react";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -73,7 +72,7 @@ function StatsWidget({ batchId }: { batchId: string | null }) {
       <StatCard
         title="Total Collected"
         value={formatCurrency(stats?.total_collected || 0)}
-        imageSrc={xtendaLogo}
+        icon={DollarSign}
         variant="success"
       />
       <StatCard
