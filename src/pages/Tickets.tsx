@@ -39,10 +39,10 @@ const formatDate = (date: string) => {
 
 const getStatusBadge = (status: string) => {
   switch (status) {
-    case 'Open': return <Badge className="bg-warning/10 text-warning border-warning/20">Open</Badge>;
-    case 'In Progress': return <Badge className="bg-info/10 text-info border-info/20">In Progress</Badge>;
-    case 'Resolved': return <Badge className="bg-success/10 text-success border-success/20">Resolved</Badge>;
-    default: return <Badge variant="outline">{status}</Badge>;
+    case 'Open': return <Badge className="bg-warning/10 text-warning border-warning/20 whitespace-nowrap">Open</Badge>;
+    case 'In Progress': return <Badge className="bg-info/10 text-info border-info/20 whitespace-nowrap">In Progress</Badge>;
+    case 'Resolved': return <Badge className="bg-success/10 text-success border-success/20 whitespace-nowrap">Resolved</Badge>;
+    default: return <Badge variant="outline" className="whitespace-nowrap">{status}</Badge>;
   }
 };
 
