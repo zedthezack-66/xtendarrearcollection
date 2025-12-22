@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, FileSpreadsheet, Users, Database, FileText } from "lucide-react";
+import { Download, FileSpreadsheet, Users, Database, FileText, CalendarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -8,11 +8,16 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { useMasterCustomers, useBatches, useBatchCustomers, useTickets, usePayments, useProfiles } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/contexts/AuthContext";
+import { format, isWithinInterval, startOfDay, endOfDay, subDays } from "date-fns";
+import { cn } from "@/lib/utils";
 import jsPDF from "jspdf";
 
 type ExportFilter = 'all' | 'outstanding' | 'resolved';
+type DateRangePreset = 'all' | 'today' | 'week' | 'month' | 'custom';
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZM', {
@@ -35,6 +40,54 @@ export default function Export() {
   const [exportFilter, setExportFilter] = useState<ExportFilter>('all');
   const [selectedBatchId, setSelectedBatchId] = useState<string>('all');
   const [exportAll, setExportAll] = useState(false);
+  
+  // Date range state
+  const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>('all');
+  const [startDate, setStartDate] = useState<Date | undefined>(undefined);
+  const [endDate, setEndDate] = useState<Date | undefined>(undefined);
+
+  const handleDatePresetChange = (preset: DateRangePreset) => {
+    setDateRangePreset(preset);
+    const now = new Date();
+    switch (preset) {
+      case 'today':
+        setStartDate(startOfDay(now));
+        setEndDate(endOfDay(now));
+        break;
+      case 'week':
+        setStartDate(startOfDay(subDays(now, 7)));
+        setEndDate(endOfDay(now));
+        break;
+      case 'month':
+        setStartDate(startOfDay(subDays(now, 30)));
+        setEndDate(endOfDay(now));
+        break;
+      case 'custom':
+        // Keep current dates or set to last week as default
+        if (!startDate) setStartDate(startOfDay(subDays(now, 7)));
+        if (!endDate) setEndDate(endOfDay(now));
+        break;
+      case 'all':
+      default:
+        setStartDate(undefined);
+        setEndDate(undefined);
+        break;
+    }
+  };
+
+  const isInDateRange = (dateString: string) => {
+    if (!startDate || !endDate) return true;
+    const date = new Date(dateString);
+    return isWithinInterval(date, { start: startDate, end: endDate });
+  };
+
+  const getDateRangeLabel = () => {
+    if (dateRangePreset === 'all') return 'All Time';
+    if (startDate && endDate) {
+      return `${format(startDate, 'MMM d, yyyy')} - ${format(endDate, 'MMM d, yyyy')}`;
+    }
+    return 'Select dates';
+  };
 
   const currentAgentName = profiles.find(p => p.id === profile?.id)?.display_name || profile?.full_name || 'Agent';
 
@@ -55,6 +108,12 @@ export default function Export() {
 
   const getFilteredMasterCustomers = () => {
     let filtered = masterCustomers;
+    
+    // Apply date range filter based on created_at
+    if (startDate && endDate) {
+      filtered = filtered.filter(c => isInDateRange(c.created_at));
+    }
+    
     switch (exportFilter) {
       case 'outstanding': filtered = filtered.filter((c) => c.payment_status !== 'Fully Paid'); break;
       case 'resolved': filtered = filtered.filter((c) => c.payment_status === 'Fully Paid'); break;
@@ -71,6 +130,12 @@ export default function Export() {
 
   const getFilteredBatchCustomers = () => {
     let filtered = batchCustomers;
+    
+    // Apply date range filter based on created_at
+    if (startDate && endDate) {
+      filtered = filtered.filter(bc => isInDateRange(bc.created_at));
+    }
+    
     if (selectedBatchId !== 'all') filtered = filtered.filter(bc => bc.batch_id === selectedBatchId);
     if (exportFilter !== 'all') {
       filtered = filtered.filter(bc => {
@@ -188,6 +253,8 @@ export default function Export() {
     yPos += 5;
     doc.text(`Report Type: ${type === 'master' ? 'Master Registry' : 'Batch Export'}`, margin, yPos);
     yPos += 5;
+    doc.text(`Period: ${getDateRangeLabel()}`, margin, yPos);
+    yPos += 5;
     doc.text(`Filter: ${exportFilter === 'all' ? 'All Customers' : exportFilter === 'outstanding' ? 'Outstanding Only' : 'Fully Paid Only'}`, margin, yPos);
     yPos += 5;
     doc.text(`Total Records: ${filteredCustomers.length}`, margin, yPos);
@@ -279,7 +346,7 @@ export default function Export() {
       </div>
 
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label htmlFor="export-all" className="font-medium">Export All Tickets</Label>
@@ -288,11 +355,95 @@ export default function Export() {
             <Switch id="export-all" checked={exportAll} onCheckedChange={setExportAll} />
           </div>
           {!exportAll && (
-            <div className="mt-3 p-3 bg-muted rounded-lg text-sm text-muted-foreground">
+            <div className="p-3 bg-muted rounded-lg text-sm text-muted-foreground">
               <p className="font-medium mb-1">Worked-on tickets include:</p>
               <ul className="list-disc list-inside space-y-0.5"><li>Status changed from Open</li><li>Call notes added</li><li>Payments recorded</li></ul>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarIcon className="h-5 w-5" />
+            Date Range Filter
+          </CardTitle>
+          <CardDescription>Filter exports by record creation date</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {(['all', 'today', 'week', 'month', 'custom'] as DateRangePreset[]).map((preset) => (
+              <Button
+                key={preset}
+                variant={dateRangePreset === preset ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => handleDatePresetChange(preset)}
+              >
+                {preset === 'all' ? 'All Time' : preset === 'week' ? 'Last 7 Days' : preset === 'month' ? 'Last 30 Days' : preset.charAt(0).toUpperCase() + preset.slice(1)}
+              </Button>
+            ))}
+          </div>
+          
+          {dateRangePreset === 'custom' && (
+            <div className="flex flex-wrap gap-4">
+              <div className="space-y-2">
+                <Label>Start Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-[200px] justify-start text-left font-normal",
+                        !startDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {startDate ? format(startDate, "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={startDate}
+                      onSelect={setStartDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              
+              <div className="space-y-2">
+                <Label>End Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-[200px] justify-start text-left font-normal",
+                        !endDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {endDate ? format(endDate, "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={endDate}
+                      onSelect={setEndDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+          )}
+          
+          <div className="p-3 bg-muted/50 rounded-lg text-sm">
+            <span className="font-medium">Selected Period:</span> {getDateRangeLabel()}
+          </div>
         </CardContent>
       </Card>
 

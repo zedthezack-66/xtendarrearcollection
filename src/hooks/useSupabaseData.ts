@@ -486,14 +486,23 @@ export function useDeleteBatch() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (batchId: string) => {
+    mutationFn: async ({ batchId, archive = false }: { batchId: string; archive?: boolean }) => {
       const { data, error } = await supabase.rpc('safe_delete_batch', {
         p_batch_id: batchId,
-        p_chunk_size: 500
+        p_chunk_size: 500,
+        p_archive: archive
       });
       
       if (error) throw error;
-      return data;
+      return data as {
+        success: boolean;
+        deleted_call_logs: number;
+        deleted_payments: number;
+        deleted_tickets: number;
+        deleted_batch_customers: number;
+        deleted_master_customers: number;
+        archive_data: any | null;
+      };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['batches'] });

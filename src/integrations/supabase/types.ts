@@ -401,7 +401,7 @@ export type Database = {
         Returns: boolean
       }
       safe_delete_batch: {
-        Args: { p_batch_id: string; p_chunk_size?: number }
+        Args: { p_archive?: boolean; p_batch_id: string; p_chunk_size?: number }
         Returns: Json
       }
     }
