@@ -283,10 +283,10 @@ function RecentTicketsWidget({ batchId }: { batchId: string | null }) {
                     {ticket.priority}
                   </Badge>
                   <Badge 
-                    className={
+                    className={`whitespace-nowrap ${
                       ticket.status === 'Open' ? 'bg-warning/10 text-warning border-warning/20' :
                       'bg-info/10 text-info border-info/20'
-                    }
+                    }`}
                   >
                     {ticket.status}
                   </Badge>
