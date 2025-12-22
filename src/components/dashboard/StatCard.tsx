@@ -5,7 +5,8 @@ import { cn } from "@/lib/utils";
 interface StatCardProps {
   title: string;
   value: string | number;
-  icon: LucideIcon;
+  icon?: LucideIcon;
+  imageSrc?: string;
   trend?: {
     value: number;
     isPositive: boolean;
@@ -13,7 +14,7 @@ interface StatCardProps {
   variant?: 'default' | 'success' | 'warning' | 'destructive' | 'info';
 }
 
-export function StatCard({ title, value, icon: Icon, trend, variant = 'default' }: StatCardProps) {
+export function StatCard({ title, value, icon: Icon, imageSrc, trend, variant = 'default' }: StatCardProps) {
   const variantStyles = {
     default: 'bg-primary/10 text-primary',
     success: 'bg-success/10 text-success',
@@ -39,7 +40,11 @@ export function StatCard({ title, value, icon: Icon, trend, variant = 'default' 
             )}
           </div>
           <div className={cn("p-3 rounded-lg", variantStyles[variant])}>
-            <Icon className="h-5 w-5" />
+            {imageSrc ? (
+              <img src={imageSrc} alt={title} className="h-5 w-5 object-contain" />
+            ) : Icon ? (
+              <Icon className="h-5 w-5" />
+            ) : null}
           </div>
         </div>
       </CardContent>
