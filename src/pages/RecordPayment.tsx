@@ -58,25 +58,7 @@ export default function RecordPayment() {
         notes: formData.notes,
       });
 
-      // Update master customer totals
-      const newTotalPaid = Number(selectedCustomer!.total_paid) + amount;
-      const newOutstanding = Number(selectedCustomer!.total_owed) - newTotalPaid;
-      const newStatus = newOutstanding <= 0 ? 'Fully Paid' : newTotalPaid > 0 ? 'Partially Paid' : 'Not Paid';
-
-      await supabase.from('master_customers').update({
-        total_paid: newTotalPaid,
-        outstanding_balance: Math.max(0, newOutstanding),
-        payment_status: newStatus,
-      }).eq('id', selectedCustomer!.id);
-
-      // Update ticket if fully paid
-      if (newStatus === 'Fully Paid' && customerTicket) {
-        await supabase.from('tickets').update({
-          status: 'Resolved',
-          resolved_date: new Date().toISOString(),
-        }).eq('id', customerTicket.id);
-      }
-
+      // Balance recalculation and ticket status update is now handled in the hook
       navigate('/payments');
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });

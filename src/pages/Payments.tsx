@@ -1,15 +1,19 @@
 import { useState, useEffect } from "react";
-import { Search, Plus, Trash2, MoreHorizontal } from "lucide-react";
+import { Search, Plus, Trash2, MoreHorizontal, Pencil } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -22,7 +26,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { usePayments, useMasterCustomers, useBatches, useBatchCustomers, useDeletePayment } from "@/hooks/useSupabaseData";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { usePayments, useMasterCustomers, useBatches, useBatchCustomers, useDeletePayment, useUpdatePayment } from "@/hooks/useSupabaseData";
 import { useUIStore } from "@/store/useUIStore";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -38,6 +50,14 @@ const getPaymentMethodBadge = (method: string) => {
   }
 };
 
+interface PaymentEdit {
+  id: string;
+  amount: string;
+  payment_date: string;
+  payment_method: string;
+  notes: string;
+}
+
 export default function Payments() {
   const { data: payments = [] } = usePayments();
   const { data: masterCustomers = [] } = useMasterCustomers();
@@ -46,7 +66,9 @@ export default function Payments() {
   const { activeBatchId } = useUIStore();
   const [searchQuery, setSearchQuery] = useState("");
   const [paymentToDelete, setPaymentToDelete] = useState<string | null>(null);
+  const [paymentToEdit, setPaymentToEdit] = useState<PaymentEdit | null>(null);
   const deletePayment = useDeletePayment();
+  const updatePayment = useUpdatePayment();
   const queryClient = useQueryClient();
 
   // Realtime subscription for payments
@@ -59,6 +81,7 @@ export default function Payments() {
         () => {
           queryClient.invalidateQueries({ queryKey: ['payments'] });
           queryClient.invalidateQueries({ queryKey: ['master_customers'] });
+          queryClient.invalidateQueries({ queryKey: ['tickets'] });
         }
       )
       .subscribe();
@@ -73,6 +96,32 @@ export default function Payments() {
       await deletePayment.mutateAsync(paymentToDelete);
       setPaymentToDelete(null);
     }
+  };
+
+  const handleEditPayment = (payment: typeof payments[0]) => {
+    setPaymentToEdit({
+      id: payment.id,
+      amount: String(payment.amount),
+      payment_date: payment.payment_date.split('T')[0],
+      payment_method: payment.payment_method,
+      notes: payment.notes || '',
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!paymentToEdit) return;
+    
+    const amount = parseFloat(paymentToEdit.amount);
+    if (isNaN(amount) || amount <= 0) return;
+
+    await updatePayment.mutateAsync({
+      id: paymentToEdit.id,
+      amount,
+      payment_date: paymentToEdit.payment_date,
+      payment_method: paymentToEdit.payment_method,
+      notes: paymentToEdit.notes,
+    });
+    setPaymentToEdit(null);
   };
 
   const getDisplayPayments = () => {
@@ -147,6 +196,11 @@ export default function Payments() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleEditPayment(payment)}>
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Edit Payment
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
                               <DropdownMenuItem 
                                 className="text-destructive"
                                 onClick={() => setPaymentToDelete(payment.id)}
@@ -171,12 +225,13 @@ export default function Payments() {
         </CardContent>
       </Card>
 
+      {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!paymentToDelete} onOpenChange={() => setPaymentToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Payment</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this payment? This will revert the customer's balance. This action cannot be undone.
+              Are you sure you want to delete this payment? This will recalculate the customer's balance and may change ticket status. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -187,6 +242,74 @@ export default function Payments() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit Payment Dialog */}
+      <Dialog open={!!paymentToEdit} onOpenChange={(open) => !open && setPaymentToEdit(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Payment</DialogTitle>
+            <DialogDescription>
+              Update payment details. Balances and ticket status will be recalculated automatically.
+            </DialogDescription>
+          </DialogHeader>
+          {paymentToEdit && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-amount">Amount (ZMW)</Label>
+                <Input
+                  id="edit-amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={paymentToEdit.amount}
+                  onChange={(e) => setPaymentToEdit({ ...paymentToEdit, amount: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-date">Payment Date</Label>
+                <Input
+                  id="edit-date"
+                  type="date"
+                  value={paymentToEdit.payment_date}
+                  onChange={(e) => setPaymentToEdit({ ...paymentToEdit, payment_date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-3">
+                <Label>Payment Method</Label>
+                <RadioGroup 
+                  value={paymentToEdit.payment_method} 
+                  onValueChange={(value) => setPaymentToEdit({ ...paymentToEdit, payment_method: value })} 
+                  className="flex gap-4"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="Mobile Money" id="edit-mobile" />
+                    <Label htmlFor="edit-mobile" className="font-normal cursor-pointer">Mobile Money</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="Bank" id="edit-bank" />
+                    <Label htmlFor="edit-bank" className="font-normal cursor-pointer">Bank Transfer</Label>
+                  </div>
+                </RadioGroup>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-notes">Notes</Label>
+                <Textarea
+                  id="edit-notes"
+                  value={paymentToEdit.notes}
+                  onChange={(e) => setPaymentToEdit({ ...paymentToEdit, notes: e.target.value })}
+                  rows={3}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPaymentToEdit(null)}>Cancel</Button>
+            <Button onClick={handleSaveEdit} disabled={updatePayment.isPending}>
+              {updatePayment.isPending ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -284,6 +284,86 @@ export function usePayments() {
   });
 }
 
+// Helper to compute and update ticket status based on payments
+async function updateTicketStatusFromPayments(ticketId: string | null | undefined, masterCustomerId: string) {
+  if (!ticketId) return;
+  
+  // Get all payments for this ticket
+  const { data: ticketPayments } = await supabase
+    .from('payments')
+    .select('amount')
+    .eq('ticket_id', ticketId);
+  
+  // Get ticket amount owed
+  const { data: ticket } = await supabase
+    .from('tickets')
+    .select('amount_owed')
+    .eq('id', ticketId)
+    .single();
+  
+  if (!ticket) return;
+  
+  const totalPaid = (ticketPayments || []).reduce((sum, p) => sum + Number(p.amount), 0);
+  const amountOwed = Number(ticket.amount_owed);
+  
+  let newStatus: string;
+  let resolvedDate: string | null = null;
+  
+  if (totalPaid <= 0) {
+    newStatus = 'Open';
+  } else if (totalPaid >= amountOwed) {
+    newStatus = 'Resolved';
+    resolvedDate = new Date().toISOString();
+  } else {
+    newStatus = 'In Progress';
+  }
+  
+  await supabase
+    .from('tickets')
+    .update({ status: newStatus, resolved_date: resolvedDate })
+    .eq('id', ticketId);
+}
+
+// Helper to update master customer totals from payments
+async function updateMasterCustomerFromPayments(masterCustomerId: string) {
+  // Get all payments for this customer
+  const { data: customerPayments } = await supabase
+    .from('payments')
+    .select('amount')
+    .eq('master_customer_id', masterCustomerId);
+  
+  // Get customer total owed
+  const { data: customer } = await supabase
+    .from('master_customers')
+    .select('total_owed')
+    .eq('id', masterCustomerId)
+    .single();
+  
+  if (!customer) return;
+  
+  const totalPaid = (customerPayments || []).reduce((sum, p) => sum + Number(p.amount), 0);
+  const totalOwed = Number(customer.total_owed);
+  const outstanding = Math.max(0, totalOwed - totalPaid);
+  
+  let status: string;
+  if (totalPaid <= 0) {
+    status = 'Not Paid';
+  } else if (outstanding <= 0) {
+    status = 'Fully Paid';
+  } else {
+    status = 'Partially Paid';
+  }
+  
+  await supabase
+    .from('master_customers')
+    .update({
+      total_paid: totalPaid,
+      outstanding_balance: outstanding,
+      payment_status: status,
+    })
+    .eq('id', masterCustomerId);
+}
+
 export function useCreatePayment() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -301,15 +381,69 @@ export function useCreatePayment() {
         .single();
       
       if (error) throw error;
+      
+      // Update master customer totals and ticket status
+      await updateMasterCustomerFromPayments(payment.master_customer_id);
+      await updateTicketStatusFromPayments(payment.ticket_id, payment.master_customer_id);
+      
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['master_customers'] });
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
       toast({ title: 'Payment recorded successfully' });
     },
     onError: (error: Error) => {
       toast({ title: 'Error recording payment', description: error.message, variant: 'destructive' });
+    },
+  });
+}
+
+export function useUpdatePayment() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, ...updates }: { 
+      id: string; 
+      amount?: number; 
+      payment_date?: string; 
+      notes?: string;
+      payment_method?: string;
+    }) => {
+      // Get existing payment to know which customer/ticket to update
+      const { data: existingPayment, error: fetchError } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (fetchError) throw fetchError;
+      
+      const { data, error } = await supabase
+        .from('payments')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      // Recalculate balances
+      await updateMasterCustomerFromPayments(existingPayment.master_customer_id);
+      await updateTicketStatusFromPayments(existingPayment.ticket_id, existingPayment.master_customer_id);
+      
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['master_customers'] });
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      toast({ title: 'Payment updated successfully' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error updating payment', description: error.message, variant: 'destructive' });
     },
   });
 }
@@ -407,7 +541,7 @@ export function useDeletePayment() {
 
   return useMutation({
     mutationFn: async (paymentId: string) => {
-      // Get payment details first to update customer balance
+      // Get payment details first
       const { data: payment, error: fetchError } = await supabase
         .from('payments')
         .select('*')
@@ -424,24 +558,10 @@ export function useDeletePayment() {
       
       if (error) throw error;
 
-      // Update customer totals
+      // Recalculate balances using the helper functions
       if (payment) {
-        const { data: customer } = await supabase
-          .from('master_customers')
-          .select('total_paid, outstanding_balance')
-          .eq('id', payment.master_customer_id)
-          .single();
-        
-        if (customer) {
-          await supabase
-            .from('master_customers')
-            .update({
-              total_paid: Math.max(0, Number(customer.total_paid) - Number(payment.amount)),
-              outstanding_balance: Number(customer.outstanding_balance) + Number(payment.amount),
-              payment_status: Number(customer.total_paid) - Number(payment.amount) <= 0 ? 'Not Paid' : 'Partially Paid',
-            })
-            .eq('id', payment.master_customer_id);
-        }
+        await updateMasterCustomerFromPayments(payment.master_customer_id);
+        await updateTicketStatusFromPayments(payment.ticket_id, payment.master_customer_id);
       }
 
       return payment;
@@ -449,6 +569,7 @@ export function useDeletePayment() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['master_customers'] });
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
       toast({ title: 'Payment deleted successfully' });
     },
     onError: (error: Error) => {
