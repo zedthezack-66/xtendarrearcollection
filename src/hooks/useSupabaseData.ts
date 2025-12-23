@@ -584,7 +584,7 @@ export function useDeleteTicket() {
 
   return useMutation({
     mutationFn: async (ticketId: string) => {
-      // Get ticket details first for batch_customer cleanup
+      // Get ticket details first for cleanup
       const { data: ticket, error: fetchError } = await supabase
         .from('tickets')
         .select('batch_id, master_customer_id')
@@ -593,7 +593,7 @@ export function useDeleteTicket() {
       
       if (fetchError) throw fetchError;
       
-      // Delete related payments first (cascade)
+      // HARD DELETE: Delete related payments first
       const { error: paymentsError } = await supabase
         .from('payments')
         .delete()
@@ -617,7 +617,7 @@ export function useDeleteTicket() {
       
       if (error) throw error;
       
-      // Delete related batch_customer (NOT master_customer)
+      // Delete related batch_customer
       if (ticket?.batch_id && ticket?.master_customer_id) {
         const { error: batchCustError } = await supabase
           .from('batch_customers')
@@ -630,9 +630,41 @@ export function useDeleteTicket() {
         }
       }
       
-      // Update master customer totals after deleting payments
+      // HARD DELETE: Delete master_customer (and any remaining payments/call_logs linked to it)
       if (ticket?.master_customer_id) {
-        await updateMasterCustomerFromPayments(ticket.master_customer_id);
+        // Delete any remaining payments linked to this master customer
+        await supabase
+          .from('payments')
+          .delete()
+          .eq('master_customer_id', ticket.master_customer_id);
+        
+        // Delete any remaining call_logs linked to this master customer
+        await supabase
+          .from('call_logs')
+          .delete()
+          .eq('master_customer_id', ticket.master_customer_id);
+        
+        // Delete any remaining batch_customers linked to this master customer
+        await supabase
+          .from('batch_customers')
+          .delete()
+          .eq('master_customer_id', ticket.master_customer_id);
+        
+        // Delete any remaining tickets linked to this master customer
+        await supabase
+          .from('tickets')
+          .delete()
+          .eq('master_customer_id', ticket.master_customer_id);
+        
+        // Finally delete the master_customer
+        const { error: masterCustError } = await supabase
+          .from('master_customers')
+          .delete()
+          .eq('id', ticket.master_customer_id);
+        
+        if (masterCustError) {
+          console.warn('Could not delete master_customer:', masterCustError.message);
+        }
       }
       
       return ticket;
@@ -643,7 +675,7 @@ export function useDeleteTicket() {
       queryClient.invalidateQueries({ queryKey: ['call_logs'] });
       queryClient.invalidateQueries({ queryKey: ['batch_customers'] });
       queryClient.invalidateQueries({ queryKey: ['master_customers'] });
-      toast({ title: 'Ticket deleted successfully' });
+      toast({ title: 'Ticket and all related data deleted permanently' });
     },
     onError: (error: Error) => {
       toast({ title: 'Error deleting ticket', description: error.message, variant: 'destructive' });

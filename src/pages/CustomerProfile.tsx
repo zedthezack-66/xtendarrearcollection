@@ -69,6 +69,12 @@ export default function CustomerProfile() {
     })
     .filter(Boolean);
 
+  // Compute financial summary from tickets + payments (no stored balances)
+  const amountOwed = customerTicket ? Number(customerTicket.amount_owed) : 0;
+  const totalPaid = customerPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+  const remainingBalance = Math.max(0, amountOwed - totalPaid);
+  const ticketStatus = customerTicket?.status || 'No Ticket';
+
   const handleSaveNotes = async () => {
     try {
       await updateCustomer.mutateAsync({ id: customer.id, call_notes: callNotes });
@@ -212,10 +218,10 @@ export default function CustomerProfile() {
           <Card>
             <CardHeader><CardTitle className="text-lg">Financial Summary</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between"><span className="text-muted-foreground">Status</span>{getStatusBadge(customer.payment_status)}</div>
-              <div className="flex items-center justify-between"><span className="text-muted-foreground">Total Owed</span><span className="font-bold text-lg text-destructive">{formatCurrency(Number(customer.total_owed))}</span></div>
-              <div className="flex items-center justify-between"><span className="text-muted-foreground">Total Paid</span><span className="font-bold text-lg text-success">{formatCurrency(Number(customer.total_paid))}</span></div>
-              <div className="flex items-center justify-between border-t pt-4"><span className="text-muted-foreground">Outstanding Balance</span><span className={`font-bold text-lg ${Number(customer.outstanding_balance) > 0 ? 'text-destructive' : 'text-success'}`}>{formatCurrency(Number(customer.outstanding_balance))}</span></div>
+              <div className="flex items-center justify-between"><span className="text-muted-foreground">Ticket Status</span>{getTicketStatusBadge(ticketStatus)}</div>
+              <div className="flex items-center justify-between"><span className="text-muted-foreground">Amount Owed</span><span className="font-bold text-lg text-destructive">{formatCurrency(amountOwed)}</span></div>
+              <div className="flex items-center justify-between"><span className="text-muted-foreground">Total Paid</span><span className="font-bold text-lg text-success">{formatCurrency(totalPaid)}</span></div>
+              <div className="flex items-center justify-between border-t pt-4"><span className="text-muted-foreground">Remaining Balance</span><span className={`font-bold text-lg ${remainingBalance > 0 ? 'text-destructive' : 'text-success'}`}>{formatCurrency(remainingBalance)}</span></div>
             </CardContent>
           </Card>
 

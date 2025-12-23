@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,8 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
-import { useMasterCustomers, useTickets, useCreatePayment } from "@/hooks/useSupabaseData";
-import { supabase } from "@/integrations/supabase/client";
+import { useMasterCustomers, useTickets, usePayments, useCreatePayment, useUpdateTicket } from "@/hooks/useSupabaseData";
 
 export default function RecordPayment() {
   const navigate = useNavigate();
@@ -18,7 +17,9 @@ export default function RecordPayment() {
   const { toast } = useToast();
   const { data: masterCustomers = [] } = useMasterCustomers();
   const { data: tickets = [] } = useTickets();
+  const { data: payments = [] } = usePayments();
   const createPayment = useCreatePayment();
+  const updateTicket = useUpdateTicket();
   
   const preselectedCustomerId = searchParams.get('customerId') || '';
   
@@ -28,10 +29,33 @@ export default function RecordPayment() {
     paymentMethod: 'Mobile Money',
     paymentDate: new Date().toISOString().split('T')[0],
     notes: '',
+    ticketStatus: '' as '' | 'In Progress' | 'Resolved',
   });
 
   const selectedCustomer = masterCustomers.find(c => c.id === formData.customerId);
   const customerTicket = selectedCustomer ? tickets.find(t => t.master_customer_id === selectedCustomer.id) : null;
+  
+  // Calculate existing payments for this customer
+  const existingPayments = selectedCustomer 
+    ? payments.filter(p => p.master_customer_id === selectedCustomer.id)
+    : [];
+  const existingTotalPaid = existingPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+  
+  // Auto-determine status based on payment amount
+  const amountOwed = customerTicket ? Number(customerTicket.amount_owed) : 0;
+  const paymentAmount = parseFloat(formData.amount) || 0;
+  const newTotalPaid = existingTotalPaid + paymentAmount;
+  
+  // Auto-set ticket status when amount changes
+  useEffect(() => {
+    if (paymentAmount > 0 && amountOwed > 0) {
+      if (newTotalPaid >= amountOwed) {
+        setFormData(prev => ({ ...prev, ticketStatus: 'Resolved' }));
+      } else {
+        setFormData(prev => ({ ...prev, ticketStatus: 'In Progress' }));
+      }
+    }
+  }, [paymentAmount, amountOwed, newTotalPaid]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,7 +82,15 @@ export default function RecordPayment() {
         notes: formData.notes,
       });
 
-      // Balance recalculation and ticket status update is now handled in the hook
+      // If user selected a specific status, apply it immediately
+      if (customerTicket && formData.ticketStatus) {
+        await updateTicket.mutateAsync({
+          id: customerTicket.id,
+          status: formData.ticketStatus,
+          resolved_date: formData.ticketStatus === 'Resolved' ? new Date().toISOString() : null,
+        });
+      }
+
       navigate('/payments');
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -99,20 +131,28 @@ export default function RecordPayment() {
               </Select>
             </div>
 
-            {selectedCustomer && (
+            {selectedCustomer && customerTicket && (
               <div className="p-4 bg-muted rounded-lg space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Total Owed:</span>
-                  <span className="font-medium text-destructive">{formatCurrency(Number(selectedCustomer.total_owed))}</span>
+                  <span className="text-muted-foreground">Amount Owed:</span>
+                  <span className="font-medium text-destructive">{formatCurrency(amountOwed)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Total Paid:</span>
-                  <span className="font-medium text-success">{formatCurrency(Number(selectedCustomer.total_paid))}</span>
+                  <span className="text-muted-foreground">Already Paid:</span>
+                  <span className="font-medium text-success">{formatCurrency(existingTotalPaid)}</span>
                 </div>
                 <div className="flex justify-between text-sm border-t pt-2">
-                  <span className="text-muted-foreground">Outstanding:</span>
-                  <span className="font-bold">{formatCurrency(Number(selectedCustomer.outstanding_balance))}</span>
+                  <span className="text-muted-foreground">Remaining:</span>
+                  <span className="font-bold">{formatCurrency(Math.max(0, amountOwed - existingTotalPaid))}</span>
                 </div>
+                {paymentAmount > 0 && (
+                  <div className="flex justify-between text-sm border-t pt-2">
+                    <span className="text-muted-foreground">After This Payment:</span>
+                    <span className={`font-bold ${newTotalPaid >= amountOwed ? 'text-success' : 'text-warning'}`}>
+                      {newTotalPaid >= amountOwed ? 'Fully Paid' : formatCurrency(amountOwed - newTotalPaid) + ' remaining'}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -145,6 +185,31 @@ export default function RecordPayment() {
               <Label htmlFor="notes">Notes (optional)</Label>
               <Textarea id="notes" placeholder="Enter any notes about this payment..." value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} rows={3} />
             </div>
+
+            {customerTicket && paymentAmount > 0 && (
+              <div className="space-y-3 p-4 bg-muted/50 rounded-lg border">
+                <Label>Ticket Status After Payment</Label>
+                <RadioGroup 
+                  value={formData.ticketStatus} 
+                  onValueChange={(value) => setFormData({ ...formData, ticketStatus: value as 'In Progress' | 'Resolved' })} 
+                  className="flex gap-4"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="In Progress" id="inprogress" />
+                    <Label htmlFor="inprogress" className="font-normal cursor-pointer">In Progress</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="Resolved" id="resolved" />
+                    <Label htmlFor="resolved" className="font-normal cursor-pointer">Resolved</Label>
+                  </div>
+                </RadioGroup>
+                <p className="text-xs text-muted-foreground">
+                  {newTotalPaid >= amountOwed 
+                    ? 'Full payment detected - auto-selecting Resolved' 
+                    : 'Partial payment detected - auto-selecting In Progress'}
+                </p>
+              </div>
+            )}
 
             <div className="flex gap-4">
               <Button type="submit" disabled={createPayment.isPending}>Record Payment</Button>
