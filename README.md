@@ -1,73 +1,189 @@
-# Welcome to your Lovable project
+Loan Collections & Arrears Management System
 
-## Project info
+A modern web application for managing loan arrears, customer follow-ups, payments, and agent performance.
+Built to replace manual Excel-based tracking with a centralized, role-based system optimized for free-tier infrastructure.
 
-**URL**: https://lovable.dev/projects/285b78b9-5447-4ca1-8e81-bf1366321b13
+📌 Overview
 
-## How can I edit this code?
+The system enables arrears portfolios to be uploaded via CSV, automatically generates follow-up tickets, tracks payments and call activity, and provides clear visibility into agent performance.
 
-There are several ways of editing your application.
+First registered user → Admin
 
-**Use Lovable**
+Subsequent users → Agents
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/285b78b9-5447-4ca1-8e81-bf1366321b13) and start prompting.
+Agents see only their assigned clients
 
-Changes made via Lovable will be committed automatically to this repo.
+Admin sees full system performance
 
-**Use your preferred IDE**
+Designed for small to mid-sized arrears teams operating under cost constraints.
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+✨ Key Features
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+Role-based access control (Admin / Agent)
 
-Follow these steps:
+Batch-based CSV arrears uploads
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+Automatic ticket creation
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+Centralized customer master registry
 
-# Step 3: Install the necessary dependencies.
-npm i
+Payment tracking with computed balances
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+Call notes and ticket status history
+
+Agent-level dashboards and analytics
+
+Safe, chunked batch deletion
+
+CSV & PDF reporting
+
+🎯 Target Scale (Free Tier)
+
+Optimized for:
+
+~2,500 customers
+
+~2,000–2,500 tickets
+
+7 agents
+
+7 active batches (1 per agent)
+
+Scaling beyond this requires paid infrastructure.
+
+🧱 Tech Stack
+Frontend
+
+React
+
+TypeScript
+
+Vite
+
+Tailwind CSS
+
+shadcn-ui
+
+Backend
+
+Supabase (PostgreSQL, Auth, Storage)
+
+Row Level Security (RLS)
+
+Hosting
+
+Lovable (development & publishing)
+
+Vercel (free tier)
+
+🗂️ Project Structure
+src/
+ ├─ components/        # Reusable UI components
+ ├─ pages/             # Application pages
+ ├─ hooks/             # Custom hooks
+ ├─ contexts/          # Auth & global context
+ ├─ store/             # Client-side state
+ ├─ integrations/      # Supabase client & types
+ ├─ lib/               # Utilities
+ └─ types/             # Shared TypeScript types
+
+
+Database migrations:
+
+supabase/
+ └─ migrations/
+
+📥 CSV Import Rules
+Required Columns
+
+customer_name
+
+nrc
+
+mobile
+
+amount_owed
+
+assigned_agent
+
+Import Behavior
+
+Chunked (≤500 rows)
+
+Customers matched by NRC
+
+Agent name must match an existing profile
+
+Invalid rows rejected with clear errors
+
+Existing tickets, payments, and notes are preserved
+
+🔐 Roles & Access Control
+Admin
+
+View all customers, batches, tickets, and payments
+
+Access per-agent analytics
+
+Delete batches
+
+Reset database
+
+Agent
+
+View only assigned batches and customers
+
+Manage tickets, payments, and call notes
+
+⚠️ All permissions are enforced via Supabase RLS, not frontend filtering.
+
+⚡ Performance & Stability
+
+Pagination enforced on all lists
+
+Indexed queries only
+
+KPIs computed via SQL views / RPCs
+
+No full-table loads in the frontend
+
+Safe concurrent multi-agent usage
+
+🧪 Development
+Local Setup
+npm install
 npm run dev
-```
 
-**Edit a file directly in GitHub**
+Editing via Lovable
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+Open the project in Lovable
 
-**Use GitHub Codespaces**
+Prompt changes directly
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+All updates auto-commit to the repository
 
-## What technologies are used for this project?
+🚧 Current Status
 
-This project is built with:
+Functional prototype running locally
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+Core workflows implemented
 
-## How can I deploy this project?
+Multi-user support partially resolved
 
-Simply open [Lovable](https://lovable.dev/projects/285b78b9-5447-4ca1-8e81-bf1366321b13) and click on Share -> Publish.
+Optimized for free-tier constraints
 
-## Can I connect a custom domain to my Lovable project?
+🛣️ Next Steps (MVP)
 
-Yes, you can!
+Finalize multi-agent concurrency handling
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+Complete automated PDF/CSV reporting
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+Prepare production deployment
+
+Validate performance with full batch loads
+
+Plan scaling strategy beyond free tier
+
+🎯 Purpose
+
+To replace manual Excel-based arrears tracking with a reliable, auditable, and efficient system that improves agent productivity and management visibility—without increasing operational costs.
