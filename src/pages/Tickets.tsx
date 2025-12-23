@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Search, MoreHorizontal, Eye, CheckCircle, PlayCircle, Loader2, Phone, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Input } from "@/components/ui/input";
@@ -24,7 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useTickets, useUpdateTicket, useProfiles, useDeleteTicket } from "@/hooks/useSupabaseData";
+import { useTickets, useUpdateTicket, useProfiles, useDeleteTicket, usePayments } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -58,6 +58,7 @@ const getPriorityBadge = (priority: string) => {
 export default function Tickets() {
   const { data: tickets, isLoading } = useTickets();
   const { data: profiles } = useProfiles();
+  const { data: payments = [] } = usePayments();
   const { profile } = useAuth();
   const updateTicket = useUpdateTicket();
   const deleteTicket = useDeleteTicket();
@@ -81,6 +82,17 @@ export default function Tickets() {
       supabase.removeChannel(channel);
     };
   }, [queryClient]);
+
+  // Compute payments per ticket
+  const paymentsByTicket = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const p of payments) {
+      if (p.ticket_id) {
+        map[p.ticket_id] = (map[p.ticket_id] || 0) + Number(p.amount);
+      }
+    }
+    return map;
+  }, [payments]);
 
   if (isLoading) {
     return <div className="flex items-center justify-center min-h-[400px]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -167,7 +179,9 @@ export default function Tickets() {
                   <TableHead>Customer</TableHead>
                   <TableHead>NRC</TableHead>
                   <TableHead>Mobile</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="text-right">Amount Owed</TableHead>
+                  <TableHead className="text-right">Total Paid</TableHead>
+                  <TableHead className="text-right">Balance</TableHead>
                   <TableHead>Priority</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Agent</TableHead>
@@ -177,39 +191,49 @@ export default function Tickets() {
               </TableHeader>
               <TableBody>
                 {filteredTickets.length === 0 ? (
-                  <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No tickets found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={12} className="text-center py-8 text-muted-foreground">No tickets found</TableCell></TableRow>
                 ) : (
-                  filteredTickets.map((ticket) => (
-                    <TableRow key={ticket.id}>
-                      <TableCell className="font-mono text-sm">#{ticket.id.slice(0, 8)}</TableCell>
-                      <TableCell className="font-medium">{ticket.customer_name}</TableCell>
-                      <TableCell className="font-mono text-sm">{ticket.nrc_number}</TableCell>
-                      <TableCell className="font-mono text-sm">{ticket.mobile_number || '-'}</TableCell>
-                      <TableCell className="text-right font-semibold text-destructive">{formatCurrency(Number(ticket.amount_owed))}</TableCell>
-                      <TableCell>{getPriorityBadge(ticket.priority)}</TableCell>
-                      <TableCell>{getStatusBadge(ticket.status)}</TableCell>
-                      <TableCell className="text-muted-foreground">{getAgentName(ticket.assigned_agent)}</TableCell>
-                      <TableCell className="text-muted-foreground">{formatDate(ticket.created_at)}</TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem asChild><Link to={`/customers/${ticket.master_customer_id}`}><Eye className="h-4 w-4 mr-2" />View Customer</Link></DropdownMenuItem>
-                            {ticket.mobile_number && <DropdownMenuItem asChild><a href={`tel:${ticket.mobile_number}`}><Phone className="h-4 w-4 mr-2" />Call</a></DropdownMenuItem>}
-                            {ticket.status === 'Open' && <DropdownMenuItem onClick={() => updateTicket.mutate({ id: ticket.id, status: 'In Progress' })}><PlayCircle className="h-4 w-4 mr-2" />Mark In Progress</DropdownMenuItem>}
-                            {ticket.status !== 'Resolved' && <DropdownMenuItem onClick={() => updateTicket.mutate({ id: ticket.id, status: 'Resolved', resolved_date: new Date().toISOString() })}><CheckCircle className="h-4 w-4 mr-2" />Mark Resolved</DropdownMenuItem>}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem 
-                              className="text-destructive focus:text-destructive"
-                              onClick={() => setTicketToDelete(ticket.id)}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />Delete Ticket
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  filteredTickets.map((ticket) => {
+                    const totalPaid = paymentsByTicket[ticket.id] || 0;
+                    const amountOwed = Number(ticket.amount_owed);
+                    const balance = Math.max(0, amountOwed - totalPaid);
+                    
+                    return (
+                      <TableRow key={ticket.id}>
+                        <TableCell className="font-mono text-sm">#{ticket.id.slice(0, 8)}</TableCell>
+                        <TableCell className="font-medium">{ticket.customer_name}</TableCell>
+                        <TableCell className="font-mono text-sm">{ticket.nrc_number}</TableCell>
+                        <TableCell className="font-mono text-sm">{ticket.mobile_number || '-'}</TableCell>
+                        <TableCell className="text-right font-semibold text-destructive">{formatCurrency(amountOwed)}</TableCell>
+                        <TableCell className="text-right font-semibold text-success">{formatCurrency(totalPaid)}</TableCell>
+                        <TableCell className={`text-right font-semibold ${balance > 0 ? 'text-destructive' : 'text-success'}`}>
+                          {formatCurrency(balance)}
+                        </TableCell>
+                        <TableCell>{getPriorityBadge(ticket.priority)}</TableCell>
+                        <TableCell>{getStatusBadge(ticket.status)}</TableCell>
+                        <TableCell className="text-muted-foreground">{getAgentName(ticket.assigned_agent)}</TableCell>
+                        <TableCell className="text-muted-foreground">{formatDate(ticket.created_at)}</TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem asChild><Link to={`/customers/${ticket.master_customer_id}`}><Eye className="h-4 w-4 mr-2" />View Customer</Link></DropdownMenuItem>
+                              {ticket.mobile_number && <DropdownMenuItem asChild><a href={`tel:${ticket.mobile_number}`}><Phone className="h-4 w-4 mr-2" />Call</a></DropdownMenuItem>}
+                              {ticket.status === 'Open' && <DropdownMenuItem onClick={() => updateTicket.mutate({ id: ticket.id, status: 'In Progress' })}><PlayCircle className="h-4 w-4 mr-2" />Mark In Progress</DropdownMenuItem>}
+                              {ticket.status !== 'Resolved' && <DropdownMenuItem onClick={() => updateTicket.mutate({ id: ticket.id, status: 'Resolved', resolved_date: new Date().toISOString() })}><CheckCircle className="h-4 w-4 mr-2" />Mark Resolved</DropdownMenuItem>}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => setTicketToDelete(ticket.id)}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />Delete Ticket
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
