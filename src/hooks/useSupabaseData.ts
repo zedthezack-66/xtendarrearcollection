@@ -584,15 +584,65 @@ export function useDeleteTicket() {
 
   return useMutation({
     mutationFn: async (ticketId: string) => {
+      // Get ticket details first for batch_customer cleanup
+      const { data: ticket, error: fetchError } = await supabase
+        .from('tickets')
+        .select('batch_id, master_customer_id')
+        .eq('id', ticketId)
+        .single();
+      
+      if (fetchError) throw fetchError;
+      
+      // Delete related payments first (cascade)
+      const { error: paymentsError } = await supabase
+        .from('payments')
+        .delete()
+        .eq('ticket_id', ticketId);
+      
+      if (paymentsError) throw paymentsError;
+      
+      // Delete related call_logs
+      const { error: callLogsError } = await supabase
+        .from('call_logs')
+        .delete()
+        .eq('ticket_id', ticketId);
+      
+      if (callLogsError) throw callLogsError;
+      
+      // Delete the ticket
       const { error } = await supabase
         .from('tickets')
         .delete()
         .eq('id', ticketId);
       
       if (error) throw error;
+      
+      // Delete related batch_customer (NOT master_customer)
+      if (ticket?.batch_id && ticket?.master_customer_id) {
+        const { error: batchCustError } = await supabase
+          .from('batch_customers')
+          .delete()
+          .eq('batch_id', ticket.batch_id)
+          .eq('master_customer_id', ticket.master_customer_id);
+        
+        if (batchCustError) {
+          console.warn('Could not delete batch_customer:', batchCustError.message);
+        }
+      }
+      
+      // Update master customer totals after deleting payments
+      if (ticket?.master_customer_id) {
+        await updateMasterCustomerFromPayments(ticket.master_customer_id);
+      }
+      
+      return ticket;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['call_logs'] });
+      queryClient.invalidateQueries({ queryKey: ['batch_customers'] });
+      queryClient.invalidateQueries({ queryKey: ['master_customers'] });
       toast({ title: 'Ticket deleted successfully' });
     },
     onError: (error: Error) => {

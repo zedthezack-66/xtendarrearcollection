@@ -41,6 +41,7 @@ interface CSVRow {
 }
 
 interface ParsedRow {
+  rowNumber: number;
   name: string;
   nrcNumber: string;
   amountOwed: number;
@@ -50,6 +51,8 @@ interface ParsedRow {
   isValid: boolean;
   errors: string[];
   existsInMaster: boolean;
+  isDuplicateNrc: boolean;
+  isDuplicateMobile: boolean;
 }
 
 const SAMPLE_CSV = `Customer Name,NRC Number,Amount Owed,Mobile Number,Assigned Agent
@@ -87,8 +90,38 @@ export default function CSVImport() {
   );
 
   const processRows = (data: CSVRow[]) => {
-    const seenNrcNumbers = new Set<string>();
-    const parsed: ParsedRow[] = data.map((row) => {
+    // First pass: collect all NRCs and mobile numbers to detect duplicates
+    const nrcOccurrences = new Map<string, number[]>();
+    const mobileOccurrences = new Map<string, number[]>();
+    
+    data.forEach((row, index) => {
+      const nrc = row['NRC Number']?.toString().trim() || '';
+      const mobile = row['Mobile Number']?.toString().trim() || '';
+      
+      if (nrc) {
+        if (!nrcOccurrences.has(nrc)) nrcOccurrences.set(nrc, []);
+        nrcOccurrences.get(nrc)!.push(index + 1);
+      }
+      if (mobile) {
+        if (!mobileOccurrences.has(mobile)) mobileOccurrences.set(mobile, []);
+        mobileOccurrences.get(mobile)!.push(index + 1);
+      }
+    });
+    
+    // Find duplicates
+    const duplicateNrcs = new Set<string>();
+    const duplicateMobiles = new Set<string>();
+    
+    nrcOccurrences.forEach((rows, nrc) => {
+      if (rows.length > 1) duplicateNrcs.add(nrc);
+    });
+    mobileOccurrences.forEach((rows, mobile) => {
+      if (rows.length > 1) duplicateMobiles.add(mobile);
+    });
+    
+    // Second pass: build parsed rows with validation
+    const parsed: ParsedRow[] = data.map((row, index) => {
+      const rowNumber = index + 1;
       const name = row['Customer Name']?.toString().trim() || '';
       const nrcNumber = row['NRC Number']?.toString().trim() || '';
       const amountOwedStr = row['Amount Owed']?.toString().trim() || '0';
@@ -97,6 +130,8 @@ export default function CSVImport() {
       const assignedAgent = row['Assigned Agent']?.toString().trim() || '';
       
       const errors: string[] = [];
+      
+      // Required field validation
       if (!name) errors.push('Customer Name is required');
       if (!nrcNumber) errors.push('NRC Number is required');
       if (isNaN(amountOwed) || amountOwed <= 0) errors.push('Valid Amount Owed is required');
@@ -105,16 +140,27 @@ export default function CSVImport() {
       // Map agent display_name to ID
       const assignedAgentId = assignedAgent ? agentDisplayNameMap.get(assignedAgent.toLowerCase()) || null : null;
       if (assignedAgent && !assignedAgentId) {
-        errors.push(`Agent "${assignedAgent}" not found`);
+        errors.push(`Agent "${assignedAgent}" not found in system`);
       }
       
-      const isDuplicateInFile = seenNrcNumbers.has(nrcNumber);
+      // Duplicate detection
+      const isDuplicateNrc = duplicateNrcs.has(nrcNumber);
+      const isDuplicateMobile = mobileNumber && duplicateMobiles.has(mobileNumber);
+      
+      if (isDuplicateNrc) {
+        const otherRows = nrcOccurrences.get(nrcNumber)!.filter(r => r !== rowNumber);
+        errors.push(`Duplicate NRC in file (also in row${otherRows.length > 1 ? 's' : ''} ${otherRows.join(', ')})`);
+      }
+      
+      if (isDuplicateMobile) {
+        const otherRows = mobileOccurrences.get(mobileNumber)!.filter(r => r !== rowNumber);
+        errors.push(`Duplicate mobile in file (also in row${otherRows.length > 1 ? 's' : ''} ${otherRows.join(', ')})`);
+      }
+      
       const existsInMaster = existingNrcNumbers.has(nrcNumber);
       
-      if (nrcNumber) seenNrcNumbers.add(nrcNumber);
-      if (isDuplicateInFile) errors.push('Duplicate NRC in file');
-      
       return {
+        rowNumber,
         name,
         nrcNumber,
         amountOwed: isNaN(amountOwed) ? 0 : amountOwed,
@@ -124,6 +170,8 @@ export default function CSVImport() {
         isValid: errors.length === 0,
         errors,
         existsInMaster,
+        isDuplicateNrc,
+        isDuplicateMobile: !!isDuplicateMobile,
       };
     });
     setParsedData(parsed);
@@ -478,6 +526,9 @@ export default function CSVImport() {
   const invalidCount = parsedData.filter((r) => !r.isValid).length;
   const existingCount = parsedData.filter((r) => r.existsInMaster && r.isValid).length;
   const rejectedAgentCount = parsedData.filter((r) => r.errors.some(e => e.includes('not found'))).length;
+  const duplicateNrcCount = parsedData.filter((r) => r.isDuplicateNrc).length;
+  const duplicateMobileCount = parsedData.filter((r) => r.isDuplicateMobile).length;
+  const hasBlockingErrors = invalidCount > 0;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW', minimumFractionDigits: 0 }).format(amount);
@@ -613,25 +664,34 @@ export default function CSVImport() {
 
       {file && parsedData.length > 0 && (
         <>
-          <div className="grid gap-4 md:grid-cols-5">
-            <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-muted"><FileText className="h-5 w-5 text-muted-foreground" /></div><div><p className="text-sm text-muted-foreground">File</p><p className="font-medium truncate max-w-[120px]">{file.name}</p></div></div></CardContent></Card>
-            <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-success/10"><Check className="h-5 w-5 text-success" /></div><div><p className="text-sm text-muted-foreground">Valid Rows</p><p className="font-medium text-success">{validCount}</p></div></div></CardContent></Card>
-            <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-destructive/10"><X className="h-5 w-5 text-destructive" /></div><div><p className="text-sm text-muted-foreground">Invalid Rows</p><p className="font-medium text-destructive">{invalidCount}</p></div></div></CardContent></Card>
-            <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-info/10"><AlertCircle className="h-5 w-5 text-info" /></div><div><p className="text-sm text-muted-foreground">Existing NRCs</p><p className="font-medium text-info">{existingCount}</p></div></div></CardContent></Card>
-            <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-warning/10"><AlertCircle className="h-5 w-5 text-warning" /></div><div><p className="text-sm text-muted-foreground">Agent Not Found</p><p className="font-medium text-warning">{rejectedAgentCount}</p></div></div></CardContent></Card>
-          </div>
-
-          {rejectedAgentCount > 0 && (
-            <Alert variant="destructive">
+          {/* Blocking Error Banner */}
+          {hasBlockingErrors && (
+            <Alert variant="destructive" className="border-2">
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Agent Mapping Errors</AlertTitle>
+              <AlertTitle className="text-lg">Upload Blocked - {invalidCount} Error(s) Found</AlertTitle>
               <AlertDescription>
-                {rejectedAgentCount} row(s) have invalid agent names. Ensure agents have set their display name in Settings and the CSV uses the exact display name.
+                <p className="mb-2">Fix the following issues before importing:</p>
+                <ul className="list-disc pl-4 space-y-1">
+                  {duplicateNrcCount > 0 && <li><strong>{duplicateNrcCount}</strong> duplicate NRC number(s) in file</li>}
+                  {duplicateMobileCount > 0 && <li><strong>{duplicateMobileCount}</strong> duplicate mobile number(s) in file</li>}
+                  {rejectedAgentCount > 0 && <li><strong>{rejectedAgentCount}</strong> row(s) with invalid agent names</li>}
+                  {parsedData.filter(r => r.errors.some(e => e.includes('required'))).length > 0 && 
+                    <li><strong>{parsedData.filter(r => r.errors.some(e => e.includes('required'))).length}</strong> row(s) with missing required fields</li>}
+                </ul>
               </AlertDescription>
             </Alert>
           )}
 
-          {existingCount > 0 && (
+          <div className="grid gap-4 md:grid-cols-6">
+            <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-muted"><FileText className="h-5 w-5 text-muted-foreground" /></div><div><p className="text-sm text-muted-foreground">File</p><p className="font-medium truncate max-w-[100px]">{file.name}</p></div></div></CardContent></Card>
+            <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-success/10"><Check className="h-5 w-5 text-success" /></div><div><p className="text-sm text-muted-foreground">Valid Rows</p><p className="font-medium text-success">{validCount}</p></div></div></CardContent></Card>
+            <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-destructive/10"><X className="h-5 w-5 text-destructive" /></div><div><p className="text-sm text-muted-foreground">Invalid Rows</p><p className="font-medium text-destructive">{invalidCount}</p></div></div></CardContent></Card>
+            <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-warning/10"><AlertCircle className="h-5 w-5 text-warning" /></div><div><p className="text-sm text-muted-foreground">Duplicate NRC</p><p className="font-medium text-warning">{duplicateNrcCount}</p></div></div></CardContent></Card>
+            <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-warning/10"><AlertCircle className="h-5 w-5 text-warning" /></div><div><p className="text-sm text-muted-foreground">Duplicate Mobile</p><p className="font-medium text-warning">{duplicateMobileCount}</p></div></div></CardContent></Card>
+            <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-info/10"><AlertCircle className="h-5 w-5 text-info" /></div><div><p className="text-sm text-muted-foreground">Existing NRCs</p><p className="font-medium text-info">{existingCount}</p></div></div></CardContent></Card>
+          </div>
+
+          {existingCount > 0 && !hasBlockingErrors && (
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>Existing Customers Found</AlertTitle>
@@ -649,39 +709,55 @@ export default function CSVImport() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-[60px]">Row</TableHead>
                       <TableHead className="w-[80px]">Status</TableHead>
                       <TableHead>Customer Name</TableHead>
                       <TableHead>NRC Number</TableHead>
                       <TableHead>Mobile Number</TableHead>
                       <TableHead className="text-right">Amount Owed</TableHead>
                       <TableHead>Assigned Agent</TableHead>
+                      <TableHead>Errors</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {parsedData.map((row, index) => (
                       <TableRow key={index} className={!row.isValid ? 'bg-destructive/5' : row.existsInMaster ? 'bg-info/5' : ''}>
+                        <TableCell className="font-mono text-sm text-muted-foreground">{row.rowNumber}</TableCell>
                         <TableCell>
                           {row.isValid ? (
                             row.existsInMaster ? (
-                              <Badge variant="outline" className="bg-info/10 text-info">Exists</Badge>
+                              <Badge variant="outline" className="bg-info/10 text-info whitespace-nowrap">Exists</Badge>
                             ) : (
-                              <Badge variant="outline" className="bg-success/10 text-success">New</Badge>
+                              <Badge variant="outline" className="bg-success/10 text-success whitespace-nowrap">New</Badge>
                             )
                           ) : (
-                            <Badge variant="destructive">Invalid</Badge>
+                            <Badge variant="destructive" className="whitespace-nowrap">Invalid</Badge>
                           )}
                         </TableCell>
                         <TableCell className="font-medium">{row.name || '-'}</TableCell>
-                        <TableCell className="font-mono text-sm">{row.nrcNumber || '-'}</TableCell>
-                        <TableCell className="font-mono text-sm">{row.mobileNumber || '-'}</TableCell>
+                        <TableCell className={`font-mono text-sm ${row.isDuplicateNrc ? 'text-destructive font-bold' : ''}`}>
+                          {row.nrcNumber || '-'}
+                          {row.isDuplicateNrc && <span className="ml-1 text-xs">(dup)</span>}
+                        </TableCell>
+                        <TableCell className={`font-mono text-sm ${row.isDuplicateMobile ? 'text-destructive font-bold' : ''}`}>
+                          {row.mobileNumber || '-'}
+                          {row.isDuplicateMobile && <span className="ml-1 text-xs">(dup)</span>}
+                        </TableCell>
                         <TableCell className="text-right">{formatCurrency(row.amountOwed)}</TableCell>
                         <TableCell>
                           {row.assignedAgentId ? (
                             <Badge variant="outline">{row.assignedAgent}</Badge>
                           ) : row.assignedAgent ? (
-                            <Badge variant="destructive">{row.assignedAgent} (not found)</Badge>
+                            <Badge variant="destructive" className="whitespace-nowrap">{row.assignedAgent} ✗</Badge>
                           ) : (
                             <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm text-destructive max-w-[200px]">
+                          {row.errors.length > 0 && (
+                            <span className="truncate block" title={row.errors.join('; ')}>
+                              {row.errors[0]}{row.errors.length > 1 && ` (+${row.errors.length - 1} more)`}
+                            </span>
                           )}
                         </TableCell>
                       </TableRow>
@@ -690,16 +766,16 @@ export default function CSVImport() {
                 </Table>
               </div>
               {parsedData.some(r => !r.isValid) && (
-                <div className="mt-4 p-4 bg-destructive/5 rounded-lg">
-                  <h4 className="font-medium text-destructive mb-2">Validation Errors:</h4>
-                  <ul className="text-sm space-y-1">
-                    {parsedData.filter(r => !r.isValid).slice(0, 5).map((row, idx) => (
-                      <li key={idx} className="text-muted-foreground">
-                        Row {idx + 1} ({row.name || 'unnamed'}): {row.errors.join(', ')}
+                <div className="mt-4 p-4 bg-destructive/5 rounded-lg border border-destructive/20">
+                  <h4 className="font-medium text-destructive mb-2">Detailed Errors by Row:</h4>
+                  <ul className="text-sm space-y-1 max-h-48 overflow-auto">
+                    {parsedData.filter(r => !r.isValid).slice(0, 20).map((row) => (
+                      <li key={row.rowNumber} className="text-muted-foreground">
+                        <span className="font-medium text-destructive">Row {row.rowNumber}</span> ({row.name || 'unnamed'}): {row.errors.join('; ')}
                       </li>
                     ))}
-                    {parsedData.filter(r => !r.isValid).length > 5 && (
-                      <li className="text-muted-foreground">...and {parsedData.filter(r => !r.isValid).length - 5} more errors</li>
+                    {parsedData.filter(r => !r.isValid).length > 20 && (
+                      <li className="text-muted-foreground font-medium">...and {parsedData.filter(r => !r.isValid).length - 20} more rows with errors</li>
                     )}
                   </ul>
                 </div>
@@ -721,13 +797,22 @@ export default function CSVImport() {
             </Card>
           )}
 
-          <div className="flex gap-4">
+          <div className="flex gap-4 items-center">
             <Button variant="outline" onClick={() => { setFile(null); setParsedData([]); }}>
               Start Over
             </Button>
-            <Button onClick={handleImport} disabled={isImporting || validCount === 0}>
-              {isImporting ? 'Importing...' : `Create Batch (${validCount} customers)`}
+            <Button 
+              onClick={handleImport} 
+              disabled={isImporting || validCount === 0 || hasBlockingErrors}
+              className={hasBlockingErrors ? 'opacity-50 cursor-not-allowed' : ''}
+            >
+              {isImporting ? 'Importing...' : hasBlockingErrors ? 'Fix Errors to Import' : `Create Batch (${validCount} customers)`}
             </Button>
+            {hasBlockingErrors && (
+              <span className="text-sm text-destructive">
+                ⚠ Upload blocked: {invalidCount} row(s) have errors that must be fixed
+              </span>
+            )}
           </div>
         </>
       )}
