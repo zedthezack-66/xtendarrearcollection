@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Search, MoreHorizontal, Eye, CheckCircle, PlayCircle, Loader2, Phone, Trash2, AlertTriangle } from "lucide-react";
+import { Search, MoreHorizontal, Eye, CheckCircle, PlayCircle, Loader2, Phone, Trash2, AlertTriangle, ChevronDown, ChevronUp, MessageSquare } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useTickets, useUpdateTicket, useProfiles, useDeleteTicket, usePayments } from "@/hooks/useSupabaseData";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { useTickets, useUpdateTicket, useProfiles, useDeleteTicket, usePayments, useCallLogsForTickets } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -77,13 +82,38 @@ export default function Tickets() {
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [ticketToDelete, setTicketToDelete] = useState<string | null>(null);
   const [blockedResolveModal, setBlockedResolveModal] = useState<{ ticketId: string; balance: number } | null>(null);
+  const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
 
-  // Realtime subscription for tickets
+  // Get In Progress ticket IDs for fetching call logs
+  const inProgressTicketIds = useMemo(() => 
+    (tickets || []).filter(t => t.status === 'In Progress').map(t => t.id),
+    [tickets]
+  );
+
+  // Fetch call logs for all In Progress tickets
+  const { data: callLogs = [] } = useCallLogsForTickets(inProgressTicketIds);
+
+  // Group call logs by ticket ID
+  const callLogsByTicket = useMemo(() => {
+    const map: Record<string, typeof callLogs> = {};
+    for (const log of callLogs) {
+      if (!map[log.ticket_id]) {
+        map[log.ticket_id] = [];
+      }
+      map[log.ticket_id].push(log);
+    }
+    return map;
+  }, [callLogs]);
+
+  // Realtime subscription for tickets and call_logs
   useEffect(() => {
     const channel = supabase
       .channel('tickets-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => {
         queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'call_logs' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['call_logs'] });
       })
       .subscribe();
 
@@ -109,6 +139,14 @@ export default function Tickets() {
 
   // Sort order: In Progress (top), Open (middle), Resolved (bottom)
   const statusOrder: Record<string, number> = { 'In Progress': 0, 'Open': 1, 'Resolved': 2 };
+
+  const formatDateTime = (date: string) => {
+    return new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
+  const toggleNotes = (ticketId: string) => {
+    setExpandedNotes(prev => ({ ...prev, [ticketId]: !prev[ticketId] }));
+  };
 
   const getAgentName = (agentId: string | null) => {
     if (!agentId || !profiles) return '-';
@@ -220,50 +258,112 @@ export default function Tickets() {
                     const totalPaid = paymentsByTicket[ticket.id] || 0;
                     const amountOwed = Number(ticket.amount_owed);
                     const balance = Math.max(0, amountOwed - totalPaid);
+                    const ticketCallLogs = callLogsByTicket[ticket.id] || [];
+                    const hasCallLogs = ticket.status === 'In Progress' && ticketCallLogs.length > 0;
+                    const isExpanded = expandedNotes[ticket.id];
                     
                     return (
-                      <TableRow key={ticket.id}>
-                        <TableCell className="font-mono text-sm">#{ticket.id.slice(0, 8)}</TableCell>
-                        <TableCell className="font-medium">{ticket.customer_name}</TableCell>
-                        <TableCell className="font-mono text-sm">{ticket.nrc_number}</TableCell>
-                        <TableCell className="font-mono text-sm">{ticket.mobile_number || '-'}</TableCell>
-                        <TableCell className="text-right font-semibold text-destructive">{formatCurrency(amountOwed)}</TableCell>
-                        <TableCell className="text-right font-semibold text-success">{formatCurrency(totalPaid)}</TableCell>
-                        <TableCell className={`text-right font-semibold ${balance > 0 ? 'text-destructive' : 'text-success'}`}>
-                          {formatCurrency(balance)}
-                        </TableCell>
-                        <TableCell>{getPriorityBadge(ticket.priority)}</TableCell>
-                        <TableCell>{getStatusBadge(ticket.status)}</TableCell>
-                        <TableCell className="text-muted-foreground">{getAgentName(ticket.assigned_agent)}</TableCell>
-                        <TableCell className="text-muted-foreground">{formatDate(ticket.created_at)}</TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem asChild><Link to={`/customers/${ticket.master_customer_id}`}><Eye className="h-4 w-4 mr-2" />View Customer</Link></DropdownMenuItem>
-                              {ticket.mobile_number && <DropdownMenuItem asChild><a href={`tel:${ticket.mobile_number}`}><Phone className="h-4 w-4 mr-2" />Call</a></DropdownMenuItem>}
-                              {ticket.status === 'Open' && <DropdownMenuItem onClick={() => updateTicket.mutate({ id: ticket.id, status: 'In Progress' })}><PlayCircle className="h-4 w-4 mr-2" />Mark In Progress</DropdownMenuItem>}
-                              {ticket.status !== 'Resolved' && (
-                                <DropdownMenuItem 
-                                  onClick={() => handleResolveTicket(ticket.id)}
-                                  disabled={balance > 0}
-                                  className={balance > 0 ? 'opacity-50' : ''}
-                                >
-                                  <CheckCircle className="h-4 w-4 mr-2" />
-                                  Mark Resolved {balance > 0 && <span className="ml-1 text-xs text-destructive">(Blocked)</span>}
-                                </DropdownMenuItem>
+                      <>
+                        <TableRow key={ticket.id} className={hasCallLogs ? 'cursor-pointer hover:bg-muted/50' : ''} onClick={hasCallLogs ? () => toggleNotes(ticket.id) : undefined}>
+                          <TableCell className="font-mono text-sm">
+                            <div className="flex items-center gap-2">
+                              {hasCallLogs && (
+                                isExpanded ? <ChevronUp className="h-4 w-4 text-info" /> : <ChevronDown className="h-4 w-4 text-info" />
                               )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem 
-                                className="text-destructive focus:text-destructive"
-                                onClick={() => setTicketToDelete(ticket.id)}
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />Delete Ticket
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
+                              #{ticket.id.slice(0, 8)}
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              {ticket.customer_name}
+                              {hasCallLogs && (
+                                <Badge variant="outline" className="text-xs bg-info/10 text-info border-info/20">
+                                  <MessageSquare className="h-3 w-3 mr-1" />
+                                  {ticketCallLogs.length}
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">{ticket.nrc_number}</TableCell>
+                          <TableCell className="font-mono text-sm">{ticket.mobile_number || '-'}</TableCell>
+                          <TableCell className="text-right font-semibold text-destructive">{formatCurrency(amountOwed)}</TableCell>
+                          <TableCell className="text-right font-semibold text-success">{formatCurrency(totalPaid)}</TableCell>
+                          <TableCell className={`text-right font-semibold ${balance > 0 ? 'text-destructive' : 'text-success'}`}>
+                            {formatCurrency(balance)}
+                          </TableCell>
+                          <TableCell>{getPriorityBadge(ticket.priority)}</TableCell>
+                          <TableCell>{getStatusBadge(ticket.status)}</TableCell>
+                          <TableCell className="text-muted-foreground">{getAgentName(ticket.assigned_agent)}</TableCell>
+                          <TableCell className="text-muted-foreground">{formatDate(ticket.created_at)}</TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem asChild><Link to={`/customers/${ticket.master_customer_id}`}><Eye className="h-4 w-4 mr-2" />View Customer</Link></DropdownMenuItem>
+                                {ticket.mobile_number && <DropdownMenuItem asChild><a href={`tel:${ticket.mobile_number}`}><Phone className="h-4 w-4 mr-2" />Call</a></DropdownMenuItem>}
+                                {ticket.status === 'Open' && <DropdownMenuItem onClick={() => updateTicket.mutate({ id: ticket.id, status: 'In Progress' })}><PlayCircle className="h-4 w-4 mr-2" />Mark In Progress</DropdownMenuItem>}
+                                {ticket.status !== 'Resolved' && (
+                                  <DropdownMenuItem 
+                                    onClick={() => handleResolveTicket(ticket.id)}
+                                    disabled={balance > 0}
+                                    className={balance > 0 ? 'opacity-50' : ''}
+                                  >
+                                    <CheckCircle className="h-4 w-4 mr-2" />
+                                    Mark Resolved {balance > 0 && <span className="ml-1 text-xs text-destructive">(Blocked)</span>}
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => setTicketToDelete(ticket.id)}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />Delete Ticket
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                        {/* Expandable Call Notes Row for In Progress tickets */}
+                        {hasCallLogs && isExpanded && (
+                          <TableRow key={`${ticket.id}-notes`} className="bg-info/5 hover:bg-info/5">
+                            <TableCell colSpan={12} className="p-0">
+                              <div className="p-4 space-y-3">
+                                <div className="flex items-center gap-2 text-sm font-medium text-info">
+                                  <MessageSquare className="h-4 w-4" />
+                                  Call Notes ({ticketCallLogs.length})
+                                </div>
+                                <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                                  {ticketCallLogs.map((log) => (
+                                    <div key={log.id} className="bg-background rounded-lg border p-3 space-y-2">
+                                      <div className="flex items-center justify-between">
+                                        <Badge variant="outline" className="text-xs">
+                                          {log.call_outcome}
+                                        </Badge>
+                                        <span className="text-xs text-muted-foreground">
+                                          {formatDateTime(log.created_at)}
+                                        </span>
+                                      </div>
+                                      {log.notes && (
+                                        <p className="text-sm text-foreground">{log.notes}</p>
+                                      )}
+                                      {log.promise_to_pay_date && (
+                                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                          <span>Promise to Pay: {formatDate(log.promise_to_pay_date)}</span>
+                                          {log.promise_to_pay_amount && (
+                                            <span className="font-semibold text-warning">
+                                              {formatCurrency(Number(log.promise_to_pay_amount))}
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </>
                     );
                   })
                 )}
