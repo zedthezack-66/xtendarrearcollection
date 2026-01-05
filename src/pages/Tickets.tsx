@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Search, MoreHorizontal, Eye, CheckCircle, PlayCircle, Loader2, Phone, Trash2 } from "lucide-react";
+import { Search, MoreHorizontal, Eye, CheckCircle, PlayCircle, Loader2, Phone, Trash2, AlertTriangle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useTickets, useUpdateTicket, useProfiles, useDeleteTicket, usePayments } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -68,6 +76,7 @@ export default function Tickets() {
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [ticketToDelete, setTicketToDelete] = useState<string | null>(null);
+  const [blockedResolveModal, setBlockedResolveModal] = useState<{ ticketId: string; balance: number } | null>(null);
 
   // Realtime subscription for tickets
   useEffect(() => {
@@ -125,6 +134,20 @@ export default function Tickets() {
       await deleteTicket.mutateAsync(ticketToDelete);
       setTicketToDelete(null);
     }
+  };
+
+  const handleResolveTicket = async (ticketId: string) => {
+    const totalPaid = paymentsByTicket[ticketId] || 0;
+    const ticket = tickets?.find(t => t.id === ticketId);
+    const amountOwed = ticket ? Number(ticket.amount_owed) : 0;
+    const balance = Math.max(0, amountOwed - totalPaid);
+    
+    if (totalPaid < amountOwed) {
+      setBlockedResolveModal({ ticketId, balance });
+      return;
+    }
+    
+    updateTicket.mutate({ id: ticketId, status: 'Resolved', resolved_date: new Date().toISOString() });
   };
 
   const currentProfile = profiles?.find(p => p.id === profile?.id);
@@ -220,7 +243,16 @@ export default function Tickets() {
                               <DropdownMenuItem asChild><Link to={`/customers/${ticket.master_customer_id}`}><Eye className="h-4 w-4 mr-2" />View Customer</Link></DropdownMenuItem>
                               {ticket.mobile_number && <DropdownMenuItem asChild><a href={`tel:${ticket.mobile_number}`}><Phone className="h-4 w-4 mr-2" />Call</a></DropdownMenuItem>}
                               {ticket.status === 'Open' && <DropdownMenuItem onClick={() => updateTicket.mutate({ id: ticket.id, status: 'In Progress' })}><PlayCircle className="h-4 w-4 mr-2" />Mark In Progress</DropdownMenuItem>}
-                              {ticket.status !== 'Resolved' && <DropdownMenuItem onClick={() => updateTicket.mutate({ id: ticket.id, status: 'Resolved', resolved_date: new Date().toISOString() })}><CheckCircle className="h-4 w-4 mr-2" />Mark Resolved</DropdownMenuItem>}
+                              {ticket.status !== 'Resolved' && (
+                                <DropdownMenuItem 
+                                  onClick={() => handleResolveTicket(ticket.id)}
+                                  disabled={balance > 0}
+                                  className={balance > 0 ? 'opacity-50' : ''}
+                                >
+                                  <CheckCircle className="h-4 w-4 mr-2" />
+                                  Mark Resolved {balance > 0 && <span className="ml-1 text-xs text-destructive">(Blocked)</span>}
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuSeparator />
                               <DropdownMenuItem 
                                 className="text-destructive focus:text-destructive"
@@ -247,17 +279,48 @@ export default function Tickets() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Ticket</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this ticket? This action cannot be undone.
+              This will permanently delete the ticket, related batch customer, master customer, all payments, and call notes. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteTicket} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
+              Delete Permanently
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Blocked Resolve Modal */}
+      <Dialog open={!!blockedResolveModal} onOpenChange={(open) => !open && setBlockedResolveModal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Cannot Resolve Ticket
+            </DialogTitle>
+            <DialogDescription>
+              Full payment is required to resolve this ticket.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="p-4 bg-destructive/10 rounded-lg border border-destructive/20">
+            <p className="text-sm text-muted-foreground">Outstanding Balance:</p>
+            <p className="text-2xl font-bold text-destructive">
+              {formatCurrency(blockedResolveModal?.balance || 0)}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBlockedResolveModal(null)}>
+              Close
+            </Button>
+            <Button asChild>
+              <Link to={`/payments/new?customerId=${tickets?.find(t => t.id === blockedResolveModal?.ticketId)?.master_customer_id}`}>
+                Record Payment
+              </Link>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

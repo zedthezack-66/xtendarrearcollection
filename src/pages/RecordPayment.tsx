@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,6 +8,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useMasterCustomers, useTickets, usePayments, useCreatePayment, useUpdateTicket } from "@/hooks/useSupabaseData";
 
@@ -22,6 +30,7 @@ export default function RecordPayment() {
   const updateTicket = useUpdateTicket();
   
   const preselectedCustomerId = searchParams.get('customerId') || '';
+  const [showBlockedModal, setShowBlockedModal] = useState(false);
   
   const [formData, setFormData] = useState({
     customerId: preselectedCustomerId,
@@ -46,6 +55,10 @@ export default function RecordPayment() {
   const paymentAmount = parseFloat(formData.amount) || 0;
   const newTotalPaid = existingTotalPaid + paymentAmount;
   
+  // Can user select Resolved?
+  const canSelectResolved = newTotalPaid >= amountOwed;
+  const remainingAfterPayment = Math.max(0, amountOwed - newTotalPaid);
+
   // Auto-set ticket status when amount changes
   useEffect(() => {
     if (paymentAmount > 0 && amountOwed > 0) {
@@ -56,6 +69,15 @@ export default function RecordPayment() {
       }
     }
   }, [paymentAmount, amountOwed, newTotalPaid]);
+  
+  // Handle status change with validation
+  const handleStatusChange = (value: string) => {
+    if (value === 'Resolved' && !canSelectResolved) {
+      setShowBlockedModal(true);
+      return;
+    }
+    setFormData({ ...formData, ticketStatus: value as 'In Progress' | 'Resolved' });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -191,7 +213,7 @@ export default function RecordPayment() {
                 <Label>Ticket Status After Payment</Label>
                 <RadioGroup 
                   value={formData.ticketStatus} 
-                  onValueChange={(value) => setFormData({ ...formData, ticketStatus: value as 'In Progress' | 'Resolved' })} 
+                  onValueChange={handleStatusChange} 
                   className="flex gap-4"
                 >
                   <div className="flex items-center space-x-2">
@@ -199,14 +221,24 @@ export default function RecordPayment() {
                     <Label htmlFor="inprogress" className="font-normal cursor-pointer">In Progress</Label>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="Resolved" id="resolved" />
-                    <Label htmlFor="resolved" className="font-normal cursor-pointer">Resolved</Label>
+                    <RadioGroupItem 
+                      value="Resolved" 
+                      id="resolved" 
+                      disabled={!canSelectResolved}
+                      className={!canSelectResolved ? 'opacity-50' : ''}
+                    />
+                    <Label 
+                      htmlFor="resolved" 
+                      className={`font-normal cursor-pointer ${!canSelectResolved ? 'opacity-50' : ''}`}
+                    >
+                      Resolved {!canSelectResolved && <span className="text-xs text-destructive">(Blocked)</span>}
+                    </Label>
                   </div>
                 </RadioGroup>
                 <p className="text-xs text-muted-foreground">
-                  {newTotalPaid >= amountOwed 
+                  {canSelectResolved 
                     ? 'Full payment detected - auto-selecting Resolved' 
-                    : 'Partial payment detected - auto-selecting In Progress'}
+                    : `Partial payment - ${formatCurrency(remainingAfterPayment)} still outstanding`}
                 </p>
               </div>
             )}
@@ -218,6 +250,32 @@ export default function RecordPayment() {
           </form>
         </CardContent>
       </Card>
+
+      {/* Blocked Resolve Modal */}
+      <Dialog open={showBlockedModal} onOpenChange={setShowBlockedModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Cannot Select Resolved
+            </DialogTitle>
+            <DialogDescription>
+              Full payment is required to resolve this ticket.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="p-4 bg-destructive/10 rounded-lg border border-destructive/20">
+            <p className="text-sm text-muted-foreground">Remaining after this payment:</p>
+            <p className="text-2xl font-bold text-destructive">
+              {formatCurrency(remainingAfterPayment)}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setShowBlockedModal(false)}>
+              Understood
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

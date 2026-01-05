@@ -1,9 +1,17 @@
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Phone, CreditCard, Ticket, Calendar, User, PlayCircle, CheckCircle } from "lucide-react";
+import { ArrowLeft, Phone, CreditCard, Ticket, Calendar, User, PlayCircle, CheckCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useState } from "react";
 import { useMasterCustomers, useTickets, usePayments, useBatchCustomers, useBatches, useUpdateMasterCustomer, useUpdateTicket, useProfiles } from "@/hooks/useSupabaseData";
 import { useToast } from "@/hooks/use-toast";
@@ -40,6 +48,7 @@ export default function CustomerProfile() {
   const { data: profiles = [] } = useProfiles();
   const updateCustomer = useUpdateMasterCustomer();
   const updateTicket = useUpdateTicket();
+  const [showBlockedModal, setShowBlockedModal] = useState(false);
   
   const getAgentName = (agentId: string | null) => {
     if (!agentId) return '-';
@@ -86,6 +95,13 @@ export default function CustomerProfile() {
 
   const handleUpdateTicketStatus = async (status: string) => {
     if (!customerTicket) return;
+    
+    // Block Resolved if balance outstanding
+    if (status === 'Resolved' && remainingBalance > 0) {
+      setShowBlockedModal(true);
+      return;
+    }
+    
     try {
       await updateTicket.mutateAsync({
         id: customerTicket.id,
@@ -178,10 +194,11 @@ export default function CustomerProfile() {
                         variant="outline" 
                         size="sm" 
                         onClick={() => handleUpdateTicketStatus('Resolved')}
-                        disabled={updateTicket.isPending}
+                        disabled={updateTicket.isPending || remainingBalance > 0}
+                        className={remainingBalance > 0 ? 'opacity-50' : ''}
                       >
                         <CheckCircle className="h-4 w-4 mr-2" />
-                        Mark Resolved
+                        Mark Resolved {remainingBalance > 0 && <span className="text-xs text-destructive ml-1">(Blocked)</span>}
                       </Button>
                     )}
                   </div>
@@ -234,6 +251,37 @@ export default function CustomerProfile() {
           </Card>
         </div>
       </div>
+
+      {/* Blocked Resolve Modal */}
+      <Dialog open={showBlockedModal} onOpenChange={setShowBlockedModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Cannot Resolve Ticket
+            </DialogTitle>
+            <DialogDescription>
+              Full payment is required to resolve this ticket.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="p-4 bg-destructive/10 rounded-lg border border-destructive/20">
+            <p className="text-sm text-muted-foreground">Outstanding Balance:</p>
+            <p className="text-2xl font-bold text-destructive">
+              {formatCurrency(remainingBalance)}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBlockedModal(false)}>
+              Close
+            </Button>
+            <Button asChild>
+              <Link to={`/payments/new?customerId=${customer.id}`}>
+                Record Payment
+              </Link>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
