@@ -502,6 +502,26 @@ export function useCallLogs(ticketId?: string) {
   });
 }
 
+// Fetch call logs for multiple tickets (for In Progress tickets on dashboard)
+export function useCallLogsForTickets(ticketIds: string[]) {
+  return useQuery({
+    queryKey: ['call_logs', 'batch', ticketIds],
+    queryFn: async () => {
+      if (!ticketIds.length) return [];
+      
+      const { data, error } = await supabase
+        .from('call_logs')
+        .select('*')
+        .in('ticket_id', ticketIds)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: ticketIds.length > 0,
+  });
+}
+
 export function useCreateCallLog() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
