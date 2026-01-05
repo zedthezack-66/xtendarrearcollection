@@ -235,12 +235,37 @@ export function useCreateTicket() {
   });
 }
 
+// Helper to check if ticket can be resolved based on payments
+export async function canTicketBeResolved(ticketId: string): Promise<{ canResolve: boolean; amountOwed: number; totalPaid: number; balance: number }> {
+  const { data: ticket } = await supabase
+    .from('tickets')
+    .select('amount_owed')
+    .eq('id', ticketId)
+    .single();
+  
+  const { data: ticketPayments } = await supabase
+    .from('payments')
+    .select('amount')
+    .eq('ticket_id', ticketId);
+  
+  const amountOwed = ticket ? Number(ticket.amount_owed) : 0;
+  const totalPaid = (ticketPayments || []).reduce((sum, p) => sum + Number(p.amount), 0);
+  const balance = Math.max(0, amountOwed - totalPaid);
+  
+  return {
+    canResolve: totalPaid >= amountOwed,
+    amountOwed,
+    totalPaid,
+    balance
+  };
+}
+
 export function useUpdateTicket() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { id: string } & Partial<{
+    mutationFn: async ({ id, ...updates }: { id: string; skipValidation?: boolean } & Partial<{
       status: string;
       priority: string;
       call_notes: string;
@@ -248,9 +273,19 @@ export function useUpdateTicket() {
       amount_owed: number;
       mobile_number: string;
     }>) => {
+      const { skipValidation, ...cleanUpdates } = updates as any;
+      
+      // Validate status change to Resolved
+      if (cleanUpdates.status === 'Resolved' && !skipValidation) {
+        const { canResolve, balance } = await canTicketBeResolved(id);
+        if (!canResolve) {
+          throw new Error(`Cannot resolve ticket. Outstanding balance: K${balance.toLocaleString()}. Full payment required.`);
+        }
+      }
+      
       const { data, error } = await supabase
         .from('tickets')
-        .update(updates)
+        .update(cleanUpdates)
         .eq('id', id)
         .select()
         .single();

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Search, Plus, Trash2, MoreHorizontal, Pencil } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Input } from "@/components/ui/input";
@@ -34,7 +34,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { usePayments, useMasterCustomers, useBatches, useBatchCustomers, useDeletePayment, useUpdatePayment } from "@/hooks/useSupabaseData";
+import { usePayments, useMasterCustomers, useBatches, useBatchCustomers, useDeletePayment, useUpdatePayment, useTickets } from "@/hooks/useSupabaseData";
 import { useUIStore } from "@/store/useUIStore";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -63,6 +63,7 @@ export default function Payments() {
   const { data: masterCustomers = [] } = useMasterCustomers();
   const { data: batches = [] } = useBatches();
   const { data: batchCustomers = [] } = useBatchCustomers();
+  const { data: tickets = [] } = useTickets();
   const { activeBatchId } = useUIStore();
   const [searchQuery, setSearchQuery] = useState("");
   const [paymentToDelete, setPaymentToDelete] = useState<string | null>(null);
@@ -70,6 +71,17 @@ export default function Payments() {
   const deletePayment = useDeletePayment();
   const updatePayment = useUpdatePayment();
   const queryClient = useQueryClient();
+
+  // Compute payments per ticket for balance display
+  const paymentsByTicket = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const p of payments) {
+      if (p.ticket_id) {
+        map[p.ticket_id] = (map[p.ticket_id] || 0) + Number(p.amount);
+      }
+    }
+    return map;
+  }, [payments]);
 
   // Realtime subscription for payments
   useEffect(() => {
@@ -170,16 +182,24 @@ export default function Payments() {
                   <TableHead>Date</TableHead>
                   <TableHead>Method</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="text-right">Ticket Owed</TableHead>
+                  <TableHead className="text-right">Total Paid</TableHead>
+                  <TableHead className="text-right">Balance</TableHead>
                   <TableHead>Notes</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredPayments.length === 0 ? (
-                  <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">{payments.length === 0 ? "No payments recorded yet" : "No payments found"}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">{payments.length === 0 ? "No payments recorded yet" : "No payments found"}</TableCell></TableRow>
                 ) : (
                   filteredPayments.map((payment) => {
                     const customer = masterCustomers.find(c => c.id === payment.master_customer_id);
+                    const ticket = tickets.find(t => t.id === payment.ticket_id);
+                    const ticketAmountOwed = ticket ? Number(ticket.amount_owed) : 0;
+                    const ticketTotalPaid = payment.ticket_id ? (paymentsByTicket[payment.ticket_id] || 0) : 0;
+                    const ticketBalance = Math.max(0, ticketAmountOwed - ticketTotalPaid);
+                    
                     return (
                       <TableRow key={payment.id}>
                         <TableCell className="font-mono text-sm font-medium">#{payment.id.slice(0, 8)}</TableCell>
@@ -187,6 +207,11 @@ export default function Payments() {
                         <TableCell>{formatDate(payment.payment_date)}</TableCell>
                         <TableCell>{getPaymentMethodBadge(payment.payment_method)}</TableCell>
                         <TableCell className="text-right font-semibold text-success">{formatCurrency(Number(payment.amount))}</TableCell>
+                        <TableCell className="text-right text-muted-foreground">{ticketAmountOwed > 0 ? formatCurrency(ticketAmountOwed) : '-'}</TableCell>
+                        <TableCell className="text-right font-semibold text-success">{ticketTotalPaid > 0 ? formatCurrency(ticketTotalPaid) : '-'}</TableCell>
+                        <TableCell className={`text-right font-semibold ${ticketBalance > 0 ? 'text-destructive' : 'text-success'}`}>
+                          {ticketAmountOwed > 0 ? formatCurrency(ticketBalance) : '-'}
+                        </TableCell>
                         <TableCell className="text-muted-foreground max-w-[200px] truncate">{payment.notes || '-'}</TableCell>
                         <TableCell>
                           <DropdownMenu>
