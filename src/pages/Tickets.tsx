@@ -37,6 +37,12 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useTickets, useUpdateTicket, useProfiles, useDeleteTicket, usePayments, useCallLogsForTickets } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -277,10 +283,44 @@ export default function Tickets() {
                             <div className="flex items-center gap-2">
                               {ticket.customer_name}
                               {hasCallLogs && (
-                                <Badge variant="outline" className="text-xs bg-info/10 text-info border-info/20">
-                                  <MessageSquare className="h-3 w-3 mr-1" />
-                                  {ticketCallLogs.length}
-                                </Badge>
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge variant="outline" className="text-xs bg-info/10 text-info border-info/20 cursor-help">
+                                        <MessageSquare className="h-3 w-3 mr-1" />
+                                        {ticketCallLogs.length}
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="right" className="max-w-[300px] p-3">
+                                      <div className="space-y-2">
+                                        <div className="flex items-center justify-between gap-4">
+                                          <span className="text-xs font-medium">Latest Call Note</span>
+                                          <Badge variant="outline" className="text-xs">
+                                            {ticketCallLogs[0]?.call_outcome}
+                                          </Badge>
+                                        </div>
+                                        {ticketCallLogs[0]?.notes && (
+                                          <p className="text-xs text-muted-foreground line-clamp-3">
+                                            {ticketCallLogs[0].notes}
+                                          </p>
+                                        )}
+                                        <p className="text-xs text-muted-foreground/70">
+                                          {formatDateTime(ticketCallLogs[0]?.created_at)}
+                                        </p>
+                                        {ticketCallLogs[0]?.promise_to_pay_date && (
+                                          <p className="text-xs text-warning">
+                                            Promise: {formatDate(ticketCallLogs[0].promise_to_pay_date)} - {formatCurrency(ticketCallLogs[0].promise_to_pay_amount || 0)}
+                                          </p>
+                                        )}
+                                        {ticketCallLogs.length > 1 && (
+                                          <p className="text-xs text-info pt-1 border-t">
+                                            +{ticketCallLogs.length - 1} more note{ticketCallLogs.length - 1 > 1 ? 's' : ''} • Click to expand
+                                          </p>
+                                        )}
+                                      </div>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
                               )}
                             </div>
                           </TableCell>
