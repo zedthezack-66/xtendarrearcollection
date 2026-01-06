@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { AlertTriangle, Save, Loader2 } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { AlertTriangle, Save, Loader2, Shield, UserCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,8 +16,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { useMasterCustomers, useTickets, usePayments, useBatches, useProfiles, useUpdateProfile } from "@/hooks/useSupabaseData";
+import { useMasterCustomers, useTickets, usePayments, useBatches, useProfiles, useUpdateProfile, useUserRoles, useUpdateUserRole } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -29,12 +36,23 @@ export default function Settings() {
   const { data: payments = [] } = usePayments();
   const { data: batches = [] } = useBatches();
   const { data: profiles = [] } = useProfiles();
+  const { data: userRolesData = [] } = useUserRoles();
   const updateProfile = useUpdateProfile();
+  const updateUserRoleMutation = useUpdateUserRole();
 
   const [fullName, setFullName] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [phone, setPhone] = useState('');
   const [isClearing, setIsClearing] = useState(false);
+
+  // Build a map of userId -> role
+  const userRoleMap = useMemo(() => {
+    const map: Record<string, 'admin' | 'agent'> = {};
+    for (const ur of userRolesData) {
+      map[ur.user_id] = ur.role;
+    }
+    return map;
+  }, [userRolesData]);
 
   // Get current user's profile from profiles list to include display_name
   const currentProfile = profiles.find(p => p.id === user?.id);
@@ -114,6 +132,10 @@ export default function Settings() {
     }
   };
 
+  const handleRoleChange = (userId: string, newRole: 'admin' | 'agent') => {
+    updateUserRoleMutation.mutate({ userId, newRole });
+  };
+
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
@@ -185,26 +207,65 @@ export default function Settings() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Team Members</CardTitle>
-          <CardDescription>Users with access to the system</CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <UserCog className="h-5 w-5" />
+            Team Members
+          </CardTitle>
+          <CardDescription>
+            {isAdmin ? 'Manage user roles and team access' : 'Users with access to the system'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            {profiles.map((p) => (
-              <div key={p.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                <div>
+            {profiles.map((p) => {
+              const pRole = userRoleMap[p.id] || 'agent';
+              const isSelf = p.id === user?.id;
+              
+              return (
+                <div key={p.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">{p.full_name}</p>
+                      {(p as any).display_name && (
+                        <Badge variant="outline" className="text-xs">
+                          {(p as any).display_name}
+                        </Badge>
+                      )}
+                      {isSelf && (
+                        <Badge variant="secondary" className="text-xs">You</Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground">{p.phone || 'No phone'}</p>
+                  </div>
                   <div className="flex items-center gap-2">
-                    <p className="font-medium">{p.full_name}</p>
-                    {(p as any).display_name && (
-                      <Badge variant="outline" className="text-xs">
-                        {(p as any).display_name}
+                    {isAdmin ? (
+                      <Select
+                        value={pRole}
+                        onValueChange={(value: 'admin' | 'agent') => handleRoleChange(p.id, value)}
+                        disabled={isSelf || updateUserRoleMutation.isPending}
+                      >
+                        <SelectTrigger className="w-[110px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="admin">
+                            <div className="flex items-center gap-2">
+                              <Shield className="h-3 w-3" />
+                              Admin
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="agent">Agent</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Badge variant={pRole === 'admin' ? 'default' : 'secondary'}>
+                        {pRole === 'admin' ? 'Admin' : 'Agent'}
                       </Badge>
                     )}
                   </div>
-                  <p className="text-sm text-muted-foreground">{p.phone || 'No phone'}</p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {profiles.length === 0 && (
               <p className="text-muted-foreground text-sm">No team members found</p>
             )}
