@@ -404,6 +404,13 @@ export type Database = {
         Args: { p_archive?: boolean; p_batch_id: string; p_chunk_size?: number }
         Returns: Json
       }
+      update_user_role: {
+        Args: {
+          p_new_role: Database["public"]["Enums"]["app_role"]
+          p_target_user_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "admin" | "agent"

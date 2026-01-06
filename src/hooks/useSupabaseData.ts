@@ -589,6 +589,49 @@ export function useUpdateProfile() {
   });
 }
 
+// User Roles hooks
+export function useUserRoles() {
+  return useQuery({
+    queryKey: ['user_roles'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('*');
+      
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useUpdateUserRole() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ userId, newRole }: { userId: string; newRole: 'admin' | 'agent' }) => {
+      const { data, error } = await supabase.rpc('update_user_role', {
+        p_target_user_id: userId,
+        p_new_role: newRole,
+      });
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['user_roles'] });
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      toast({ 
+        title: 'Role updated', 
+        description: `User role changed from ${data.old_role} to ${data.new_role}` 
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error updating role', description: error.message, variant: 'destructive' });
+    },
+  });
+}
+
 // Delete hooks
 export function useDeletePayment() {
   const queryClient = useQueryClient();
