@@ -56,12 +56,13 @@ const formatDate = (date: string) => {
   return new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-const getStatusBadge = (status: string) => {
+const getStatusBadge = (status: string, hasNotes?: boolean) => {
+  const baseClasses = hasNotes ? 'cursor-help' : '';
   switch (status) {
-    case 'Open': return <Badge className="bg-warning/10 text-warning border-warning/20 whitespace-nowrap">Open</Badge>;
-    case 'In Progress': return <Badge className="bg-info/10 text-info border-info/20 whitespace-nowrap">In Progress</Badge>;
-    case 'Resolved': return <Badge className="bg-success/10 text-success border-success/20 whitespace-nowrap">Resolved</Badge>;
-    default: return <Badge variant="outline" className="whitespace-nowrap">{status}</Badge>;
+    case 'Open': return <Badge className={`bg-warning/10 text-warning border-warning/20 whitespace-nowrap ${baseClasses}`}>Open</Badge>;
+    case 'In Progress': return <Badge className={`bg-info/10 text-info border-info/20 whitespace-nowrap ${baseClasses}`}>In Progress</Badge>;
+    case 'Resolved': return <Badge className={`bg-success/10 text-success border-success/20 whitespace-nowrap ${baseClasses}`}>Resolved</Badge>;
+    default: return <Badge variant="outline" className={`whitespace-nowrap ${baseClasses}`}>{status}</Badge>;
   }
 };
 
@@ -279,19 +280,24 @@ export default function Tickets() {
                               #{ticket.id.slice(0, 8)}
                             </div>
                           </TableCell>
-                          <TableCell className="font-medium">
-                            <div className="flex items-center gap-2">
-                              {ticket.customer_name}
-                              {hasCallLogs && (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Badge variant="outline" className="text-xs bg-info/10 text-info border-info/20 cursor-help">
-                                        <MessageSquare className="h-3 w-3 mr-1" />
-                                        {ticketCallLogs.length}
-                                      </Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="right" className="max-w-[300px] p-3">
+                          <TableCell className="font-medium">{ticket.customer_name}</TableCell>
+                          <TableCell className="font-mono text-sm">{ticket.nrc_number}</TableCell>
+                          <TableCell className="font-mono text-sm">{ticket.mobile_number || '-'}</TableCell>
+                          <TableCell className="text-right font-semibold text-destructive">{formatCurrency(amountOwed)}</TableCell>
+                          <TableCell className="text-right font-semibold text-success">{formatCurrency(totalPaid)}</TableCell>
+                          <TableCell className={`text-right font-semibold ${balance > 0 ? 'text-destructive' : 'text-success'}`}>
+                            {formatCurrency(balance)}
+                          </TableCell>
+                          <TableCell>{getPriorityBadge(ticket.priority)}</TableCell>
+                          <TableCell>
+                            {ticket.status === 'In Progress' ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    {getStatusBadge(ticket.status, true)}
+                                  </TooltipTrigger>
+                                  <TooltipContent side="left" className="max-w-[300px] p-3">
+                                    {ticketCallLogs.length > 0 ? (
                                       <div className="space-y-2">
                                         <div className="flex items-center justify-between gap-4">
                                           <span className="text-xs font-medium">Latest Call Note</span>
@@ -318,21 +324,16 @@ export default function Tickets() {
                                           </p>
                                         )}
                                       </div>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              )}
-                            </div>
+                                    ) : (
+                                      <p className="text-xs text-muted-foreground">No call notes recorded</p>
+                                    )}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              getStatusBadge(ticket.status)
+                            )}
                           </TableCell>
-                          <TableCell className="font-mono text-sm">{ticket.nrc_number}</TableCell>
-                          <TableCell className="font-mono text-sm">{ticket.mobile_number || '-'}</TableCell>
-                          <TableCell className="text-right font-semibold text-destructive">{formatCurrency(amountOwed)}</TableCell>
-                          <TableCell className="text-right font-semibold text-success">{formatCurrency(totalPaid)}</TableCell>
-                          <TableCell className={`text-right font-semibold ${balance > 0 ? 'text-destructive' : 'text-success'}`}>
-                            {formatCurrency(balance)}
-                          </TableCell>
-                          <TableCell>{getPriorityBadge(ticket.priority)}</TableCell>
-                          <TableCell>{getStatusBadge(ticket.status)}</TableCell>
                           <TableCell className="text-muted-foreground">{getAgentName(ticket.assigned_agent)}</TableCell>
                           <TableCell className="text-muted-foreground">{formatDate(ticket.created_at)}</TableCell>
                           <TableCell onClick={(e) => e.stopPropagation()}>
