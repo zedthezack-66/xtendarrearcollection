@@ -375,9 +375,21 @@ export type Database = {
     }
     Functions: {
       clear_all_data: { Args: never; Returns: Json }
+      get_admin_agent_analytics: {
+        Args: { p_agent_id?: string }
+        Returns: Json
+      }
       get_collections_by_agent: { Args: { p_batch_id?: string }; Returns: Json }
       get_dashboard_stats: {
         Args: { p_agent_id?: string; p_batch_id?: string }
+        Returns: Json
+      }
+      get_interaction_analytics: {
+        Args: {
+          p_agent_id?: string
+          p_end_date?: string
+          p_start_date?: string
+        }
         Returns: Json
       }
       get_recent_tickets: {
@@ -393,6 +405,7 @@ export type Database = {
         Args: { p_batch_id?: string; p_limit?: number; p_offset?: number }
         Returns: Json
       }
+      get_weekly_report_stats: { Args: { p_agent_id?: string }; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

@@ -862,3 +862,90 @@ export function useDashboardStats() {
     isLoading: !customers || !tickets || !payments,
   };
 }
+
+// Weekly Report Stats (server-side computed)
+export function useWeeklyReportStats(agentId?: string) {
+  return useQuery({
+    queryKey: ['weekly_report_stats', agentId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_weekly_report_stats', {
+        p_agent_id: agentId || null,
+      });
+      
+      if (error) throw error;
+      return data as {
+        total_tickets: number;
+        total_owed: number;
+        total_collected: number;
+        outstanding_balance: number;
+        collection_rate: number;
+        open_tickets: number;
+        in_progress_tickets: number;
+        resolved_tickets: number;
+      };
+    },
+  });
+}
+
+// Interaction Analytics (call notes + ticket status changes)
+export function useInteractionAnalytics(agentId?: string, startDate?: Date, endDate?: Date) {
+  return useQuery({
+    queryKey: ['interaction_analytics', agentId, startDate?.toISOString(), endDate?.toISOString()],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_interaction_analytics', {
+        p_agent_id: agentId || null,
+        p_start_date: startDate?.toISOString().split('T')[0] || null,
+        p_end_date: endDate?.toISOString().split('T')[0] || null,
+      });
+      
+      if (error) throw error;
+      return data as {
+        total_interactions: number;
+        total_tickets_resolved: number;
+        total_collected: number;
+        by_agent: Array<{
+          agent_id: string;
+          agent_name: string;
+          total_calls: number;
+          tickets_created: number;
+          tickets_resolved: number;
+          collected_amount: number;
+          total_interactions: number;
+        }>;
+      };
+    },
+  });
+}
+
+// Admin Agent Analytics
+export function useAdminAgentAnalytics(agentId?: string) {
+  return useQuery({
+    queryKey: ['admin_agent_analytics', agentId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_admin_agent_analytics', {
+        p_agent_id: agentId || null,
+      });
+      
+      if (error) throw error;
+      return data as {
+        agents: Array<{
+          agent_id: string;
+          agent_name: string;
+          total_tickets: number;
+          total_owed: number;
+          total_collected: number;
+          outstanding_balance: number;
+          collection_rate: number;
+          interaction_count: number;
+        }>;
+        totals: {
+          total_tickets: number;
+          total_owed: number;
+          total_collected: number;
+          outstanding_balance: number;
+          total_interactions: number;
+        };
+      };
+    },
+  });
+}
