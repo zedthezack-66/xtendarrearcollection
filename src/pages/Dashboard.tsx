@@ -1,4 +1,4 @@
-import { Users, AlertTriangle, Ticket, TrendingUp, CheckCircle, Loader2, DollarSign } from "lucide-react";
+import { Users, AlertTriangle, Ticket, TrendingUp, CheckCircle, Loader2, DollarSign, MessageSquare } from "lucide-react";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -40,7 +40,7 @@ function StatsWidget({ batchId }: { batchId: string | null }) {
 
   if (isLoading) {
     return (
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         {[...Array(6)].map((_, i) => (
           <Card key={i} className="animate-pulse">
             <CardContent className="p-6">
@@ -54,9 +54,11 @@ function StatsWidget({ batchId }: { batchId: string | null }) {
   }
 
   const openAndInProgress = (stats?.open_tickets || 0) + (stats?.in_progress_tickets || 0);
+  // Interactions = In Progress + Resolved tickets
+  const totalInteractions = (stats?.in_progress_tickets || 0) + (stats?.resolved_tickets || 0);
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
       <StatCard
         title="Total Customers"
         value={stats?.total_customers || 0}
@@ -92,6 +94,12 @@ function StatsWidget({ batchId }: { batchId: string | null }) {
         value={stats?.resolved_tickets || 0}
         icon={CheckCircle}
         variant="success"
+      />
+      <StatCard
+        title="Interactions"
+        value={totalInteractions}
+        icon={MessageSquare}
+        variant="default"
       />
     </div>
   );

@@ -38,7 +38,8 @@ export default function Reports() {
   const inProgressTickets = reportStats?.in_progress_tickets ?? 0;
   const resolvedTickets = reportStats?.resolved_tickets ?? 0;
 
-  const totalInteractions = interactionStats?.total_interactions ?? 0;
+  // Interactions = In Progress + Resolved tickets
+  const totalInteractions = inProgressTickets + resolvedTickets;
 
   const statusData = [
     { name: 'Open', value: openTickets, color: '#f59e0b' },
