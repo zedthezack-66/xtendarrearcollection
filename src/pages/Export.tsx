@@ -167,6 +167,28 @@ export default function Export() {
     URL.revokeObjectURL(url);
   };
 
+  // Helper to escape CSV values
+  const escapeCSV = (value: string) => {
+    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+      return `"${value.replace(/"/g, '""')}"`;
+    }
+    return value;
+  };
+
+  // Helper to get call logs for a customer/ticket
+  const getCustomerCallNotes = (ticketId: string) => {
+    const logs = callLogs.filter(log => log.ticket_id === ticketId).sort((a, b) => 
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+    if (logs.length === 0) return '';
+    // Format up to 3 most recent notes
+    return logs.slice(0, 3).map(log => {
+      const date = new Date(log.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      const ptp = log.promise_to_pay_date ? ` | PTP: ${log.promise_to_pay_date} - ${formatCurrency(Number(log.promise_to_pay_amount || 0))}` : '';
+      return `[${log.call_outcome}] ${log.notes || 'No notes'} (${date})${ptp}`;
+    }).join(' | ');
+  };
+
   const handleExportMaster = () => {
     const filteredCustomers = getFilteredMasterCustomers();
     if (filteredCustomers.length === 0) {
@@ -174,24 +196,27 @@ export default function Export() {
       return;
     }
 
-    const headers = ['Customer Name', 'NRC Number', 'Mobile Number', 'Total Amount Owed', 'Total Amount Paid', 'Outstanding Balance', 'Payment Status', 'Assigned Agent', 'Ticket Status', 'Total Collected'];
+    const headers = ['Customer Name', 'NRC Number', 'Mobile Number', 'Total Amount Owed', 'Total Amount Paid', 'Outstanding Balance', 'Payment Status', 'Assigned Agent', 'Ticket Status', 'Total Collected', 'Call Notes'];
     const rows = filteredCustomers.map((customer) => {
       const ticket = tickets.find((t) => t.master_customer_id === customer.id);
       // Calculate total collected from payments for this customer
       const totalCollected = payments
         .filter(p => p.master_customer_id === customer.id)
         .reduce((sum, p) => sum + Number(p.amount), 0);
+      // Get call notes for this customer's ticket
+      const callNotesStr = ticket ? getCustomerCallNotes(ticket.id) : '';
       return [
-        customer.name,
+        escapeCSV(customer.name),
         customer.nrc_number,
         customer.mobile_number || '',
         customer.total_owed,
         customer.total_paid,
         customer.outstanding_balance,
         customer.payment_status,
-        getAgentName(customer.assigned_agent),
+        escapeCSV(getAgentName(customer.assigned_agent)),
         ticket?.status || 'N/A',
-        totalCollected
+        totalCollected,
+        escapeCSV(callNotesStr)
       ].join(',');
     });
 
@@ -206,7 +231,7 @@ export default function Export() {
       return;
     }
 
-    const headers = ['Batch Name', 'Customer Name', 'NRC Number', 'Mobile Number', 'Batch Amount Owed', 'Total Paid (Global)', 'Outstanding Balance (Global)', 'Payment Status', 'Assigned Agent', 'Ticket Status', 'Total Collected'];
+    const headers = ['Batch Name', 'Customer Name', 'NRC Number', 'Mobile Number', 'Batch Amount Owed', 'Total Paid (Global)', 'Outstanding Balance (Global)', 'Payment Status', 'Assigned Agent', 'Ticket Status', 'Total Collected', 'Call Notes'];
     const rows = filteredCustomers.map((bc) => {
       const master = masterCustomers.find(mc => mc.id === bc.master_customer_id);
       const batch = batches.find(b => b.id === bc.batch_id);
@@ -215,18 +240,21 @@ export default function Export() {
       const totalCollected = payments
         .filter(p => p.master_customer_id === bc.master_customer_id)
         .reduce((sum, p) => sum + Number(p.amount), 0);
+      // Get call notes for this customer's ticket
+      const callNotesStr = ticket ? getCustomerCallNotes(ticket.id) : '';
       return [
-        batch?.name || 'Unknown',
-        bc.name,
+        escapeCSV(batch?.name || 'Unknown'),
+        escapeCSV(bc.name),
         bc.nrc_number,
         bc.mobile_number || '',
         bc.amount_owed,
         master?.total_paid || 0,
         master?.outstanding_balance || 0,
         master?.payment_status || 'N/A',
-        getAgentName(master?.assigned_agent || null),
+        escapeCSV(getAgentName(master?.assigned_agent || null)),
         ticket?.status || 'N/A',
-        totalCollected
+        totalCollected,
+        escapeCSV(callNotesStr)
       ].join(',');
     });
 
