@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { useMasterCustomers, useBatches, useBatchCustomers, useTickets, usePayments, useProfiles } from "@/hooks/useSupabaseData";
+import { useMasterCustomers, useBatches, useBatchCustomers, useTickets, usePayments, useProfiles, useCallLogs } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/contexts/AuthContext";
 import { format, isWithinInterval, startOfDay, endOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -36,6 +36,7 @@ export default function Export() {
   const { data: tickets = [] } = useTickets();
   const { data: payments = [] } = usePayments();
   const { data: profiles = [] } = useProfiles();
+  const { data: callLogs = [] } = useCallLogs();
   
   const [exportFilter, setExportFilter] = useState<ExportFilter>('all');
   const [selectedBatchId, setSelectedBatchId] = useState<string>('all');
@@ -173,9 +174,13 @@ export default function Export() {
       return;
     }
 
-    const headers = ['Customer Name', 'NRC Number', 'Mobile Number', 'Total Amount Owed', 'Total Amount Paid', 'Outstanding Balance', 'Payment Status', 'Assigned Agent', 'Call Notes', 'Ticket Status'];
+    const headers = ['Customer Name', 'NRC Number', 'Mobile Number', 'Total Amount Owed', 'Total Amount Paid', 'Outstanding Balance', 'Payment Status', 'Assigned Agent', 'Ticket Status', 'Total Collected'];
     const rows = filteredCustomers.map((customer) => {
       const ticket = tickets.find((t) => t.master_customer_id === customer.id);
+      // Calculate total collected from payments for this customer
+      const totalCollected = payments
+        .filter(p => p.master_customer_id === customer.id)
+        .reduce((sum, p) => sum + Number(p.amount), 0);
       return [
         customer.name,
         customer.nrc_number,
@@ -185,8 +190,8 @@ export default function Export() {
         customer.outstanding_balance,
         customer.payment_status,
         getAgentName(customer.assigned_agent),
-        `"${(customer.call_notes || '').replace(/"/g, '""')}"`,
-        ticket?.status || 'N/A'
+        ticket?.status || 'N/A',
+        totalCollected
       ].join(',');
     });
 
@@ -201,11 +206,15 @@ export default function Export() {
       return;
     }
 
-    const headers = ['Batch Name', 'Customer Name', 'NRC Number', 'Mobile Number', 'Batch Amount Owed', 'Total Paid (Global)', 'Outstanding Balance (Global)', 'Payment Status', 'Assigned Agent', 'Call Notes', 'Ticket Status'];
+    const headers = ['Batch Name', 'Customer Name', 'NRC Number', 'Mobile Number', 'Batch Amount Owed', 'Total Paid (Global)', 'Outstanding Balance (Global)', 'Payment Status', 'Assigned Agent', 'Ticket Status', 'Total Collected'];
     const rows = filteredCustomers.map((bc) => {
       const master = masterCustomers.find(mc => mc.id === bc.master_customer_id);
       const batch = batches.find(b => b.id === bc.batch_id);
       const ticket = tickets.find((t) => t.master_customer_id === bc.master_customer_id);
+      // Calculate total collected from payments for this customer
+      const totalCollected = payments
+        .filter(p => p.master_customer_id === bc.master_customer_id)
+        .reduce((sum, p) => sum + Number(p.amount), 0);
       return [
         batch?.name || 'Unknown',
         bc.name,
@@ -216,8 +225,8 @@ export default function Export() {
         master?.outstanding_balance || 0,
         master?.payment_status || 'N/A',
         getAgentName(master?.assigned_agent || null),
-        `"${(master?.call_notes || '').replace(/"/g, '""')}"`,
-        ticket?.status || 'N/A'
+        ticket?.status || 'N/A',
+        totalCollected
       ].join(',');
     });
 
@@ -237,6 +246,18 @@ export default function Export() {
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 14;
     let yPos = 20;
+
+    // Helper to get call logs for a ticket
+    const getTicketCallLogs = (ticketId: string) => {
+      return callLogs.filter(log => log.ticket_id === ticketId).sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+    };
+
+    // Helper to format date
+    const formatLogDate = (dateStr: string) => {
+      return new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    };
 
     // Header
     doc.setFontSize(18);
@@ -271,13 +292,15 @@ export default function Export() {
     if (type === 'master') {
       const masterData = filteredCustomers as typeof masterCustomers;
       masterData.forEach((customer, index) => {
-        if (yPos > 270) {
+        if (yPos > 250) {
           doc.addPage();
           yPos = 20;
         }
 
         const ticket = tickets.find((t) => t.master_customer_id === customer.id);
         const agentName = getAgentName(customer.assigned_agent);
+        const ticketCallNotes = ticket ? getTicketCallLogs(ticket.id) : [];
+        const showCallNotes = ticket && (ticket.status === 'In Progress' || ticket.status === 'Resolved') && ticketCallNotes.length > 0;
 
         doc.setFont("helvetica", "bold");
         doc.text(`${index + 1}. ${customer.name}`, margin, yPos);
@@ -289,12 +312,41 @@ export default function Export() {
         doc.text(`Owed: ${formatCurrency(Number(customer.total_owed))}  |  Paid: ${formatCurrency(Number(customer.total_paid))}  |  Outstanding: ${formatCurrency(Number(customer.outstanding_balance))}`, margin + 4, yPos);
         yPos += 5;
         doc.text(`Status: ${customer.payment_status}  |  Ticket: ${ticket?.status || 'N/A'}`, margin + 4, yPos);
-        yPos += 8;
+        yPos += 5;
+
+        // Add call notes for In Progress and Resolved tickets
+        if (showCallNotes) {
+          doc.setFont("helvetica", "italic");
+          doc.setFontSize(8);
+          doc.text(`Call Notes (${ticketCallNotes.length}):`, margin + 4, yPos);
+          yPos += 4;
+          
+          // Show up to 3 most recent call notes
+          const notesToShow = ticketCallNotes.slice(0, 3);
+          notesToShow.forEach((log) => {
+            if (yPos > 270) {
+              doc.addPage();
+              yPos = 20;
+            }
+            const noteText = `• [${log.call_outcome}] ${log.notes || 'No notes'} - ${formatLogDate(log.created_at)}`;
+            const lines = doc.splitTextToSize(noteText, pageWidth - margin * 2 - 8);
+            doc.text(lines, margin + 8, yPos);
+            yPos += lines.length * 3.5;
+          });
+          
+          if (ticketCallNotes.length > 3) {
+            doc.text(`  ... and ${ticketCallNotes.length - 3} more notes`, margin + 8, yPos);
+            yPos += 4;
+          }
+          doc.setFontSize(9);
+        }
+        
+        yPos += 3;
       });
     } else {
       const batchData = filteredCustomers as typeof batchCustomers;
       batchData.forEach((bc, index) => {
-        if (yPos > 270) {
+        if (yPos > 250) {
           doc.addPage();
           yPos = 20;
         }
@@ -303,6 +355,8 @@ export default function Export() {
         const batch = batches.find(b => b.id === bc.batch_id);
         const ticket = tickets.find((t) => t.master_customer_id === bc.master_customer_id);
         const agentName = getAgentName(master?.assigned_agent || null);
+        const ticketCallNotes = ticket ? getTicketCallLogs(ticket.id) : [];
+        const showCallNotes = ticket && (ticket.status === 'In Progress' || ticket.status === 'Resolved') && ticketCallNotes.length > 0;
 
         doc.setFont("helvetica", "bold");
         doc.text(`${index + 1}. ${bc.name}`, margin, yPos);
@@ -316,7 +370,36 @@ export default function Export() {
         doc.text(`Total Paid: ${formatCurrency(Number(master?.total_paid || 0))}  |  Outstanding: ${formatCurrency(Number(master?.outstanding_balance || 0))}`, margin + 4, yPos);
         yPos += 5;
         doc.text(`Status: ${master?.payment_status || 'N/A'}  |  Ticket: ${ticket?.status || 'N/A'}`, margin + 4, yPos);
-        yPos += 8;
+        yPos += 5;
+
+        // Add call notes for In Progress and Resolved tickets
+        if (showCallNotes) {
+          doc.setFont("helvetica", "italic");
+          doc.setFontSize(8);
+          doc.text(`Call Notes (${ticketCallNotes.length}):`, margin + 4, yPos);
+          yPos += 4;
+          
+          // Show up to 3 most recent call notes
+          const notesToShow = ticketCallNotes.slice(0, 3);
+          notesToShow.forEach((log) => {
+            if (yPos > 270) {
+              doc.addPage();
+              yPos = 20;
+            }
+            const noteText = `• [${log.call_outcome}] ${log.notes || 'No notes'} - ${formatLogDate(log.created_at)}`;
+            const lines = doc.splitTextToSize(noteText, pageWidth - margin * 2 - 8);
+            doc.text(lines, margin + 8, yPos);
+            yPos += lines.length * 3.5;
+          });
+          
+          if (ticketCallNotes.length > 3) {
+            doc.text(`  ... and ${ticketCallNotes.length - 3} more notes`, margin + 8, yPos);
+            yPos += 4;
+          }
+          doc.setFontSize(9);
+        }
+        
+        yPos += 3;
       });
     }
 

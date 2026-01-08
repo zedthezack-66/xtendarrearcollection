@@ -87,6 +87,7 @@ export default function Tickets() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
+  const [amountSort, setAmountSort] = useState<string>("none");
   const [ticketToDelete, setTicketToDelete] = useState<string | null>(null);
   const [blockedResolveModal, setBlockedResolveModal] = useState<{ ticketId: string; balance: number } | null>(null);
   const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
@@ -172,7 +173,16 @@ export default function Tickets() {
       const matchesAgent = agentFilter === "all" || ticket.assigned_agent === agentFilter;
       return matchesSearch && matchesStatus && matchesPriority && matchesAgent;
     })
-    .sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
+    .sort((a, b) => {
+      // Primary sort: amount owed if selected
+      if (amountSort === "high") {
+        return Number(b.amount_owed) - Number(a.amount_owed);
+      } else if (amountSort === "low") {
+        return Number(a.amount_owed) - Number(b.amount_owed);
+      }
+      // Default: sort by status (In Progress first, then Open, then Resolved)
+      return statusOrder[a.status] - statusOrder[b.status];
+    });
 
   const handleDeleteTicket = async () => {
     if (ticketToDelete) {
@@ -234,6 +244,14 @@ export default function Tickets() {
               <SelectContent>
                 <SelectItem value="all">All Agents</SelectItem>
                 {profiles?.map(p => <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={amountSort} onValueChange={setAmountSort}>
+              <SelectTrigger className="w-[150px]"><SelectValue placeholder="Sort by Amount" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Default Sort</SelectItem>
+                <SelectItem value="high">Amount: High → Low</SelectItem>
+                <SelectItem value="low">Amount: Low → High</SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { AlertTriangle, Save, Loader2, Shield, UserCog } from "lucide-react";
+import { AlertTriangle, Save, Loader2, Shield, UserCog, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,7 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { useMasterCustomers, useTickets, usePayments, useBatches, useProfiles, useUpdateProfile, useUserRoles, useUpdateUserRole } from "@/hooks/useSupabaseData";
+import { useMasterCustomers, useTickets, usePayments, useBatches, useProfiles, useUpdateProfile, useUserRoles, useUpdateUserRole, useAdminDeleteUser } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -39,11 +39,13 @@ export default function Settings() {
   const { data: userRolesData = [] } = useUserRoles();
   const updateProfile = useUpdateProfile();
   const updateUserRoleMutation = useUpdateUserRole();
+  const deleteUserMutation = useAdminDeleteUser();
 
   const [fullName, setFullName] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [phone, setPhone] = useState('');
   const [isClearing, setIsClearing] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<{ id: string; name: string } | null>(null);
 
   // Build a map of userId -> role
   const userRoleMap = useMemo(() => {
@@ -134,6 +136,12 @@ export default function Settings() {
 
   const handleRoleChange = (userId: string, newRole: 'admin' | 'agent') => {
     updateUserRoleMutation.mutate({ userId, newRole });
+  };
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+    await deleteUserMutation.mutateAsync(userToDelete.id);
+    setUserToDelete(null);
   };
 
   return (
@@ -239,24 +247,37 @@ export default function Settings() {
                   </div>
                   <div className="flex items-center gap-2">
                     {isAdmin ? (
-                      <Select
-                        value={pRole}
-                        onValueChange={(value: 'admin' | 'agent') => handleRoleChange(p.id, value)}
-                        disabled={isSelf || updateUserRoleMutation.isPending}
-                      >
-                        <SelectTrigger className="w-[110px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="admin">
-                            <div className="flex items-center gap-2">
-                              <Shield className="h-3 w-3" />
-                              Admin
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="agent">Agent</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          value={pRole}
+                          onValueChange={(value: 'admin' | 'agent') => handleRoleChange(p.id, value)}
+                          disabled={isSelf || updateUserRoleMutation.isPending}
+                        >
+                          <SelectTrigger className="w-[110px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="admin">
+                              <div className="flex items-center gap-2">
+                                <Shield className="h-3 w-3" />
+                                Admin
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="agent">Agent</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {!isSelf && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => setUserToDelete({ id: p.id, name: p.full_name })}
+                            disabled={deleteUserMutation.isPending}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                     ) : (
                       <Badge variant={pRole === 'admin' ? 'default' : 'secondary'}>
                         {pRole === 'admin' ? 'Admin' : 'Agent'}
@@ -341,6 +362,37 @@ export default function Settings() {
           </CardContent>
         </Card>
       )}
+
+      {/* Delete User Confirmation Dialog */}
+      <AlertDialog open={!!userToDelete} onOpenChange={(open) => !open && setUserToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Team Member</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove <strong>{userToDelete?.name}</strong> from the team? 
+              This will delete their profile and role. If they have assigned tickets or customers, 
+              you'll need to reassign them first.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteUser} 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteUserMutation.isPending}
+            >
+              {deleteUserMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete User'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
