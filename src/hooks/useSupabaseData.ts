@@ -949,3 +949,69 @@ export function useAdminAgentAnalytics(agentId?: string) {
     },
   });
 }
+
+// Admin delete user
+export function useAdminDeleteUser() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const { data, error } = await supabase.rpc('admin_delete_user', {
+        p_user_id: userId,
+      });
+      
+      if (error) throw error;
+      return data as {
+        success: boolean;
+        blocked?: boolean;
+        reason?: string;
+        assigned_tickets?: number;
+        assigned_customers?: number;
+        deleted_user?: string;
+        user_id?: string;
+      };
+    },
+    onSuccess: (data) => {
+      if (data.success) {
+        queryClient.invalidateQueries({ queryKey: ['profiles'] });
+        queryClient.invalidateQueries({ queryKey: ['user_roles'] });
+        toast({ 
+          title: 'User deleted', 
+          description: `${data.deleted_user} has been removed from the team` 
+        });
+      } else if (data.blocked) {
+        toast({ 
+          title: 'Cannot delete user', 
+          description: data.reason,
+          variant: 'destructive'
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error deleting user', description: error.message, variant: 'destructive' });
+    },
+  });
+}
+
+// Tickets with server-side sorting by amount_owed
+export function useTicketsSorted(sortOrder: 'high' | 'low' = 'high', batchId?: string) {
+  return useQuery({
+    queryKey: ['tickets_sorted', sortOrder, batchId],
+    queryFn: async () => {
+      let query = supabase
+        .from('tickets')
+        .select('*')
+        .order('amount_owed', { ascending: sortOrder === 'low' });
+      
+      if (batchId) {
+        query = query.eq('batch_id', batchId);
+      }
+      
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      return data;
+    },
+  });
+}
