@@ -167,26 +167,12 @@ export default function Export() {
     URL.revokeObjectURL(url);
   };
 
-  // Helper to escape CSV values
-  const escapeCSV = (value: string) => {
-    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-      return `"${value.replace(/"/g, '""')}"`;
-    }
-    return value;
-  };
-
-  // Helper to get call logs for a customer/ticket
-  const getCustomerCallNotes = (ticketId: string) => {
-    const logs = callLogs.filter(log => log.ticket_id === ticketId).sort((a, b) => 
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-    if (logs.length === 0) return '';
-    // Format up to 3 most recent notes
-    return logs.slice(0, 3).map(log => {
-      const date = new Date(log.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-      const ptp = log.promise_to_pay_date ? ` | PTP: ${log.promise_to_pay_date} - ${formatCurrency(Number(log.promise_to_pay_amount || 0))}` : '';
-      return `[${log.call_outcome}] ${log.notes || 'No notes'} (${date})${ptp}`;
-    }).join(' | ');
+  // Helper to escape CSV values - wrap in quotes and escape internal quotes
+  const escapeCSV = (value: string | null | undefined): string => {
+    if (!value) return '';
+    const str = String(value);
+    // Always wrap in quotes and escape internal quotes
+    return `"${str.replace(/"/g, '""')}"`;
   };
 
   const handleExportMaster = () => {
@@ -196,27 +182,27 @@ export default function Export() {
       return;
     }
 
-    const headers = ['Customer Name', 'NRC Number', 'Mobile Number', 'Total Amount Owed', 'Total Amount Paid', 'Outstanding Balance', 'Payment Status', 'Assigned Agent', 'Ticket Status', 'Total Collected', 'Call Notes'];
+    const headers = ['Customer Name', 'NRC Number', 'Mobile Number', 'Total Amount Owed', 'Total Amount Paid', 'Outstanding Balance', 'Payment Status', 'Assigned Agent', 'Call Notes', 'Ticket Status', 'Total Collected'];
     const rows = filteredCustomers.map((customer) => {
       const ticket = tickets.find((t) => t.master_customer_id === customer.id);
       // Calculate total collected from payments for this customer
       const totalCollected = payments
         .filter(p => p.master_customer_id === customer.id)
         .reduce((sum, p) => sum + Number(p.amount), 0);
-      // Get call notes for this customer's ticket
-      const callNotesStr = ticket ? getCustomerCallNotes(ticket.id) : '';
+      // Use customer.call_notes directly from master_customers
+      const callNotesStr = customer.call_notes || '';
       return [
         escapeCSV(customer.name),
-        customer.nrc_number,
-        customer.mobile_number || '',
-        customer.total_owed,
-        customer.total_paid,
-        customer.outstanding_balance,
-        customer.payment_status,
+        escapeCSV(customer.nrc_number),
+        escapeCSV(customer.mobile_number),
+        Number(customer.total_owed).toFixed(2),
+        Number(customer.total_paid).toFixed(2),
+        Number(customer.outstanding_balance).toFixed(2),
+        escapeCSV(customer.payment_status),
         escapeCSV(getAgentName(customer.assigned_agent)),
-        ticket?.status || 'N/A',
-        totalCollected,
-        escapeCSV(callNotesStr)
+        escapeCSV(callNotesStr),
+        escapeCSV(ticket?.status || 'N/A'),
+        totalCollected.toFixed(2)
       ].join(',');
     });
 
@@ -231,7 +217,7 @@ export default function Export() {
       return;
     }
 
-    const headers = ['Batch Name', 'Customer Name', 'NRC Number', 'Mobile Number', 'Batch Amount Owed', 'Total Paid (Global)', 'Outstanding Balance (Global)', 'Payment Status', 'Assigned Agent', 'Ticket Status', 'Total Collected', 'Call Notes'];
+    const headers = ['Batch Name', 'Customer Name', 'NRC Number', 'Mobile Number', 'Batch Amount Owed', 'Total Paid (Global)', 'Outstanding Balance (Global)', 'Payment Status', 'Assigned Agent', 'Call Notes', 'Ticket Status', 'Total Collected'];
     const rows = filteredCustomers.map((bc) => {
       const master = masterCustomers.find(mc => mc.id === bc.master_customer_id);
       const batch = batches.find(b => b.id === bc.batch_id);
@@ -240,21 +226,21 @@ export default function Export() {
       const totalCollected = payments
         .filter(p => p.master_customer_id === bc.master_customer_id)
         .reduce((sum, p) => sum + Number(p.amount), 0);
-      // Get call notes for this customer's ticket
-      const callNotesStr = ticket ? getCustomerCallNotes(ticket.id) : '';
+      // Use master?.call_notes from master_customers
+      const callNotesStr = master?.call_notes || '';
       return [
         escapeCSV(batch?.name || 'Unknown'),
         escapeCSV(bc.name),
-        bc.nrc_number,
-        bc.mobile_number || '',
-        bc.amount_owed,
-        master?.total_paid || 0,
-        master?.outstanding_balance || 0,
-        master?.payment_status || 'N/A',
+        escapeCSV(bc.nrc_number),
+        escapeCSV(bc.mobile_number),
+        Number(bc.amount_owed).toFixed(2),
+        Number(master?.total_paid || 0).toFixed(2),
+        Number(master?.outstanding_balance || 0).toFixed(2),
+        escapeCSV(master?.payment_status || 'N/A'),
         escapeCSV(getAgentName(master?.assigned_agent || null)),
-        ticket?.status || 'N/A',
-        totalCollected,
-        escapeCSV(callNotesStr)
+        escapeCSV(callNotesStr),
+        escapeCSV(ticket?.status || 'N/A'),
+        totalCollected.toFixed(2)
       ].join(',');
     });
 
@@ -274,18 +260,6 @@ export default function Export() {
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 14;
     let yPos = 20;
-
-    // Helper to get call logs for a ticket
-    const getTicketCallLogs = (ticketId: string) => {
-      return callLogs.filter(log => log.ticket_id === ticketId).sort((a, b) => 
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-    };
-
-    // Helper to format date
-    const formatLogDate = (dateStr: string) => {
-      return new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-    };
 
     // Header
     doc.setFontSize(18);
@@ -316,19 +290,20 @@ export default function Export() {
 
     // Customer details
     doc.setFontSize(9);
+    const maxTextWidth = pageWidth - margin * 2 - 8;
     
     if (type === 'master') {
       const masterData = filteredCustomers as typeof masterCustomers;
       masterData.forEach((customer, index) => {
-        if (yPos > 250) {
+        if (yPos > 240) {
           doc.addPage();
           yPos = 20;
         }
 
         const ticket = tickets.find((t) => t.master_customer_id === customer.id);
         const agentName = getAgentName(customer.assigned_agent);
-        const ticketCallNotes = ticket ? getTicketCallLogs(ticket.id) : [];
-        const showCallNotes = ticket && (ticket.status === 'In Progress' || ticket.status === 'Resolved') && ticketCallNotes.length > 0;
+        // Use customer.call_notes from master_customers
+        const hasCallNotes = customer.call_notes && customer.call_notes.trim().length > 0;
 
         doc.setFont("helvetica", "bold");
         doc.text(`${index + 1}. ${customer.name}`, margin, yPos);
@@ -336,45 +311,47 @@ export default function Export() {
 
         doc.setFont("helvetica", "normal");
         doc.text(`NRC: ${customer.nrc_number}  |  Mobile: ${customer.mobile_number || 'N/A'}  |  Agent: ${agentName}`, margin + 4, yPos);
+        yPos += 6;
+        
+        // Financial amounts - emphasized and accurate
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.text(`Total Owed: ${formatCurrency(Number(customer.total_owed))}`, margin + 4, yPos);
         yPos += 5;
-        doc.text(`Owed: ${formatCurrency(Number(customer.total_owed))}  |  Paid: ${formatCurrency(Number(customer.total_paid))}  |  Outstanding: ${formatCurrency(Number(customer.outstanding_balance))}`, margin + 4, yPos);
+        doc.text(`Total Paid: ${formatCurrency(Number(customer.total_paid))}`, margin + 4, yPos);
         yPos += 5;
+        doc.text(`Outstanding Balance: ${formatCurrency(Number(customer.outstanding_balance))}`, margin + 4, yPos);
+        yPos += 5;
+        
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
         doc.text(`Status: ${customer.payment_status}  |  Ticket: ${ticket?.status || 'N/A'}`, margin + 4, yPos);
         yPos += 5;
 
-        // Add call notes for In Progress and Resolved tickets
-        if (showCallNotes) {
-          doc.setFont("helvetica", "italic");
+        // Add call notes if they exist
+        if (hasCallNotes) {
+          if (yPos > 260) {
+            doc.addPage();
+            yPos = 20;
+          }
+          doc.setFont("helvetica", "bold");
           doc.setFontSize(8);
-          doc.text(`Call Notes (${ticketCallNotes.length}):`, margin + 4, yPos);
+          doc.text(`Call Notes:`, margin + 4, yPos);
           yPos += 4;
           
-          // Show up to 3 most recent call notes
-          const notesToShow = ticketCallNotes.slice(0, 3);
-          notesToShow.forEach((log) => {
-            if (yPos > 270) {
-              doc.addPage();
-              yPos = 20;
-            }
-            const noteText = `• [${log.call_outcome}] ${log.notes || 'No notes'} - ${formatLogDate(log.created_at)}`;
-            const lines = doc.splitTextToSize(noteText, pageWidth - margin * 2 - 8);
-            doc.text(lines, margin + 8, yPos);
-            yPos += lines.length * 3.5;
-          });
-          
-          if (ticketCallNotes.length > 3) {
-            doc.text(`  ... and ${ticketCallNotes.length - 3} more notes`, margin + 8, yPos);
-            yPos += 4;
-          }
+          doc.setFont("helvetica", "normal");
+          const splitNotes = doc.splitTextToSize(customer.call_notes!, maxTextWidth);
+          doc.text(splitNotes, margin + 8, yPos);
+          yPos += splitNotes.length * 3 + 3;
           doc.setFontSize(9);
         }
         
-        yPos += 3;
+        yPos += 4;
       });
     } else {
       const batchData = filteredCustomers as typeof batchCustomers;
       batchData.forEach((bc, index) => {
-        if (yPos > 250) {
+        if (yPos > 240) {
           doc.addPage();
           yPos = 20;
         }
@@ -383,8 +360,8 @@ export default function Export() {
         const batch = batches.find(b => b.id === bc.batch_id);
         const ticket = tickets.find((t) => t.master_customer_id === bc.master_customer_id);
         const agentName = getAgentName(master?.assigned_agent || null);
-        const ticketCallNotes = ticket ? getTicketCallLogs(ticket.id) : [];
-        const showCallNotes = ticket && (ticket.status === 'In Progress' || ticket.status === 'Resolved') && ticketCallNotes.length > 0;
+        // Use master?.call_notes from master_customers
+        const hasCallNotes = master?.call_notes && master.call_notes.trim().length > 0;
 
         doc.setFont("helvetica", "bold");
         doc.text(`${index + 1}. ${bc.name}`, margin, yPos);
@@ -393,41 +370,43 @@ export default function Export() {
         doc.setFont("helvetica", "normal");
         doc.text(`Batch: ${batch?.name || 'Unknown'}  |  NRC: ${bc.nrc_number}  |  Agent: ${agentName}`, margin + 4, yPos);
         yPos += 5;
-        doc.text(`Mobile: ${bc.mobile_number || 'N/A'}  |  Batch Amount: ${formatCurrency(Number(bc.amount_owed))}`, margin + 4, yPos);
+        doc.text(`Mobile: ${bc.mobile_number || 'N/A'}`, margin + 4, yPos);
+        yPos += 6;
+        
+        // Financial amounts - emphasized and accurate
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.text(`Batch Amount Owed: ${formatCurrency(Number(bc.amount_owed))}`, margin + 4, yPos);
         yPos += 5;
-        doc.text(`Total Paid: ${formatCurrency(Number(master?.total_paid || 0))}  |  Outstanding: ${formatCurrency(Number(master?.outstanding_balance || 0))}`, margin + 4, yPos);
+        doc.text(`Global Total Paid: ${formatCurrency(Number(master?.total_paid || 0))}`, margin + 4, yPos);
         yPos += 5;
+        doc.text(`Global Outstanding: ${formatCurrency(Number(master?.outstanding_balance || 0))}`, margin + 4, yPos);
+        yPos += 5;
+        
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
         doc.text(`Status: ${master?.payment_status || 'N/A'}  |  Ticket: ${ticket?.status || 'N/A'}`, margin + 4, yPos);
         yPos += 5;
 
-        // Add call notes for In Progress and Resolved tickets
-        if (showCallNotes) {
-          doc.setFont("helvetica", "italic");
+        // Add call notes if they exist
+        if (hasCallNotes) {
+          if (yPos > 260) {
+            doc.addPage();
+            yPos = 20;
+          }
+          doc.setFont("helvetica", "bold");
           doc.setFontSize(8);
-          doc.text(`Call Notes (${ticketCallNotes.length}):`, margin + 4, yPos);
+          doc.text(`Call Notes:`, margin + 4, yPos);
           yPos += 4;
           
-          // Show up to 3 most recent call notes
-          const notesToShow = ticketCallNotes.slice(0, 3);
-          notesToShow.forEach((log) => {
-            if (yPos > 270) {
-              doc.addPage();
-              yPos = 20;
-            }
-            const noteText = `• [${log.call_outcome}] ${log.notes || 'No notes'} - ${formatLogDate(log.created_at)}`;
-            const lines = doc.splitTextToSize(noteText, pageWidth - margin * 2 - 8);
-            doc.text(lines, margin + 8, yPos);
-            yPos += lines.length * 3.5;
-          });
-          
-          if (ticketCallNotes.length > 3) {
-            doc.text(`  ... and ${ticketCallNotes.length - 3} more notes`, margin + 8, yPos);
-            yPos += 4;
-          }
+          doc.setFont("helvetica", "normal");
+          const splitNotes = doc.splitTextToSize(master!.call_notes!, maxTextWidth);
+          doc.text(splitNotes, margin + 8, yPos);
+          yPos += splitNotes.length * 3 + 3;
           doc.setFontSize(9);
         }
         
-        yPos += 3;
+        yPos += 4;
       });
     }
 
