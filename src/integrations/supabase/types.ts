@@ -17,36 +17,60 @@ export type Database = {
       batch_customers: {
         Row: {
           amount_owed: number
+          arrear_status: string | null
           assigned_agent_id: string | null
           batch_id: string
+          branch_name: string | null
           created_at: string
+          employer_name: string | null
+          employer_subdivision: string | null
           id: string
+          last_payment_date: string | null
+          loan_consultant: string | null
           master_customer_id: string
           mobile_number: string | null
           name: string
           nrc_number: string
+          reason_for_arrears: string | null
+          tenure: string | null
         }
         Insert: {
           amount_owed?: number
+          arrear_status?: string | null
           assigned_agent_id?: string | null
           batch_id: string
+          branch_name?: string | null
           created_at?: string
+          employer_name?: string | null
+          employer_subdivision?: string | null
           id?: string
+          last_payment_date?: string | null
+          loan_consultant?: string | null
           master_customer_id: string
           mobile_number?: string | null
           name: string
           nrc_number: string
+          reason_for_arrears?: string | null
+          tenure?: string | null
         }
         Update: {
           amount_owed?: number
+          arrear_status?: string | null
           assigned_agent_id?: string | null
           batch_id?: string
+          branch_name?: string | null
           created_at?: string
+          employer_name?: string | null
+          employer_subdivision?: string | null
           id?: string
+          last_payment_date?: string | null
+          loan_consultant?: string | null
           master_customer_id?: string
           mobile_number?: string | null
           name?: string
           nrc_number?: string
+          reason_for_arrears?: string | null
+          tenure?: string | null
         }
         Relationships: [
           {
@@ -158,46 +182,70 @@ export type Database = {
       }
       master_customers: {
         Row: {
+          arrear_status: string | null
           assigned_agent: string | null
+          branch_name: string | null
           call_notes: string | null
           created_at: string
+          employer_name: string | null
+          employer_subdivision: string | null
           id: string
+          last_payment_date: string | null
           loan_account_number: string | null
+          loan_consultant: string | null
           mobile_number: string | null
           name: string
           nrc_number: string
           outstanding_balance: number
           payment_status: string
+          reason_for_arrears: string | null
+          tenure: string | null
           total_owed: number
           total_paid: number
           updated_at: string
         }
         Insert: {
+          arrear_status?: string | null
           assigned_agent?: string | null
+          branch_name?: string | null
           call_notes?: string | null
           created_at?: string
+          employer_name?: string | null
+          employer_subdivision?: string | null
           id?: string
+          last_payment_date?: string | null
           loan_account_number?: string | null
+          loan_consultant?: string | null
           mobile_number?: string | null
           name: string
           nrc_number: string
           outstanding_balance?: number
           payment_status?: string
+          reason_for_arrears?: string | null
+          tenure?: string | null
           total_owed?: number
           total_paid?: number
           updated_at?: string
         }
         Update: {
+          arrear_status?: string | null
           assigned_agent?: string | null
+          branch_name?: string | null
           call_notes?: string | null
           created_at?: string
+          employer_name?: string | null
+          employer_subdivision?: string | null
           id?: string
+          last_payment_date?: string | null
           loan_account_number?: string | null
+          loan_consultant?: string | null
           mobile_number?: string | null
           name?: string
           nrc_number?: string
           outstanding_balance?: number
           payment_status?: string
+          reason_for_arrears?: string | null
+          tenure?: string | null
           total_owed?: number
           total_paid?: number
           updated_at?: string

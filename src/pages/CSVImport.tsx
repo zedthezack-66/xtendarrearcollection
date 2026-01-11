@@ -37,6 +37,15 @@ interface CSVRow {
   'Amount Owed'?: string;
   'Mobile Number'?: string;
   'Assigned Agent'?: string;
+  // New loan book fields (all optional)
+  'Branch Name'?: string;
+  'Arrear Status'?: string;
+  'Employer Name'?: string;
+  'Employer Subdivision'?: string;
+  'Loan Consultant'?: string;
+  'Tenure'?: string;
+  'Reason for Arrears'?: string;
+  'Last Payment Date'?: string;
   [key: string]: string | undefined;
 }
 
@@ -53,12 +62,21 @@ interface ParsedRow {
   existsInMaster: boolean;
   isDuplicateNrc: boolean;
   isDuplicateMobile: boolean;
+  // New loan book fields
+  branchName: string;
+  arrearStatus: string;
+  employerName: string;
+  employerSubdivision: string;
+  loanConsultant: string;
+  tenure: string;
+  reasonForArrears: string;
+  lastPaymentDate: string;
 }
 
-const SAMPLE_CSV = `Customer Name,NRC Number,Amount Owed,Mobile Number,Assigned Agent
-John Mwanza,123456/10/1,15000,260971234567,Ziba
-Jane Banda,234567/20/2,8500,260972345678,Mary
-Peter Phiri,345678/30/3,22000,260973456789,Ziba`;
+const SAMPLE_CSV = `Customer Name,NRC Number,Amount Owed,Mobile Number,Assigned Agent,Branch Name,Arrear Status,Employer Name,Employer Subdivision,Loan Consultant,Tenure,Reason for Arrears,Last Payment Date
+John Mwanza,123456/10/1,15000,260971234567,Ziba,Lusaka Main,60+ Days,Ministry of Health,Finance Dept,Grace Tembo,24 months,Job transfer - salary routing issue,2025-12-15
+Jane Banda,234567/20/2,8500,260972345678,Mary,Ndola Branch,30+ Days,Zambia Airways,Operations,Peter Sakala,12 months,Reduced hours,
+Peter Phiri,345678/30/3,22000,260973456789,Ziba,Kitwe Branch,90+ Days,Zambia Sugar,Production,Mary Mulenga,36 months,Medical leave,2025-11-20`;
 
 export default function CSVImport() {
   const navigate = useNavigate();
@@ -129,6 +147,16 @@ export default function CSVImport() {
       const mobileNumber = row['Mobile Number']?.toString().trim() || '';
       const assignedAgent = row['Assigned Agent']?.toString().trim() || '';
       
+      // Parse new loan book fields (all optional)
+      const branchName = row['Branch Name']?.toString().trim() || '';
+      const arrearStatus = row['Arrear Status']?.toString().trim() || '';
+      const employerName = row['Employer Name']?.toString().trim() || '';
+      const employerSubdivision = row['Employer Subdivision']?.toString().trim() || '';
+      const loanConsultant = row['Loan Consultant']?.toString().trim() || '';
+      const tenure = row['Tenure']?.toString().trim() || '';
+      const reasonForArrears = row['Reason for Arrears']?.toString().trim() || '';
+      const lastPaymentDate = row['Last Payment Date']?.toString().trim() || '';
+      
       const errors: string[] = [];
       
       // Required field validation
@@ -172,6 +200,15 @@ export default function CSVImport() {
         existsInMaster,
         isDuplicateNrc,
         isDuplicateMobile: !!isDuplicateMobile,
+        // New loan book fields
+        branchName,
+        arrearStatus,
+        employerName,
+        employerSubdivision,
+        loanConsultant,
+        tenure,
+        reasonForArrears,
+        lastPaymentDate,
       };
     });
     setParsedData(parsed);
@@ -341,6 +378,15 @@ export default function CSVImport() {
             total_owed: 0,
             outstanding_balance: 0,
             assigned_agent: row.assignedAgentId,
+            // New loan book fields
+            branch_name: row.branchName || null,
+            arrear_status: row.arrearStatus || null,
+            employer_name: row.employerName || null,
+            employer_subdivision: row.employerSubdivision || null,
+            loan_consultant: row.loanConsultant || null,
+            tenure: row.tenure || null,
+            reason_for_arrears: row.reasonForArrears || null,
+            last_payment_date: row.lastPaymentDate ? new Date(row.lastPaymentDate).toISOString() : null,
           }));
 
           const { data: insertedCustomers, error: customersError } = await supabase
@@ -386,6 +432,15 @@ export default function CSVImport() {
                 mobile_number: mc.mobile_number,
                 amount_owed: row?.amountOwed || 0,
                 assigned_agent_id: row?.assignedAgentId,
+                // New loan book fields
+                branch_name: row?.branchName || null,
+                arrear_status: row?.arrearStatus || null,
+                employer_name: row?.employerName || null,
+                employer_subdivision: row?.employerSubdivision || null,
+                loan_consultant: row?.loanConsultant || null,
+                tenure: row?.tenure || null,
+                reason_for_arrears: row?.reasonForArrears || null,
+                last_payment_date: row?.lastPaymentDate ? new Date(row.lastPaymentDate).toISOString() : null,
               };
             });
 
@@ -427,6 +482,15 @@ export default function CSVImport() {
                 mobile_number: row.mobileNumber || null,
                 amount_owed: row.amountOwed,
                 assigned_agent_id: row.assignedAgentId,
+                // New loan book fields
+                branch_name: row.branchName || null,
+                arrear_status: row.arrearStatus || null,
+                employer_name: row.employerName || null,
+                employer_subdivision: row.employerSubdivision || null,
+                loan_consultant: row.loanConsultant || null,
+                tenure: row.tenure || null,
+                reason_for_arrears: row.reasonForArrears || null,
+                last_payment_date: row.lastPaymentDate ? new Date(row.lastPaymentDate).toISOString() : null,
               });
 
               newlyAddedCount++;

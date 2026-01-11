@@ -417,9 +417,15 @@ export function useCreatePayment() {
       
       if (error) throw error;
       
-      // Update master customer totals and ticket status
+      // Update master customer totals, ticket status, and last_payment_date
       await updateMasterCustomerFromPayments(payment.master_customer_id);
       await updateTicketStatusFromPayments(payment.ticket_id, payment.master_customer_id);
+      
+      // Update last_payment_date on master_customers
+      await supabase
+        .from('master_customers')
+        .update({ last_payment_date: data.payment_date })
+        .eq('id', payment.master_customer_id);
       
       return data;
     },
