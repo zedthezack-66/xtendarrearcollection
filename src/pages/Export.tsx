@@ -175,6 +175,22 @@ export default function Export() {
     return `"${str.replace(/"/g, '""')}"`;
   };
 
+  // Helper to format last payment date - compute from payments if not stored
+  const getLastPaymentDate = (customerId: string, storedDate?: string | null) => {
+    // If stored date exists and is recent, use it
+    if (storedDate) {
+      return format(new Date(storedDate), 'yyyy-MM-dd');
+    }
+    // Otherwise compute from payments
+    const customerPayments = payments.filter(p => p.master_customer_id === customerId);
+    if (customerPayments.length === 0) return '';
+    const latestPayment = customerPayments.reduce((latest, p) => {
+      const pDate = new Date(p.payment_date);
+      return pDate > new Date(latest.payment_date) ? p : latest;
+    });
+    return format(new Date(latestPayment.payment_date), 'yyyy-MM-dd');
+  };
+
   const handleExportMaster = () => {
     const filteredCustomers = getFilteredMasterCustomers();
     if (filteredCustomers.length === 0) {
@@ -182,8 +198,13 @@ export default function Export() {
       return;
     }
 
-    const headers = ['Customer Name', 'NRC Number', 'Mobile Number', 'Total Amount Owed', 'Total Amount Paid', 'Outstanding Balance', 'Payment Status', 'Assigned Agent', 'Call Notes', 'Ticket Status', 'Total Collected'];
-    const rows = filteredCustomers.map((customer) => {
+    const headers = [
+      'Customer Name', 'NRC Number', 'Mobile Number', 'Total Amount Owed', 'Total Amount Paid', 
+      'Outstanding Balance', 'Payment Status', 'Assigned Agent', 'Call Notes', 'Ticket Status', 'Total Collected',
+      'Branch Name', 'Arrear Status', 'Employer Name', 'Employer Subdivision', 
+      'Loan Consultant', 'Tenure', 'Reason for Arrears', 'Last Payment Date'
+    ];
+    const rows = filteredCustomers.map((customer: any) => {
       const ticket = tickets.find((t) => t.master_customer_id === customer.id);
       // Calculate total collected from payments for this customer
       const totalCollected = payments
@@ -191,6 +212,8 @@ export default function Export() {
         .reduce((sum, p) => sum + Number(p.amount), 0);
       // Use customer.call_notes directly from master_customers
       const callNotesStr = customer.call_notes || '';
+      // Get last payment date (computed or stored)
+      const lastPaymentDate = getLastPaymentDate(customer.id, customer.last_payment_date);
       return [
         escapeCSV(customer.name),
         escapeCSV(customer.nrc_number),
@@ -202,7 +225,16 @@ export default function Export() {
         escapeCSV(getAgentName(customer.assigned_agent)),
         escapeCSV(callNotesStr),
         escapeCSV(ticket?.status || 'N/A'),
-        totalCollected.toFixed(2)
+        totalCollected.toFixed(2),
+        // New loan book fields
+        escapeCSV(customer.branch_name || ''),
+        escapeCSV(customer.arrear_status || ''),
+        escapeCSV(customer.employer_name || ''),
+        escapeCSV(customer.employer_subdivision || ''),
+        escapeCSV(customer.loan_consultant || ''),
+        escapeCSV(customer.tenure || ''),
+        escapeCSV(customer.reason_for_arrears || ''),
+        escapeCSV(lastPaymentDate)
       ].join(',');
     });
 
@@ -217,9 +249,15 @@ export default function Export() {
       return;
     }
 
-    const headers = ['Batch Name', 'Customer Name', 'NRC Number', 'Mobile Number', 'Batch Amount Owed', 'Total Paid (Global)', 'Outstanding Balance (Global)', 'Payment Status', 'Assigned Agent', 'Call Notes', 'Ticket Status', 'Total Collected'];
-    const rows = filteredCustomers.map((bc) => {
-      const master = masterCustomers.find(mc => mc.id === bc.master_customer_id);
+    const headers = [
+      'Batch Name', 'Customer Name', 'NRC Number', 'Mobile Number', 'Batch Amount Owed', 
+      'Total Paid (Global)', 'Outstanding Balance (Global)', 'Payment Status', 'Assigned Agent', 
+      'Call Notes', 'Ticket Status', 'Total Collected',
+      'Branch Name', 'Arrear Status', 'Employer Name', 'Employer Subdivision', 
+      'Loan Consultant', 'Tenure', 'Reason for Arrears', 'Last Payment Date'
+    ];
+    const rows = filteredCustomers.map((bc: any) => {
+      const master = masterCustomers.find(mc => mc.id === bc.master_customer_id) as any;
       const batch = batches.find(b => b.id === bc.batch_id);
       const ticket = tickets.find((t) => t.master_customer_id === bc.master_customer_id);
       // Calculate total collected from payments for this customer
@@ -228,6 +266,8 @@ export default function Export() {
         .reduce((sum, p) => sum + Number(p.amount), 0);
       // Use master?.call_notes from master_customers
       const callNotesStr = master?.call_notes || '';
+      // Get last payment date - prefer batch_customer, fallback to master, then compute
+      const lastPaymentDate = getLastPaymentDate(bc.master_customer_id, bc.last_payment_date || master?.last_payment_date);
       return [
         escapeCSV(batch?.name || 'Unknown'),
         escapeCSV(bc.name),
@@ -240,7 +280,16 @@ export default function Export() {
         escapeCSV(getAgentName(master?.assigned_agent || null)),
         escapeCSV(callNotesStr),
         escapeCSV(ticket?.status || 'N/A'),
-        totalCollected.toFixed(2)
+        totalCollected.toFixed(2),
+        // New loan book fields - prefer batch_customer level, fallback to master
+        escapeCSV(bc.branch_name || master?.branch_name || ''),
+        escapeCSV(bc.arrear_status || master?.arrear_status || ''),
+        escapeCSV(bc.employer_name || master?.employer_name || ''),
+        escapeCSV(bc.employer_subdivision || master?.employer_subdivision || ''),
+        escapeCSV(bc.loan_consultant || master?.loan_consultant || ''),
+        escapeCSV(bc.tenure || master?.tenure || ''),
+        escapeCSV(bc.reason_for_arrears || master?.reason_for_arrears || ''),
+        escapeCSV(lastPaymentDate)
       ].join(',');
     });
 
@@ -293,9 +342,9 @@ export default function Export() {
     const maxTextWidth = pageWidth - margin * 2 - 8;
     
     if (type === 'master') {
-      const masterData = filteredCustomers as typeof masterCustomers;
+      const masterData = filteredCustomers as any[];
       masterData.forEach((customer, index) => {
-        if (yPos > 240) {
+        if (yPos > 220) {
           doc.addPage();
           yPos = 20;
         }
@@ -304,6 +353,7 @@ export default function Export() {
         const agentName = getAgentName(customer.assigned_agent);
         // Use customer.call_notes from master_customers
         const hasCallNotes = customer.call_notes && customer.call_notes.trim().length > 0;
+        const lastPaymentDate = getLastPaymentDate(customer.id, customer.last_payment_date);
 
         doc.setFont("helvetica", "bold");
         doc.text(`${index + 1}. ${customer.name}`, margin, yPos);
@@ -311,7 +361,29 @@ export default function Export() {
 
         doc.setFont("helvetica", "normal");
         doc.text(`NRC: ${customer.nrc_number}  |  Mobile: ${customer.mobile_number || 'N/A'}  |  Agent: ${agentName}`, margin + 4, yPos);
-        yPos += 6;
+        yPos += 5;
+        
+        // Loan book fields - Branch, Employer, Arrear Status
+        const branchInfo = customer.branch_name ? `Branch: ${customer.branch_name}` : '';
+        const employerInfo = customer.employer_name ? `Employer: ${customer.employer_name}` : '';
+        const arrearInfo = customer.arrear_status ? `Arrear Status: ${customer.arrear_status}` : '';
+        const loanBookLine = [branchInfo, employerInfo, arrearInfo].filter(Boolean).join('  |  ');
+        if (loanBookLine) {
+          doc.text(loanBookLine, margin + 4, yPos);
+          yPos += 5;
+        }
+        
+        // Loan Consultant and Tenure
+        const consultantInfo = customer.loan_consultant ? `Loan Consultant: ${customer.loan_consultant}` : '';
+        const tenureInfo = customer.tenure ? `Tenure: ${customer.tenure}` : '';
+        const lastPaymentInfo = lastPaymentDate ? `Last Payment: ${lastPaymentDate}` : '';
+        const consultantLine = [consultantInfo, tenureInfo, lastPaymentInfo].filter(Boolean).join('  |  ');
+        if (consultantLine) {
+          doc.text(consultantLine, margin + 4, yPos);
+          yPos += 5;
+        }
+        
+        yPos += 1;
         
         // Financial amounts - emphasized and accurate
         doc.setFont("helvetica", "bold");
@@ -327,6 +399,16 @@ export default function Export() {
         doc.setFontSize(9);
         doc.text(`Status: ${customer.payment_status}  |  Ticket: ${ticket?.status || 'N/A'}`, margin + 4, yPos);
         yPos += 5;
+
+        // Add reason for arrears if exists
+        if (customer.reason_for_arrears) {
+          doc.setFont("helvetica", "italic");
+          doc.setFontSize(8);
+          doc.text(`Reason for Arrears: ${customer.reason_for_arrears}`, margin + 4, yPos);
+          yPos += 4;
+          doc.setFontSize(9);
+          doc.setFont("helvetica", "normal");
+        }
 
         // Add call notes if they exist
         if (hasCallNotes) {
@@ -349,19 +431,20 @@ export default function Export() {
         yPos += 4;
       });
     } else {
-      const batchData = filteredCustomers as typeof batchCustomers;
+      const batchData = filteredCustomers as any[];
       batchData.forEach((bc, index) => {
-        if (yPos > 240) {
+        if (yPos > 220) {
           doc.addPage();
           yPos = 20;
         }
 
-        const master = masterCustomers.find(mc => mc.id === bc.master_customer_id);
+        const master = masterCustomers.find(mc => mc.id === bc.master_customer_id) as any;
         const batch = batches.find(b => b.id === bc.batch_id);
         const ticket = tickets.find((t) => t.master_customer_id === bc.master_customer_id);
         const agentName = getAgentName(master?.assigned_agent || null);
         // Use master?.call_notes from master_customers
         const hasCallNotes = master?.call_notes && master.call_notes.trim().length > 0;
+        const lastPaymentDate = getLastPaymentDate(bc.master_customer_id, bc.last_payment_date || master?.last_payment_date);
 
         doc.setFont("helvetica", "bold");
         doc.text(`${index + 1}. ${bc.name}`, margin, yPos);
@@ -371,7 +454,34 @@ export default function Export() {
         doc.text(`Batch: ${batch?.name || 'Unknown'}  |  NRC: ${bc.nrc_number}  |  Agent: ${agentName}`, margin + 4, yPos);
         yPos += 5;
         doc.text(`Mobile: ${bc.mobile_number || 'N/A'}`, margin + 4, yPos);
-        yPos += 6;
+        yPos += 5;
+        
+        // Loan book fields - Branch, Employer, Arrear Status (prefer batch level, fallback to master)
+        const branchName = bc.branch_name || master?.branch_name;
+        const employerName = bc.employer_name || master?.employer_name;
+        const arrearStatus = bc.arrear_status || master?.arrear_status;
+        const branchInfo = branchName ? `Branch: ${branchName}` : '';
+        const employerInfo = employerName ? `Employer: ${employerName}` : '';
+        const arrearInfo = arrearStatus ? `Arrear Status: ${arrearStatus}` : '';
+        const loanBookLine = [branchInfo, employerInfo, arrearInfo].filter(Boolean).join('  |  ');
+        if (loanBookLine) {
+          doc.text(loanBookLine, margin + 4, yPos);
+          yPos += 5;
+        }
+        
+        // Loan Consultant and Tenure
+        const loanConsultant = bc.loan_consultant || master?.loan_consultant;
+        const tenure = bc.tenure || master?.tenure;
+        const consultantInfo = loanConsultant ? `Loan Consultant: ${loanConsultant}` : '';
+        const tenureInfo = tenure ? `Tenure: ${tenure}` : '';
+        const lastPaymentInfo = lastPaymentDate ? `Last Payment: ${lastPaymentDate}` : '';
+        const consultantLine = [consultantInfo, tenureInfo, lastPaymentInfo].filter(Boolean).join('  |  ');
+        if (consultantLine) {
+          doc.text(consultantLine, margin + 4, yPos);
+          yPos += 5;
+        }
+        
+        yPos += 1;
         
         // Financial amounts - emphasized and accurate
         doc.setFont("helvetica", "bold");
@@ -387,6 +497,17 @@ export default function Export() {
         doc.setFontSize(9);
         doc.text(`Status: ${master?.payment_status || 'N/A'}  |  Ticket: ${ticket?.status || 'N/A'}`, margin + 4, yPos);
         yPos += 5;
+
+        // Add reason for arrears if exists
+        const reasonForArrears = bc.reason_for_arrears || master?.reason_for_arrears;
+        if (reasonForArrears) {
+          doc.setFont("helvetica", "italic");
+          doc.setFontSize(8);
+          doc.text(`Reason for Arrears: ${reasonForArrears}`, margin + 4, yPos);
+          yPos += 4;
+          doc.setFontSize(9);
+          doc.setFont("helvetica", "normal");
+        }
 
         // Add call notes if they exist
         if (hasCallNotes) {
