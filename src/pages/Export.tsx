@@ -15,6 +15,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { format, isWithinInterval, startOfDay, endOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import jsPDF from "jspdf";
+import XLSX from "xlsx-js-style";
 
 type ExportFilter = 'all' | 'outstanding' | 'resolved';
 type DateRangePreset = 'all' | 'today' | 'week' | 'month' | 'custom';
@@ -155,12 +156,87 @@ export default function Export() {
     return filtered;
   };
 
-  const downloadCSV = (content: string, prefix: string) => {
-    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  const downloadStyledExcel = (data: any[][], headers: string[], filename: string, resolvedRows: number[]) => {
+    // Create workbook and worksheet
+    const wb = XLSX.utils.book_new();
+    const wsData = [headers, ...data];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Set generous column widths
+    const colWidths = headers.map((header) => {
+      const headerLen = header.length;
+      // Make financial columns wider
+      if (header.includes('Amount') || header.includes('Balance') || header.includes('Paid') || header.includes('Collected')) {
+        return { wch: 24 };
+      }
+      // Call notes extra wide
+      if (header.includes('Notes')) {
+        return { wch: 50 };
+      }
+      // Name columns
+      if (header.includes('Name') || header.includes('Agent')) {
+        return { wch: 28 };
+      }
+      // NRC and other ID columns
+      if (header.includes('NRC') || header.includes('Number')) {
+        return { wch: 20 };
+      }
+      return { wch: Math.max(headerLen + 6, 18) };
+    });
+    ws['!cols'] = colWidths;
+
+    // Style header row - bold with background color
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cellRef = XLSX.utils.encode_cell({ r: 0, c: col });
+      if (ws[cellRef]) {
+        ws[cellRef].s = {
+          font: { bold: true, sz: 11, color: { rgb: "FFFFFF" } },
+          fill: { fgColor: { rgb: "4472C4" } },
+          alignment: { horizontal: "center", vertical: "center", wrapText: true },
+          border: {
+            top: { style: "thin", color: { rgb: "000000" } },
+            bottom: { style: "thin", color: { rgb: "000000" } },
+            left: { style: "thin", color: { rgb: "000000" } },
+            right: { style: "thin", color: { rgb: "000000" } }
+          }
+        };
+      }
+    }
+
+    // Style data rows - highlight resolved/fully paid rows in green
+    for (let row = 1; row <= range.e.r; row++) {
+      const isResolved = resolvedRows.includes(row);
+      for (let col = range.s.c; col <= range.e.c; col++) {
+        const cellRef = XLSX.utils.encode_cell({ r: row, c: col });
+        if (ws[cellRef]) {
+          ws[cellRef].s = {
+            font: { sz: 10 },
+            fill: isResolved ? { fgColor: { rgb: "C6EFCE" } } : { fgColor: { rgb: "FFFFFF" } },
+            alignment: { vertical: "center", wrapText: true },
+            border: {
+              top: { style: "thin", color: { rgb: "D9D9D9" } },
+              bottom: { style: "thin", color: { rgb: "D9D9D9" } },
+              left: { style: "thin", color: { rgb: "D9D9D9" } },
+              right: { style: "thin", color: { rgb: "D9D9D9" } }
+            }
+          };
+        }
+      }
+    }
+
+    // Set row heights
+    ws['!rows'] = [{ hpt: 28 }]; // Taller header row
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Export');
+
+    // Generate and download file
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${prefix}-${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `${filename}-${new Date().toISOString().split('T')[0]}.xlsx`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -204,7 +280,9 @@ export default function Export() {
       'Branch Name', 'Arrear Status', 'Employer Name', 'Employer Subdivision', 
       'Loan Consultant', 'Tenure', 'Reason for Arrears', 'Last Payment Date'
     ];
-    const rows = filteredCustomers.map((customer: any) => {
+    
+    const resolvedRows: number[] = [];
+    const rows = filteredCustomers.map((customer: any, index: number) => {
       const ticket = tickets.find((t) => t.master_customer_id === customer.id);
       // Calculate total collected from payments for this customer
       const totalCollected = payments
@@ -214,32 +292,39 @@ export default function Export() {
       const callNotesStr = customer.call_notes || '';
       // Get last payment date (computed or stored)
       const lastPaymentDate = getLastPaymentDate(customer.id, customer.last_payment_date);
+      
+      // Track resolved/fully paid rows for highlighting
+      const isResolved = customer.payment_status === 'Fully Paid' || ticket?.status === 'Resolved';
+      if (isResolved) {
+        resolvedRows.push(index + 1); // +1 because of header row
+      }
+      
       return [
-        escapeCSV(customer.name),
-        escapeCSV(customer.nrc_number),
-        escapeCSV(customer.mobile_number),
+        customer.name || '',
+        customer.nrc_number || '',
+        customer.mobile_number || '',
         Number(customer.total_owed).toFixed(2),
         Number(customer.total_paid).toFixed(2),
         Number(customer.outstanding_balance).toFixed(2),
-        escapeCSV(customer.payment_status),
-        escapeCSV(getAgentName(customer.assigned_agent)),
-        escapeCSV(callNotesStr),
-        escapeCSV(ticket?.status || 'N/A'),
+        customer.payment_status || '',
+        getAgentName(customer.assigned_agent),
+        callNotesStr,
+        ticket?.status || 'N/A',
         totalCollected.toFixed(2),
         // New loan book fields
-        escapeCSV(customer.branch_name || ''),
-        escapeCSV(customer.arrear_status || ''),
-        escapeCSV(customer.employer_name || ''),
-        escapeCSV(customer.employer_subdivision || ''),
-        escapeCSV(customer.loan_consultant || ''),
-        escapeCSV(customer.tenure || ''),
-        escapeCSV(customer.reason_for_arrears || ''),
-        escapeCSV(lastPaymentDate)
-      ].join(',');
+        customer.branch_name || '',
+        customer.arrear_status || '',
+        customer.employer_name || '',
+        customer.employer_subdivision || '',
+        customer.loan_consultant || '',
+        customer.tenure || '',
+        customer.reason_for_arrears || '',
+        lastPaymentDate
+      ];
     });
 
-    downloadCSV([headers.join(','), ...rows].join('\n'), `master-customers-${exportFilter}${exportAll ? '-all' : '-worked'}`);
-    toast({ title: "Export Complete", description: `Successfully exported ${filteredCustomers.length} master customers` });
+    downloadStyledExcel(rows, headers, `master-customers-${exportFilter}${exportAll ? '-all' : '-worked'}`, resolvedRows);
+    toast({ title: "Export Complete", description: `Successfully exported ${filteredCustomers.length} master customers to Excel` });
   };
 
   const handleExportBatch = () => {
@@ -256,7 +341,9 @@ export default function Export() {
       'Branch Name', 'Arrear Status', 'Employer Name', 'Employer Subdivision', 
       'Loan Consultant', 'Tenure', 'Reason for Arrears', 'Last Payment Date'
     ];
-    const rows = filteredCustomers.map((bc: any) => {
+    
+    const resolvedRows: number[] = [];
+    const rows = filteredCustomers.map((bc: any, index: number) => {
       const master = masterCustomers.find(mc => mc.id === bc.master_customer_id) as any;
       const batch = batches.find(b => b.id === bc.batch_id);
       const ticket = tickets.find((t) => t.master_customer_id === bc.master_customer_id);
@@ -268,34 +355,41 @@ export default function Export() {
       const callNotesStr = master?.call_notes || '';
       // Get last payment date - prefer batch_customer, fallback to master, then compute
       const lastPaymentDate = getLastPaymentDate(bc.master_customer_id, bc.last_payment_date || master?.last_payment_date);
+      
+      // Track resolved/fully paid rows for highlighting
+      const isResolved = master?.payment_status === 'Fully Paid' || ticket?.status === 'Resolved';
+      if (isResolved) {
+        resolvedRows.push(index + 1); // +1 because of header row
+      }
+      
       return [
-        escapeCSV(batch?.name || 'Unknown'),
-        escapeCSV(bc.name),
-        escapeCSV(bc.nrc_number),
-        escapeCSV(bc.mobile_number),
+        batch?.name || 'Unknown',
+        bc.name || '',
+        bc.nrc_number || '',
+        bc.mobile_number || '',
         Number(bc.amount_owed).toFixed(2),
         Number(master?.total_paid || 0).toFixed(2),
         Number(master?.outstanding_balance || 0).toFixed(2),
-        escapeCSV(master?.payment_status || 'N/A'),
-        escapeCSV(getAgentName(master?.assigned_agent || null)),
-        escapeCSV(callNotesStr),
-        escapeCSV(ticket?.status || 'N/A'),
+        master?.payment_status || 'N/A',
+        getAgentName(master?.assigned_agent || null),
+        callNotesStr,
+        ticket?.status || 'N/A',
         totalCollected.toFixed(2),
         // New loan book fields - prefer batch_customer level, fallback to master
-        escapeCSV(bc.branch_name || master?.branch_name || ''),
-        escapeCSV(bc.arrear_status || master?.arrear_status || ''),
-        escapeCSV(bc.employer_name || master?.employer_name || ''),
-        escapeCSV(bc.employer_subdivision || master?.employer_subdivision || ''),
-        escapeCSV(bc.loan_consultant || master?.loan_consultant || ''),
-        escapeCSV(bc.tenure || master?.tenure || ''),
-        escapeCSV(bc.reason_for_arrears || master?.reason_for_arrears || ''),
-        escapeCSV(lastPaymentDate)
-      ].join(',');
+        bc.branch_name || master?.branch_name || '',
+        bc.arrear_status || master?.arrear_status || '',
+        bc.employer_name || master?.employer_name || '',
+        bc.employer_subdivision || master?.employer_subdivision || '',
+        bc.loan_consultant || master?.loan_consultant || '',
+        bc.tenure || master?.tenure || '',
+        bc.reason_for_arrears || master?.reason_for_arrears || '',
+        lastPaymentDate
+      ];
     });
 
     const batchSuffix = selectedBatchId === 'all' ? 'all-batches' : batches.find(b => b.id === selectedBatchId)?.name || selectedBatchId;
-    downloadCSV([headers.join(','), ...rows].join('\n'), `batch-export-${batchSuffix}-${exportFilter}${exportAll ? '-all' : '-worked'}`);
-    toast({ title: "Export Complete", description: `Successfully exported ${filteredCustomers.length} batch customers` });
+    downloadStyledExcel(rows, headers, `batch-export-${batchSuffix}-${exportFilter}${exportAll ? '-all' : '-worked'}`, resolvedRows);
+    toast({ title: "Export Complete", description: `Successfully exported ${filteredCustomers.length} batch customers to Excel` });
   };
 
   const handleExportPDF = (type: 'master' | 'batch') => {
