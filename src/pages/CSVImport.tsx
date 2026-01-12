@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Papa from "papaparse";
-import * as XLSX from "xlsx";
+import XLSX from "xlsx-js-style";
 import { ArrowLeft, Upload, FileText, Check, X, Download, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
