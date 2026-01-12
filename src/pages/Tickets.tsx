@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Search, MoreHorizontal, Eye, CheckCircle, PlayCircle, Loader2, Phone, Trash2, AlertTriangle, ChevronDown, ChevronUp, MessageSquare } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Input } from "@/components/ui/input";
@@ -92,14 +92,14 @@ export default function Tickets() {
   const [blockedResolveModal, setBlockedResolveModal] = useState<{ ticketId: string; balance: number } | null>(null);
   const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
 
-  // Get In Progress ticket IDs for fetching call logs
-  const inProgressTicketIds = useMemo(() => 
-    (tickets || []).filter(t => t.status === 'In Progress').map(t => t.id),
+  // Get all ticket IDs for fetching call logs
+  const allTicketIds = useMemo(() => 
+    (tickets || []).map(t => t.id),
     [tickets]
   );
 
-  // Fetch call logs for all In Progress tickets
-  const { data: callLogs = [] } = useCallLogsForTickets(inProgressTicketIds);
+  // Fetch call logs for all tickets
+  const { data: callLogs = [] } = useCallLogsForTickets(allTicketIds);
 
   // Group call logs by ticket ID
   const callLogsByTicket = useMemo(() => {
@@ -284,13 +284,18 @@ export default function Tickets() {
                     const amountOwed = Number(ticket.amount_owed);
                     const balance = Math.max(0, amountOwed - totalPaid);
                     const ticketCallLogs = callLogsByTicket[ticket.id] || [];
-                    const hasCallLogs = ticket.status === 'In Progress' && ticketCallLogs.length > 0;
+                    const hasCallLogs = ticketCallLogs.length > 0;
+                    const latestNote = ticketCallLogs[0];
                     const isExpanded = expandedNotes[ticket.id];
                     
                     return (
-                      <>
-                        <TableRow key={ticket.id} className={hasCallLogs ? 'cursor-pointer hover:bg-muted/50' : ''} onClick={hasCallLogs ? () => toggleNotes(ticket.id) : undefined}>
-                          <TableCell className="font-mono text-sm">
+                      <React.Fragment key={ticket.id}>
+                        {/* Primary Info Row */}
+                        <TableRow 
+                          className={`${hasCallLogs ? 'cursor-pointer hover:bg-muted/50 border-b-0' : ''} ${ticket.status === 'Resolved' ? 'bg-success/5' : ''}`} 
+                          onClick={hasCallLogs ? () => toggleNotes(ticket.id) : undefined}
+                        >
+                          <TableCell className="font-mono text-sm pb-1">
                             <div className="flex items-center gap-2">
                               {hasCallLogs && (
                                 isExpanded ? <ChevronUp className="h-4 w-4 text-info" /> : <ChevronDown className="h-4 w-4 text-info" />
@@ -298,63 +303,19 @@ export default function Tickets() {
                               #{ticket.id.slice(0, 8)}
                             </div>
                           </TableCell>
-                          <TableCell className="font-medium">{ticket.customer_name}</TableCell>
-                          <TableCell className="font-mono text-sm">{ticket.nrc_number}</TableCell>
-                          <TableCell className="font-mono text-sm">{ticket.mobile_number || '-'}</TableCell>
-                          <TableCell className="text-right font-semibold text-destructive">{formatCurrency(amountOwed)}</TableCell>
-                          <TableCell className="text-right font-semibold text-success">{formatCurrency(totalPaid)}</TableCell>
-                          <TableCell className={`text-right font-semibold ${balance > 0 ? 'text-destructive' : 'text-success'}`}>
+                          <TableCell className="font-medium pb-1">{ticket.customer_name}</TableCell>
+                          <TableCell className="font-mono text-sm pb-1">{ticket.nrc_number}</TableCell>
+                          <TableCell className="font-mono text-sm pb-1">{ticket.mobile_number || '-'}</TableCell>
+                          <TableCell className="text-right font-semibold text-destructive pb-1">{formatCurrency(amountOwed)}</TableCell>
+                          <TableCell className="text-right font-semibold text-success pb-1">{formatCurrency(totalPaid)}</TableCell>
+                          <TableCell className={`text-right font-semibold pb-1 ${balance > 0 ? 'text-destructive' : 'text-success'}`}>
                             {formatCurrency(balance)}
                           </TableCell>
-                          <TableCell>{getPriorityBadge(ticket.priority)}</TableCell>
-                          <TableCell>
-                            {ticket.status === 'In Progress' ? (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    {getStatusBadge(ticket.status, true)}
-                                  </TooltipTrigger>
-                                  <TooltipContent side="left" className="max-w-[300px] p-3">
-                                    {ticketCallLogs.length > 0 ? (
-                                      <div className="space-y-2">
-                                        <div className="flex items-center justify-between gap-4">
-                                          <span className="text-xs font-medium">Latest Call Note</span>
-                                          <Badge variant="outline" className="text-xs">
-                                            {ticketCallLogs[0]?.call_outcome}
-                                          </Badge>
-                                        </div>
-                                        {ticketCallLogs[0]?.notes && (
-                                          <p className="text-xs text-muted-foreground line-clamp-3">
-                                            {ticketCallLogs[0].notes}
-                                          </p>
-                                        )}
-                                        <p className="text-xs text-muted-foreground/70">
-                                          {formatDateTime(ticketCallLogs[0]?.created_at)}
-                                        </p>
-                                        {ticketCallLogs[0]?.promise_to_pay_date && (
-                                          <p className="text-xs text-warning">
-                                            Promise: {formatDate(ticketCallLogs[0].promise_to_pay_date)} - {formatCurrency(ticketCallLogs[0].promise_to_pay_amount || 0)}
-                                          </p>
-                                        )}
-                                        {ticketCallLogs.length > 1 && (
-                                          <p className="text-xs text-info pt-1 border-t">
-                                            +{ticketCallLogs.length - 1} more note{ticketCallLogs.length - 1 > 1 ? 's' : ''} • Click to expand
-                                          </p>
-                                        )}
-                                      </div>
-                                    ) : (
-                                      <p className="text-xs text-muted-foreground">No call notes recorded</p>
-                                    )}
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            ) : (
-                              getStatusBadge(ticket.status)
-                            )}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">{getAgentName(ticket.assigned_agent)}</TableCell>
-                          <TableCell className="text-muted-foreground">{formatDate(ticket.created_at)}</TableCell>
-                          <TableCell onClick={(e) => e.stopPropagation()}>
+                          <TableCell className="pb-1">{getPriorityBadge(ticket.priority)}</TableCell>
+                          <TableCell className="pb-1">{getStatusBadge(ticket.status)}</TableCell>
+                          <TableCell className="text-muted-foreground pb-1">{getAgentName(ticket.assigned_agent)}</TableCell>
+                          <TableCell className="text-muted-foreground pb-1">{formatDate(ticket.created_at)}</TableCell>
+                          <TableCell className="pb-1" onClick={(e) => e.stopPropagation()}>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
@@ -382,14 +343,52 @@ export default function Tickets() {
                             </DropdownMenu>
                           </TableCell>
                         </TableRow>
-                        {/* Expandable Call Notes Row for In Progress tickets */}
+                        
+                        {/* Call Notes Preview Row (always visible) */}
+                        <TableRow 
+                          className={`${hasCallLogs ? 'cursor-pointer hover:bg-muted/50' : ''} ${ticket.status === 'Resolved' ? 'bg-success/5' : ''}`}
+                          onClick={hasCallLogs ? () => toggleNotes(ticket.id) : undefined}
+                        >
+                          <TableCell colSpan={12} className="pt-0 pb-3 border-b">
+                            {latestNote ? (
+                              <div className="flex items-start gap-2 pl-6 text-sm text-muted-foreground">
+                                <MessageSquare className="h-4 w-4 mt-0.5 flex-shrink-0 text-info" />
+                                <div className="flex-1 min-w-0">
+                                  <span className="font-medium text-foreground/80">[{latestNote.call_outcome}]</span>
+                                  {' '}
+                                  <span className="line-clamp-1">
+                                    {latestNote.notes || 'No notes recorded'}
+                                  </span>
+                                  {latestNote.promise_to_pay_date && (
+                                    <span className="ml-2 text-warning text-xs">
+                                      • PTP: {formatDate(latestNote.promise_to_pay_date)} ({formatCurrency(latestNote.promise_to_pay_amount || 0)})
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-xs text-muted-foreground/60 flex-shrink-0">
+                                  {formatDate(latestNote.created_at)}
+                                  {ticketCallLogs.length > 1 && (
+                                    <span className="ml-2 text-info">+{ticketCallLogs.length - 1} more</span>
+                                  )}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 pl-6 text-sm text-muted-foreground/50 italic">
+                                <MessageSquare className="h-4 w-4" />
+                                <span>No call notes recorded</span>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+
+                        {/* Expandable Full Call Notes History */}
                         {hasCallLogs && isExpanded && (
-                          <TableRow key={`${ticket.id}-notes`} className="bg-info/5 hover:bg-info/5">
+                          <TableRow className="bg-info/5 hover:bg-info/5">
                             <TableCell colSpan={12} className="p-0">
                               <div className="p-4 space-y-3">
                                 <div className="flex items-center gap-2 text-sm font-medium text-info">
                                   <MessageSquare className="h-4 w-4" />
-                                  Call Notes ({ticketCallLogs.length})
+                                  All Call Notes ({ticketCallLogs.length})
                                 </div>
                                 <div className="space-y-2 max-h-[300px] overflow-y-auto">
                                   {ticketCallLogs.map((log) => (
@@ -422,7 +421,7 @@ export default function Tickets() {
                             </TableCell>
                           </TableRow>
                         )}
-                      </>
+                      </React.Fragment>
                     );
                   })
                 )}
