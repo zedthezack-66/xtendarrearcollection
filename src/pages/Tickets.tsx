@@ -121,7 +121,10 @@ export default function Tickets() {
         queryClient.invalidateQueries({ queryKey: ['tickets'] });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'call_logs' }, () => {
+        // Invalidate all call_logs queries to ensure dashboard gets fresh data
         queryClient.invalidateQueries({ queryKey: ['call_logs'] });
+        // Force immediate refetch
+        queryClient.refetchQueries({ queryKey: ['call_logs'] });
       })
       .subscribe();
 
