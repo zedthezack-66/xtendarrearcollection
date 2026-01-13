@@ -508,10 +508,13 @@ export function useCallLogs(ticketId?: string) {
   });
 }
 
-// Fetch call logs for multiple tickets (for In Progress tickets on dashboard)
+// Fetch call logs for multiple tickets (all tickets on dashboard)
 export function useCallLogsForTickets(ticketIds: string[]) {
+  // Use a stable string key to avoid refetching on array reference changes
+  const ticketIdsKey = ticketIds.sort().join(',');
+  
   return useQuery({
-    queryKey: ['call_logs', 'batch', ticketIds],
+    queryKey: ['call_logs', 'dashboard', ticketIdsKey],
     queryFn: async () => {
       if (!ticketIds.length) return [];
       
@@ -525,6 +528,8 @@ export function useCallLogsForTickets(ticketIds: string[]) {
       return data;
     },
     enabled: ticketIds.length > 0,
+    staleTime: 0, // Always refetch when invalidated
+    refetchOnMount: 'always',
   });
 }
 
@@ -548,8 +553,11 @@ export function useCreateCallLog() {
       return data;
     },
     onSuccess: () => {
+      // Invalidate all call_logs queries including the dashboard batch query
       queryClient.invalidateQueries({ queryKey: ['call_logs'] });
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      // Force refetch immediately
+      queryClient.refetchQueries({ queryKey: ['call_logs'] });
       toast({ title: 'Call logged successfully' });
     },
     onError: (error: Error) => {
