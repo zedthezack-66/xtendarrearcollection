@@ -742,42 +742,8 @@ export function useDeleteTicket() {
         }
       }
       
-      // HARD DELETE: Delete master_customer (and any remaining payments/call_logs linked to it)
-      if (ticket?.master_customer_id) {
-        // Delete any remaining payments linked to this master customer
-        await supabase
-          .from('payments')
-          .delete()
-          .eq('master_customer_id', ticket.master_customer_id);
-        
-        // Delete any remaining call_logs linked to this master customer
-        await supabase
-          .from('call_logs')
-          .delete()
-          .eq('master_customer_id', ticket.master_customer_id);
-        
-        // Delete any remaining batch_customers linked to this master customer
-        await supabase
-          .from('batch_customers')
-          .delete()
-          .eq('master_customer_id', ticket.master_customer_id);
-        
-        // Delete any remaining tickets linked to this master customer
-        await supabase
-          .from('tickets')
-          .delete()
-          .eq('master_customer_id', ticket.master_customer_id);
-        
-        // Finally delete the master_customer
-        const { error: masterCustError } = await supabase
-          .from('master_customers')
-          .delete()
-          .eq('id', ticket.master_customer_id);
-        
-        if (masterCustError) {
-          console.warn('Could not delete master_customer:', masterCustError.message);
-        }
-      }
+      // NOTE: Do NOT delete master_customer - it should persist for historical data
+      // Master customers may be referenced by other batches/tickets
       
       return ticket;
     },
@@ -786,11 +752,38 @@ export function useDeleteTicket() {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['call_logs'] });
       queryClient.invalidateQueries({ queryKey: ['batch_customers'] });
-      queryClient.invalidateQueries({ queryKey: ['master_customers'] });
-      toast({ title: 'Ticket and all related data deleted permanently' });
+      toast({ title: 'Ticket and related data deleted permanently' });
     },
     onError: (error: Error) => {
       toast({ title: 'Error deleting ticket', description: error.message, variant: 'destructive' });
+    },
+  });
+}
+
+// Update an existing call log note
+export function useUpdateCallLog() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, notes }: { id: string; notes: string }) => {
+      const { data, error } = await supabase
+        .from('call_logs')
+        .update({ notes })
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['call_logs'] });
+      queryClient.refetchQueries({ queryKey: ['call_logs'] });
+      toast({ title: 'Note updated' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error updating note', description: error.message, variant: 'destructive' });
     },
   });
 }

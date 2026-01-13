@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Search, MoreHorizontal, Eye, CheckCircle, PlayCircle, Loader2, Phone, Trash2, AlertTriangle, ChevronDown, ChevronUp, MessageSquare } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Input } from "@/components/ui/input";
@@ -43,7 +43,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useTickets, useUpdateTicket, useProfiles, useDeleteTicket, usePayments, useCallLogsForTickets } from "@/hooks/useSupabaseData";
+import { InlineNoteInput } from "@/components/InlineNoteInput";
+import { useTickets, useUpdateTicket, useProfiles, useDeleteTicket, usePayments, useCallLogsForTickets, useCreateCallLog, useUpdateCallLog } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -79,9 +80,11 @@ export default function Tickets() {
   const { data: tickets, isLoading } = useTickets();
   const { data: profiles } = useProfiles();
   const { data: payments = [] } = usePayments();
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const updateTicket = useUpdateTicket();
   const deleteTicket = useDeleteTicket();
+  const createCallLog = useCreateCallLog();
+  const updateCallLog = useUpdateCallLog();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -164,6 +167,28 @@ export default function Tickets() {
     const p = profiles.find(p => p.id === agentId);
     return (p as any)?.display_name || p?.full_name || '-';
   };
+
+  // Handler for inline note save (add or update)
+  const handleInlineNoteSave = useCallback(async (
+    ticketId: string,
+    masterCustomerId: string,
+    note: string,
+    isUpdate: boolean,
+    noteId?: string
+  ) => {
+    if (isUpdate && noteId) {
+      // Update existing note
+      await updateCallLog.mutateAsync({ id: noteId, notes: note });
+    } else {
+      // Create new note with default outcome
+      await createCallLog.mutateAsync({
+        ticket_id: ticketId,
+        master_customer_id: masterCustomerId,
+        call_outcome: 'Note Added',
+        notes: note,
+      });
+    }
+  }, [createCallLog, updateCallLog]);
 
   const filteredTickets = (tickets || [])
     .filter((ticket) => {
@@ -347,40 +372,54 @@ export default function Tickets() {
                           </TableCell>
                         </TableRow>
                         
-                        {/* Call Notes Preview Row (always visible) */}
+                        {/* Call Notes Inline Edit Row (always visible) */}
                         <TableRow 
-                          className={`${hasCallLogs ? 'cursor-pointer hover:bg-muted/50' : ''} ${ticket.status === 'Resolved' ? 'bg-success/5' : ''}`}
-                          onClick={hasCallLogs ? () => toggleNotes(ticket.id) : undefined}
+                          className={`${ticket.status === 'Resolved' ? 'bg-success/5' : ''}`}
                         >
                           <TableCell colSpan={12} className="pt-0 pb-3 border-b">
-                            {latestNote ? (
-                              <div className="flex items-start gap-2 pl-6 text-sm text-muted-foreground">
-                                <MessageSquare className="h-4 w-4 mt-0.5 flex-shrink-0 text-info" />
-                                <div className="flex-1 min-w-0">
-                                  <span className="font-medium text-foreground/80">[{latestNote.call_outcome}]</span>
-                                  {' '}
-                                  <span className="line-clamp-1">
-                                    {latestNote.notes || 'No notes recorded'}
-                                  </span>
-                                  {latestNote.promise_to_pay_date && (
-                                    <span className="ml-2 text-warning text-xs">
-                                      • PTP: {formatDate(latestNote.promise_to_pay_date)} ({formatCurrency(latestNote.promise_to_pay_amount || 0)})
-                                    </span>
-                                  )}
-                                </div>
-                                <span className="text-xs text-muted-foreground/60 flex-shrink-0">
-                                  {formatDate(latestNote.created_at)}
-                                  {ticketCallLogs.length > 1 && (
-                                    <span className="ml-2 text-info">+{ticketCallLogs.length - 1} more</span>
-                                  )}
-                                </span>
+                            <div className="flex items-center gap-2">
+                              {/* Inline editable note input */}
+                              <div className="flex-1">
+                                <InlineNoteInput
+                                  ticketId={ticket.id}
+                                  masterCustomerId={ticket.master_customer_id}
+                                  existingNote={latestNote?.notes || ''}
+                                  existingNoteId={latestNote?.id}
+                                  existingOutcome={latestNote?.call_outcome}
+                                  lastUpdated={latestNote?.created_at}
+                                  onSave={async (note, isUpdate, noteId) => {
+                                    await handleInlineNoteSave(
+                                      ticket.id,
+                                      ticket.master_customer_id,
+                                      note,
+                                      isUpdate,
+                                      noteId
+                                    );
+                                  }}
+                                  isLoading={createCallLog.isPending || updateCallLog.isPending}
+                                />
                               </div>
-                            ) : (
-                              <div className="flex items-center gap-2 pl-6 text-sm text-muted-foreground/50 italic">
-                                <MessageSquare className="h-4 w-4" />
-                                <span>No call notes recorded</span>
-                              </div>
-                            )}
+                              
+                              {/* Expand button for history if there are notes */}
+                              {hasCallLogs && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 px-2 text-info hover:text-info hover:bg-info/10 flex-shrink-0"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleNotes(ticket.id);
+                                  }}
+                                >
+                                  {isExpanded ? (
+                                    <ChevronUp className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronDown className="h-4 w-4" />
+                                  )}
+                                  <span className="ml-1 text-xs">{ticketCallLogs.length}</span>
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
 
@@ -440,7 +479,7 @@ export default function Tickets() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Ticket</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the ticket, related batch customer, master customer, all payments, and call notes. This action cannot be undone.
+              This will permanently delete the ticket, related batch customer record, all payments, and call notes linked to this ticket. The master customer record will be preserved for historical data. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
