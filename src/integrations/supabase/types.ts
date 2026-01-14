@@ -455,6 +455,7 @@ export type Database = {
         Returns: Json
       }
       get_weekly_report_stats: { Args: { p_agent_id?: string }; Returns: Json }
+      hard_delete_ticket: { Args: { p_ticket_id: string }; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
