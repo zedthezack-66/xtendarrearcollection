@@ -510,8 +510,8 @@ export function useCallLogs(ticketId?: string) {
 
 // Fetch call logs for multiple tickets (all tickets on dashboard)
 export function useCallLogsForTickets(ticketIds: string[]) {
-  // Use a stable string key to avoid refetching on array reference changes
-  const ticketIdsKey = ticketIds.sort().join(',');
+  // Use a stable string key - create a sorted COPY to avoid mutating original array
+  const ticketIdsKey = ticketIds.length > 0 ? [...ticketIds].sort().join(',') : '';
   
   return useQuery({
     queryKey: ['call_logs', 'dashboard', ticketIdsKey],
@@ -525,7 +525,7 @@ export function useCallLogsForTickets(ticketIds: string[]) {
         .order('created_at', { ascending: false });
       
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
     enabled: ticketIds.length > 0,
     staleTime: 0, // Always refetch when invalidated

@@ -95,17 +95,18 @@ export default function Tickets() {
   const [blockedResolveModal, setBlockedResolveModal] = useState<{ ticketId: string; balance: number } | null>(null);
   const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
 
-  // Get all ticket IDs for fetching call logs
-  const allTicketIds = useMemo(() => 
-    (tickets || []).map(t => t.id),
-    [tickets]
-  );
+  // Get all ticket IDs for fetching call logs - memoized to prevent unnecessary re-renders
+  const allTicketIds = useMemo(() => {
+    if (!tickets || tickets.length === 0) return [];
+    return tickets.map(t => t.id);
+  }, [tickets]);
 
-  // Fetch call logs for all tickets
-  const { data: callLogs = [] } = useCallLogsForTickets(allTicketIds);
+  // Fetch call logs for all tickets - only when we have tickets
+  const { data: callLogs = [], isLoading: isLoadingCallLogs } = useCallLogsForTickets(allTicketIds);
 
-  // Group call logs by ticket ID
+  // Group call logs by ticket ID - memoized for performance
   const callLogsByTicket = useMemo(() => {
+    if (!callLogs || callLogs.length === 0) return {};
     const map: Record<string, typeof callLogs> = {};
     for (const log of callLogs) {
       if (!map[log.ticket_id]) {
