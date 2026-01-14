@@ -696,63 +696,30 @@ export function useDeleteTicket() {
 
   return useMutation({
     mutationFn: async (ticketId: string) => {
-      // Get ticket details first for cleanup
-      const { data: ticket, error: fetchError } = await supabase
-        .from('tickets')
-        .select('batch_id, master_customer_id')
-        .eq('id', ticketId)
-        .single();
-      
-      if (fetchError) throw fetchError;
-      
-      // HARD DELETE: Delete related payments first
-      const { error: paymentsError } = await supabase
-        .from('payments')
-        .delete()
-        .eq('ticket_id', ticketId);
-      
-      if (paymentsError) throw paymentsError;
-      
-      // Delete related call_logs
-      const { error: callLogsError } = await supabase
-        .from('call_logs')
-        .delete()
-        .eq('ticket_id', ticketId);
-      
-      if (callLogsError) throw callLogsError;
-      
-      // Delete the ticket
-      const { error } = await supabase
-        .from('tickets')
-        .delete()
-        .eq('id', ticketId);
+      // Use server-side RPC for transactional hard delete
+      const { data, error } = await supabase.rpc('hard_delete_ticket', {
+        p_ticket_id: ticketId
+      });
       
       if (error) throw error;
       
-      // Delete related batch_customer
-      if (ticket?.batch_id && ticket?.master_customer_id) {
-        const { error: batchCustError } = await supabase
-          .from('batch_customers')
-          .delete()
-          .eq('batch_id', ticket.batch_id)
-          .eq('master_customer_id', ticket.master_customer_id);
-        
-        if (batchCustError) {
-          console.warn('Could not delete batch_customer:', batchCustError.message);
-        }
-      }
-      
-      // NOTE: Do NOT delete master_customer - it should persist for historical data
-      // Master customers may be referenced by other batches/tickets
-      
-      return ticket;
+      return data as {
+        success: boolean;
+        deleted_call_logs: number;
+        deleted_payments: number;
+        master_customer_deleted: boolean;
+      };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['call_logs'] });
       queryClient.invalidateQueries({ queryKey: ['batch_customers'] });
-      toast({ title: 'Ticket and related data deleted permanently' });
+      queryClient.invalidateQueries({ queryKey: ['master_customers'] });
+      const msg = data?.master_customer_deleted 
+        ? 'Ticket and customer fully removed from system' 
+        : 'Ticket deleted (customer retained for other batches)';
+      toast({ title: msg });
     },
     onError: (error: Error) => {
       toast({ title: 'Error deleting ticket', description: error.message, variant: 'destructive' });

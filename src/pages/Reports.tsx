@@ -14,15 +14,17 @@ const formatCurrency = (amount: number) => new Intl.NumberFormat('en-ZM', { styl
 
 export default function Reports() {
   const reportRef = useRef<HTMLDivElement>(null);
-  const { userRole } = useAuth();
+  const { userRole, user } = useAuth();
   const isAdmin = userRole === 'admin';
   
+  // Only admins can select agents; agents always see their own data
   const [selectedAgent, setSelectedAgent] = useState<string>("all");
   
   const { data: profiles = [] } = useProfiles();
   
-  // Server-side computed stats
-  const agentFilter = selectedAgent === "all" ? undefined : selectedAgent;
+  // Server-side computed stats - RPCs auto-scope for agents (no cross-agent visibility)
+  // Admins can filter by agent or see all; agents are forced to their own data server-side
+  const agentFilter = isAdmin ? (selectedAgent === "all" ? undefined : selectedAgent) : undefined;
   const { data: reportStats, isLoading: statsLoading } = useWeeklyReportStats(agentFilter);
   const { data: interactionStats, isLoading: interactionsLoading } = useInteractionAnalytics(agentFilter);
   const { data: adminStats, isLoading: adminLoading } = useAdminAgentAnalytics(isAdmin ? agentFilter : undefined);

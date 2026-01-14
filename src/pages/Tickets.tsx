@@ -480,7 +480,7 @@ export default function Tickets() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Ticket</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the ticket, related batch customer record, all payments, and call notes linked to this ticket. The master customer record will be preserved for historical data. This action cannot be undone.
+              This will <strong>permanently delete</strong> the ticket, batch customer record, all payments, and call notes. If this customer has no other tickets, they will also be fully removed from the system. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
