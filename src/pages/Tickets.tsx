@@ -148,28 +148,7 @@ export default function Tickets() {
     return map;
   }, [payments]);
 
-  if (isLoading) {
-    return <div className="flex items-center justify-center min-h-[400px]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
-  }
-
-  // Sort order: In Progress (top), Open (middle), Resolved (bottom)
-  const statusOrder: Record<string, number> = { 'In Progress': 0, 'Open': 1, 'Resolved': 2 };
-
-  const formatDateTime = (date: string) => {
-    return new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  };
-
-  const toggleNotes = (ticketId: string) => {
-    setExpandedNotes(prev => ({ ...prev, [ticketId]: !prev[ticketId] }));
-  };
-
-  const getAgentName = (agentId: string | null) => {
-    if (!agentId || !profiles) return '-';
-    const p = profiles.find(p => p.id === agentId);
-    return (p as any)?.display_name || p?.full_name || '-';
-  };
-
-  // Handler for inline note save (add or update)
+  // Handler for inline note save (add or update) - MUST be before any early returns
   const handleInlineNoteSave = useCallback(async (
     ticketId: string,
     masterCustomerId: string,
@@ -190,6 +169,27 @@ export default function Tickets() {
       });
     }
   }, [createCallLog, updateCallLog]);
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center min-h-[400px]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  }
+
+  // Sort order: In Progress (top), Open (middle), Resolved (bottom)
+  const statusOrder: Record<string, number> = { 'In Progress': 0, 'Open': 1, 'Resolved': 2 };
+
+  const formatDateTime = (date: string) => {
+    return new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
+  const toggleNotes = (ticketId: string) => {
+    setExpandedNotes(prev => ({ ...prev, [ticketId]: !prev[ticketId] }));
+  };
+
+  const getAgentName = (agentId: string | null) => {
+    if (!agentId || !profiles) return '-';
+    const p = profiles.find(p => p.id === agentId);
+    return (p as any)?.display_name || p?.full_name || '-';
+  };
 
   const filteredTickets = (tickets || [])
     .filter((ticket) => {
