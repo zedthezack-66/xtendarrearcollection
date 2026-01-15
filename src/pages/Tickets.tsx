@@ -46,6 +46,7 @@ import {
 } from "@/components/ui/tooltip";
 import { InlineNoteInput } from "@/components/InlineNoteInput";
 import { TicketStatusDropdowns, ARREAR_STATUS_OPTIONS, PAYMENT_STATUS_OPTIONS, EMPLOYER_REASON_OPTIONS } from "@/components/TicketStatusDropdowns";
+import { BatchTransferDialog } from "@/components/BatchTransferDialog";
 import { useTickets, useUpdateTicket, useProfiles, useDeleteTicket, usePayments, useCallLogsForTickets, useCreateCallLog, useUpdateCallLog, useMasterCustomers } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -84,7 +85,7 @@ export default function Tickets() {
   const { data: profiles } = useProfiles();
   const { data: payments = [] } = usePayments();
   const { data: masterCustomers = [] } = useMasterCustomers();
-  const { profile, user } = useAuth();
+  const { profile, user, isAdmin } = useAuth();
   const updateTicket = useUpdateTicket();
   const deleteTicket = useDeleteTicket();
   const createCallLog = useCreateCallLog();
@@ -491,8 +492,18 @@ export default function Tickets() {
                                   ) : (
                                     <ChevronDown className="h-3 w-3 mr-1" />
                                   )}
-                                  Status
+                                Status
                                 </Button>
+                                
+                                {/* Admin batch transfer button */}
+                                {isAdmin && (
+                                  <BatchTransferDialog
+                                    ticketId={ticket.id}
+                                    currentBatchId={ticket.batch_id}
+                                    currentAgentId={ticket.assigned_agent}
+                                    customerName={ticket.customer_name}
+                                  />
+                                )}
                                 
                                 {/* Expand button for call log history */}
                                 {hasCallLogs && (

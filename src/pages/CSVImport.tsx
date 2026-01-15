@@ -73,10 +73,10 @@ interface ParsedRow {
   lastPaymentDate: string;
 }
 
-const SAMPLE_CSV = `Customer Name,NRC Number,Amount Owed,Mobile Number,Assigned Agent,Branch Name,Arrear Status,Employer Name,Employer Subdivision,Loan Consultant,Tenure,Reason for Arrears,Last Payment Date
-John Mwanza,123456/10/1,15000,260971234567,Ziba,Lusaka Main,60+ Days,Ministry of Health,Finance Dept,Grace Tembo,24 months,Job transfer - salary routing issue,2025-12-15
-Jane Banda,234567/20/2,8500,260972345678,Mary,Ndola Branch,30+ Days,Zambia Airways,Operations,Peter Sakala,12 months,Reduced hours,
-Peter Phiri,345678/30/3,22000,260973456789,Ziba,Kitwe Branch,90+ Days,Zambia Sugar,Production,Mary Mulenga,36 months,Medical leave,2025-11-20`;
+const SAMPLE_CSV = `Customer Name,NRC Number,Amount Owed,Mobile Number,Assigned Agent,Branch Name,Arrear Status,Employer Name,Employer Subdivision,Loan Consultant,Tenure,Last Payment Date
+John Mwanza,123456/10/1,15000,260971234567,Ziba,Lusaka Main,60+ Days,Ministry of Health,Finance Dept,Grace Tembo,24 months,2025-12-15
+Jane Banda,234567/20/2,8500,260972345678,Mary,Ndola Branch,30+ Days,Zambia Airways,Operations,Peter Sakala,12 months,
+Peter Phiri,345678/30/3,22000,260973456789,Ziba,Kitwe Branch,90+ Days,Zambia Sugar,Production,Mary Mulenga,36 months,2025-11-20`;
 
 export default function CSVImport() {
   const navigate = useNavigate();
