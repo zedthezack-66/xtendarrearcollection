@@ -375,13 +375,13 @@ export default function Export() {
         callNotesStr,
         ticket?.status || 'N/A',
         totalCollected.toFixed(2),
-        // New loan book fields - prefer batch_customer level, fallback to master
-        bc.branch_name || master?.branch_name || '',
+        // Static fields - ALWAYS from master_customers only (never batch)
+        master?.branch_name || '',
         bc.arrear_status || master?.arrear_status || '',
-        bc.employer_name || master?.employer_name || '',
-        bc.employer_subdivision || master?.employer_subdivision || '',
-        bc.loan_consultant || master?.loan_consultant || '',
-        bc.tenure || master?.tenure || '',
+        master?.employer_name || '',
+        master?.employer_subdivision || '',
+        master?.loan_consultant || '',
+        master?.tenure || '',
         bc.reason_for_arrears || master?.reason_for_arrears || '',
         lastPaymentDate
       ];

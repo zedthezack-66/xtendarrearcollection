@@ -422,6 +422,7 @@ export default function CSVImport() {
             if (ticketsError) throw ticketsError;
 
             // Create batch_customers entries - arrears stored here per batch
+            // batch_customers: DO NOT store static fields - only batch-specific data
             const newBatchCustomers = insertedCustomers.map(mc => {
               const row = chunk.find(r => r.nrcNumber === mc.nrc_number);
               return {
@@ -432,13 +433,8 @@ export default function CSVImport() {
                 mobile_number: mc.mobile_number,
                 amount_owed: row?.amountOwed || 0,
                 assigned_agent_id: row?.assignedAgentId,
-                // New loan book fields
-                branch_name: row?.branchName || null,
+                // Only batch-specific fields - NOT static identity fields
                 arrear_status: row?.arrearStatus || null,
-                employer_name: row?.employerName || null,
-                employer_subdivision: row?.employerSubdivision || null,
-                loan_consultant: row?.loanConsultant || null,
-                tenure: row?.tenure || null,
                 reason_for_arrears: row?.reasonForArrears || null,
                 last_payment_date: row?.lastPaymentDate ? new Date(row.lastPaymentDate).toISOString() : null,
               };
@@ -466,14 +462,35 @@ export default function CSVImport() {
           for (const row of chunk) {
             const existingMaster = masterCustomers.find(mc => mc.nrc_number === row.nrcNumber);
             if (existingMaster) {
-              // Only update missing fields on master - NEVER overwrite existing data
+              // Build update object for NULL/empty fields only - static identity data
+              const masterUpdate: Record<string, any> = {};
               if (!existingMaster.mobile_number && row.mobileNumber) {
-                await supabase.from('master_customers').update({
-                  mobile_number: row.mobileNumber,
-                }).eq('id', existingMaster.id);
+                masterUpdate.mobile_number = row.mobileNumber;
+              }
+              // Static fields: only populate if currently NULL/empty
+              if (!existingMaster.branch_name && row.branchName) {
+                masterUpdate.branch_name = row.branchName;
+              }
+              if (!existingMaster.employer_name && row.employerName) {
+                masterUpdate.employer_name = row.employerName;
+              }
+              if (!existingMaster.employer_subdivision && row.employerSubdivision) {
+                masterUpdate.employer_subdivision = row.employerSubdivision;
+              }
+              if (!existingMaster.loan_consultant && row.loanConsultant) {
+                masterUpdate.loan_consultant = row.loanConsultant;
+              }
+              if (!existingMaster.tenure && row.tenure) {
+                masterUpdate.tenure = row.tenure;
+              }
+              
+              // Apply updates if any fields need updating
+              if (Object.keys(masterUpdate).length > 0) {
+                await supabase.from('master_customers').update(masterUpdate).eq('id', existingMaster.id);
                 updatedCount++;
               }
 
+              // batch_customers: DO NOT store static fields - only batch-specific data
               batchCustomersForExisting.push({
                 batch_id: batch.id,
                 master_customer_id: existingMaster.id,
@@ -482,13 +499,8 @@ export default function CSVImport() {
                 mobile_number: row.mobileNumber || null,
                 amount_owed: row.amountOwed,
                 assigned_agent_id: row.assignedAgentId,
-                // New loan book fields
-                branch_name: row.branchName || null,
+                // Only batch-specific fields - NOT static identity fields
                 arrear_status: row.arrearStatus || null,
-                employer_name: row.employerName || null,
-                employer_subdivision: row.employerSubdivision || null,
-                loan_consultant: row.loanConsultant || null,
-                tenure: row.tenure || null,
                 reason_for_arrears: row.reasonForArrears || null,
                 last_payment_date: row.lastPaymentDate ? new Date(row.lastPaymentDate).toISOString() : null,
               });
