@@ -272,6 +272,9 @@ export function useUpdateTicket() {
       resolved_date: string | null;
       amount_owed: number;
       mobile_number: string;
+      ticket_arrear_status: string;
+      ticket_payment_status: string;
+      employer_reason_for_arrears: string;
     }>) => {
       const { skipValidation, ...cleanUpdates } = updates as any;
       

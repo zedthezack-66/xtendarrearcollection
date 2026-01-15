@@ -12,9 +12,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useMasterCustomers, useTickets, usePayments, useBatchCustomers, useBatches, useUpdateMasterCustomer, useUpdateTicket, useProfiles } from "@/hooks/useSupabaseData";
 import { useToast } from "@/hooks/use-toast";
+import { TicketStatusDropdowns } from "@/components/TicketStatusDropdowns";
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW', minimumFractionDigits: 0 }).format(amount);
 const formatDate = (date: string) => new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -190,6 +191,42 @@ export default function CustomerProfile() {
                       {getTicketStatusBadge(customerTicket.status)}
                     </div>
                   </div>
+                  
+                  {/* Ticket Status Dropdowns - Editable */}
+                  <div className="p-4 bg-muted/30 rounded-lg border">
+                    <p className="text-sm font-medium mb-3 text-muted-foreground">Interaction Outcomes</p>
+                    <TicketStatusDropdowns
+                      ticketArrearStatus={(customerTicket as any).ticket_arrear_status}
+                      ticketPaymentStatus={(customerTicket as any).ticket_payment_status}
+                      employerReasonForArrears={(customerTicket as any).employer_reason_for_arrears}
+                      onArrearStatusChange={async (value) => {
+                        try {
+                          await updateTicket.mutateAsync({ id: customerTicket.id, ticket_arrear_status: value });
+                          toast({ title: "Arrear status updated" });
+                        } catch (error: any) {
+                          toast({ title: "Error", description: error.message, variant: "destructive" });
+                        }
+                      }}
+                      onPaymentStatusChange={async (value) => {
+                        try {
+                          await updateTicket.mutateAsync({ id: customerTicket.id, ticket_payment_status: value });
+                          toast({ title: "Payment status updated" });
+                        } catch (error: any) {
+                          toast({ title: "Error", description: error.message, variant: "destructive" });
+                        }
+                      }}
+                      onEmployerReasonChange={async (value) => {
+                        try {
+                          await updateTicket.mutateAsync({ id: customerTicket.id, employer_reason_for_arrears: value });
+                          toast({ title: "Employer reason updated" });
+                        } catch (error: any) {
+                          toast({ title: "Error", description: error.message, variant: "destructive" });
+                        }
+                      }}
+                      isLoading={updateTicket.isPending}
+                    />
+                  </div>
+                  
                   <div className="flex gap-2">
                     {customerTicket.status === 'Open' && (
                       <Button 
