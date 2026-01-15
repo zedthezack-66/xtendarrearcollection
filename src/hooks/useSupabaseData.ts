@@ -992,3 +992,59 @@ export function useTicketsSorted(sortOrder: 'high' | 'low' = 'high', batchId?: s
     },
   });
 }
+
+// Hook for admin batch transfer - move client between batches
+export function useTransferClientToBatch() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ 
+      ticketId, 
+      targetBatchId, 
+      targetAgentId 
+    }: { 
+      ticketId: string; 
+      targetBatchId: string; 
+      targetAgentId: string; 
+    }) => {
+      const { data, error } = await supabase.rpc('transfer_client_to_batch', {
+        p_ticket_id: ticketId,
+        p_target_batch_id: targetBatchId,
+        p_target_agent_id: targetAgentId
+      });
+      
+      if (error) throw error;
+      return data as {
+        success: boolean;
+        message: string;
+        ticket_id: string;
+        from_batch_id: string;
+        to_batch_id: string;
+        new_agent_id: string;
+      };
+    },
+    onSuccess: (data) => {
+      // Invalidate all affected queries
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['batches'] });
+      queryClient.invalidateQueries({ queryKey: ['batch_customers'] });
+      queryClient.invalidateQueries({ queryKey: ['master_customers'] });
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
+      queryClient.invalidateQueries({ queryKey: ['collections_by_agent'] });
+      
+      toast({ 
+        title: 'Client transferred successfully',
+        description: data.message
+      });
+    },
+    onError: (error: Error) => {
+      toast({ 
+        title: 'Transfer failed', 
+        description: error.message, 
+        variant: 'destructive' 
+      });
+    },
+  });
+}

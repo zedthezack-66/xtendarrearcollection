@@ -278,7 +278,7 @@ export default function Export() {
       'Customer Name', 'NRC Number', 'Mobile Number', 'Total Amount Owed', 'Total Amount Paid', 
       'Outstanding Balance', 'Payment Status', 'Assigned Agent', 'Call Notes', 'Ticket Status', 'Total Collected',
       'Branch Name', 'Arrear Status', 'Employer Name', 'Employer Subdivision', 
-      'Loan Consultant', 'Tenure', 'Reason for Arrears', 'Last Payment Date',
+      'Loan Consultant', 'Tenure', 'Last Payment Date',
       'Ticket Arrear Status', 'Ticket Payment Status', 'Employer Reason for Arrears'
     ];
     
@@ -300,13 +300,18 @@ export default function Export() {
         resolvedRows.push(index + 1); // +1 because of header row
       }
       
+      // Calculate outstanding dynamically - never blank
+      const totalOwed = Number(customer.total_owed) || 0;
+      const totalPaid = Number(customer.total_paid) || 0;
+      const outstandingBalance = Math.max(totalOwed - totalPaid, 0);
+      
       return [
         customer.name || '',
         customer.nrc_number || '',
         customer.mobile_number || '',
-        Number(customer.total_owed).toFixed(2),
-        Number(customer.total_paid).toFixed(2),
-        Number(customer.outstanding_balance).toFixed(2),
+        totalOwed.toFixed(2),
+        totalPaid.toFixed(2),
+        outstandingBalance.toFixed(2),
         customer.payment_status || '',
         getAgentName(customer.assigned_agent),
         callNotesStr,
@@ -319,7 +324,6 @@ export default function Export() {
         customer.employer_subdivision || '',
         customer.loan_consultant || '',
         customer.tenure || '',
-        customer.reason_for_arrears || '',
         lastPaymentDate,
         // Ticket-level interaction outcomes
         (ticket as any)?.ticket_arrear_status || '',
@@ -344,7 +348,7 @@ export default function Export() {
       'Total Paid (Global)', 'Outstanding Balance (Global)', 'Payment Status', 'Assigned Agent', 
       'Call Notes', 'Ticket Status', 'Total Collected',
       'Branch Name', 'Arrear Status', 'Employer Name', 'Employer Subdivision', 
-      'Loan Consultant', 'Tenure', 'Reason for Arrears', 'Last Payment Date',
+      'Loan Consultant', 'Tenure', 'Last Payment Date',
       'Ticket Arrear Status', 'Ticket Payment Status', 'Employer Reason for Arrears'
     ];
     
@@ -368,14 +372,19 @@ export default function Export() {
         resolvedRows.push(index + 1); // +1 because of header row
       }
       
+      // Calculate outstanding dynamically - never blank
+      const batchAmountOwed = Number(bc.amount_owed) || 0;
+      const totalPaid = Number(master?.total_paid) || 0;
+      const outstandingBalance = Math.max(batchAmountOwed - totalPaid, 0);
+      
       return [
         batch?.name || 'Unknown',
         bc.name || '',
         bc.nrc_number || '',
         bc.mobile_number || '',
-        Number(bc.amount_owed).toFixed(2),
-        Number(master?.total_paid || 0).toFixed(2),
-        Number(master?.outstanding_balance || 0).toFixed(2),
+        batchAmountOwed.toFixed(2),
+        totalPaid.toFixed(2),
+        outstandingBalance.toFixed(2),
         master?.payment_status || 'N/A',
         getAgentName(master?.assigned_agent || null),
         callNotesStr,
@@ -388,7 +397,6 @@ export default function Export() {
         master?.employer_subdivision || '',
         master?.loan_consultant || '',
         master?.tenure || '',
-        bc.reason_for_arrears || master?.reason_for_arrears || '',
         lastPaymentDate,
         // Ticket-level interaction outcomes
         (ticket as any)?.ticket_arrear_status || '',
@@ -489,14 +497,18 @@ export default function Export() {
         
         yPos += 1;
         
-        // Financial amounts - emphasized and accurate
+        // Financial amounts - emphasized and accurate - calculate dynamically
+        const totalOwed = Number(customer.total_owed) || 0;
+        const totalPaid = Number(customer.total_paid) || 0;
+        const outstandingBalance = Math.max(totalOwed - totalPaid, 0);
+        
         doc.setFont("helvetica", "bold");
         doc.setFontSize(10);
-        doc.text(`Total Owed: ${formatCurrency(Number(customer.total_owed))}`, margin + 4, yPos);
+        doc.text(`Total Owed: ${formatCurrency(totalOwed)}`, margin + 4, yPos);
         yPos += 5;
-        doc.text(`Total Paid: ${formatCurrency(Number(customer.total_paid))}`, margin + 4, yPos);
+        doc.text(`Total Paid: ${formatCurrency(totalPaid)}`, margin + 4, yPos);
         yPos += 5;
-        doc.text(`Outstanding Balance: ${formatCurrency(Number(customer.outstanding_balance))}`, margin + 4, yPos);
+        doc.text(`Outstanding Balance: ${formatCurrency(outstandingBalance)}`, margin + 4, yPos);
         yPos += 5;
         
         doc.setFont("helvetica", "normal");
@@ -517,16 +529,6 @@ export default function Export() {
           doc.setFont("helvetica", "italic");
           doc.setFontSize(8);
           doc.text(interactionLine, margin + 4, yPos);
-          yPos += 4;
-          doc.setFontSize(9);
-          doc.setFont("helvetica", "normal");
-        }
-
-        // Add reason for arrears if exists
-        if (customer.reason_for_arrears) {
-          doc.setFont("helvetica", "italic");
-          doc.setFontSize(8);
-          doc.text(`Reason for Arrears: ${customer.reason_for_arrears}`, margin + 4, yPos);
           yPos += 4;
           doc.setFontSize(9);
           doc.setFont("helvetica", "normal");
@@ -605,14 +607,18 @@ export default function Export() {
         
         yPos += 1;
         
-        // Financial amounts - emphasized and accurate
+        // Financial amounts - emphasized and accurate - calculate dynamically
+        const batchAmountOwed = Number(bc.amount_owed) || 0;
+        const totalPaid = Number(master?.total_paid) || 0;
+        const outstandingBalance = Math.max(batchAmountOwed - totalPaid, 0);
+        
         doc.setFont("helvetica", "bold");
         doc.setFontSize(10);
-        doc.text(`Batch Amount Owed: ${formatCurrency(Number(bc.amount_owed))}`, margin + 4, yPos);
+        doc.text(`Batch Amount Owed: ${formatCurrency(batchAmountOwed)}`, margin + 4, yPos);
         yPos += 5;
-        doc.text(`Global Total Paid: ${formatCurrency(Number(master?.total_paid || 0))}`, margin + 4, yPos);
+        doc.text(`Global Total Paid: ${formatCurrency(totalPaid)}`, margin + 4, yPos);
         yPos += 5;
-        doc.text(`Global Outstanding: ${formatCurrency(Number(master?.outstanding_balance || 0))}`, margin + 4, yPos);
+        doc.text(`Global Outstanding: ${formatCurrency(outstandingBalance)}`, margin + 4, yPos);
         yPos += 5;
         
         doc.setFont("helvetica", "normal");
@@ -633,17 +639,6 @@ export default function Export() {
           doc.setFont("helvetica", "italic");
           doc.setFontSize(8);
           doc.text(interactionLine, margin + 4, yPos);
-          yPos += 4;
-          doc.setFontSize(9);
-          doc.setFont("helvetica", "normal");
-        }
-
-        // Add reason for arrears if exists
-        const reasonForArrears = bc.reason_for_arrears || master?.reason_for_arrears;
-        if (reasonForArrears) {
-          doc.setFont("helvetica", "italic");
-          doc.setFontSize(8);
-          doc.text(`Reason for Arrears: ${reasonForArrears}`, margin + 4, yPos);
           yPos += 4;
           doc.setFontSize(9);
           doc.setFont("helvetica", "normal");
