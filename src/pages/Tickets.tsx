@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { Search, MoreHorizontal, Eye, CheckCircle, PlayCircle, Loader2, Phone, Trash2, AlertTriangle, ChevronDown, ChevronUp, MessageSquare } from "lucide-react";
+import { Search, MoreHorizontal, Eye, CheckCircle, PlayCircle, Loader2, Phone, Trash2, AlertTriangle, ChevronDown, ChevronUp, MessageSquare, Building, User2, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -44,7 +45,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { InlineNoteInput } from "@/components/InlineNoteInput";
-import { useTickets, useUpdateTicket, useProfiles, useDeleteTicket, usePayments, useCallLogsForTickets, useCreateCallLog, useUpdateCallLog } from "@/hooks/useSupabaseData";
+import { useTickets, useUpdateTicket, useProfiles, useDeleteTicket, usePayments, useCallLogsForTickets, useCreateCallLog, useUpdateCallLog, useMasterCustomers } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -80,6 +81,7 @@ export default function Tickets() {
   const { data: tickets, isLoading } = useTickets();
   const { data: profiles } = useProfiles();
   const { data: payments = [] } = usePayments();
+  const { data: masterCustomers = [] } = useMasterCustomers();
   const { profile, user } = useAuth();
   const updateTicket = useUpdateTicket();
   const deleteTicket = useDeleteTicket();
@@ -317,6 +319,9 @@ export default function Tickets() {
                     const latestNote = ticketCallLogs[0];
                     const isExpanded = expandedNotes[ticket.id];
                     
+                    const masterCustomer = masterCustomers.find(mc => mc.id === ticket.master_customer_id);
+                    const hasStaticInfo = masterCustomer?.branch_name || masterCustomer?.employer_name || masterCustomer?.loan_consultant;
+                    
                     return (
                       <React.Fragment key={ticket.id}>
                         {/* Primary Info Row */}
@@ -332,7 +337,54 @@ export default function Tickets() {
                               #{ticket.id.slice(0, 8)}
                             </div>
                           </TableCell>
-                          <TableCell className="font-medium pb-1">{ticket.customer_name}</TableCell>
+                          <TableCell className="font-medium pb-1" onClick={(e) => e.stopPropagation()}>
+                            {hasStaticInfo ? (
+                              <HoverCard>
+                                <HoverCardTrigger asChild>
+                                  <span className="cursor-help underline decoration-dotted underline-offset-2">{ticket.customer_name}</span>
+                                </HoverCardTrigger>
+                                <HoverCardContent className="w-72" side="right">
+                                  <div className="space-y-2">
+                                    <p className="font-semibold text-sm">{ticket.customer_name}</p>
+                                    <div className="text-xs space-y-1 text-muted-foreground">
+                                      {masterCustomer?.branch_name && (
+                                        <div className="flex items-center gap-2">
+                                          <Building className="h-3 w-3" />
+                                          <span>Branch: {masterCustomer.branch_name}</span>
+                                        </div>
+                                      )}
+                                      {masterCustomer?.employer_name && (
+                                        <div className="flex items-center gap-2">
+                                          <Building className="h-3 w-3" />
+                                          <span>Employer: {masterCustomer.employer_name}</span>
+                                        </div>
+                                      )}
+                                      {masterCustomer?.employer_subdivision && (
+                                        <div className="flex items-center gap-2">
+                                          <Building className="h-3 w-3" />
+                                          <span>Subdivision: {masterCustomer.employer_subdivision}</span>
+                                        </div>
+                                      )}
+                                      {masterCustomer?.loan_consultant && (
+                                        <div className="flex items-center gap-2">
+                                          <User2 className="h-3 w-3" />
+                                          <span>Consultant: {masterCustomer.loan_consultant}</span>
+                                        </div>
+                                      )}
+                                      {masterCustomer?.tenure && (
+                                        <div className="flex items-center gap-2">
+                                          <Clock className="h-3 w-3" />
+                                          <span>Tenure: {masterCustomer.tenure}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </HoverCardContent>
+                              </HoverCard>
+                            ) : (
+                              ticket.customer_name
+                            )}
+                          </TableCell>
                           <TableCell className="font-mono text-sm pb-1">{ticket.nrc_number}</TableCell>
                           <TableCell className="font-mono text-sm pb-1">{ticket.mobile_number || '-'}</TableCell>
                           <TableCell className="text-right font-semibold text-destructive pb-1">{formatCurrency(amountOwed)}</TableCell>

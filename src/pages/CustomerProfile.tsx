@@ -139,6 +139,19 @@ export default function CustomerProfile() {
             </CardContent>
           </Card>
 
+          {/* Static Client Fields - Read-Only */}
+          <Card>
+            <CardHeader><CardTitle className="text-lg">Employment & Loan Details</CardTitle></CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
+              <div><p className="text-sm text-muted-foreground">Branch Name</p><p className="font-medium">{customer.branch_name || '-'}</p></div>
+              <div><p className="text-sm text-muted-foreground">Employer Name</p><p className="font-medium">{customer.employer_name || '-'}</p></div>
+              <div><p className="text-sm text-muted-foreground">Employer Subdivision</p><p className="font-medium">{customer.employer_subdivision || '-'}</p></div>
+              <div><p className="text-sm text-muted-foreground">Loan Consultant</p><p className="font-medium">{customer.loan_consultant || '-'}</p></div>
+              <div><p className="text-sm text-muted-foreground">Tenure</p><p className="font-medium">{customer.tenure || '-'}</p></div>
+              <div><p className="text-sm text-muted-foreground">Last Payment Date</p><p className="font-medium">{customer.last_payment_date ? formatDate(customer.last_payment_date) : '-'}</p></div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader><CardTitle className="text-lg">Call Notes</CardTitle></CardHeader>
             <CardContent className="space-y-4">
