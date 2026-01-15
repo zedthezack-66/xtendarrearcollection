@@ -45,10 +45,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { InlineNoteInput } from "@/components/InlineNoteInput";
+import { TicketStatusDropdowns, ARREAR_STATUS_OPTIONS, PAYMENT_STATUS_OPTIONS, EMPLOYER_REASON_OPTIONS } from "@/components/TicketStatusDropdowns";
 import { useTickets, useUpdateTicket, useProfiles, useDeleteTicket, usePayments, useCallLogsForTickets, useCreateCallLog, useUpdateCallLog, useMasterCustomers } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW', minimumFractionDigits: 0 }).format(amount);
@@ -88,6 +90,7 @@ export default function Tickets() {
   const createCallLog = useCreateCallLog();
   const updateCallLog = useUpdateCallLog();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
@@ -96,6 +99,25 @@ export default function Tickets() {
   const [ticketToDelete, setTicketToDelete] = useState<string | null>(null);
   const [blockedResolveModal, setBlockedResolveModal] = useState<{ ticketId: string; balance: number } | null>(null);
   const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
+  const [expandedStatuses, setExpandedStatuses] = useState<Record<string, boolean>>({});
+
+  // Handler for updating ticket status dropdowns
+  const handleTicketStatusUpdate = useCallback(async (
+    ticketId: string,
+    field: 'ticket_arrear_status' | 'ticket_payment_status' | 'employer_reason_for_arrears',
+    value: string
+  ) => {
+    try {
+      await updateTicket.mutateAsync({ id: ticketId, [field]: value });
+      toast({ title: "Status updated", description: `${field.replace(/_/g, ' ')} saved` });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  }, [updateTicket, toast]);
+
+  const toggleStatuses = (ticketId: string) => {
+    setExpandedStatuses(prev => ({ ...prev, [ticketId]: !prev[ticketId] }));
+  };
 
   // Get all ticket IDs for fetching call logs - memoized to prevent unnecessary re-renders
   const allTicketIds = useMemo(() => {
@@ -430,47 +452,83 @@ export default function Tickets() {
                           className={`${ticket.status === 'Resolved' ? 'bg-success/5' : ''}`}
                         >
                           <TableCell colSpan={12} className="pt-0 pb-3 border-b">
-                            <div className="flex items-center gap-2">
-                              {/* Inline editable note input */}
-                              <div className="flex-1">
-                                <InlineNoteInput
-                                  ticketId={ticket.id}
-                                  masterCustomerId={ticket.master_customer_id}
-                                  existingNote={latestNote?.notes || ''}
-                                  existingNoteId={latestNote?.id}
-                                  existingOutcome={latestNote?.call_outcome}
-                                  lastUpdated={latestNote?.created_at}
-                                  onSave={async (note, isUpdate, noteId) => {
-                                    await handleInlineNoteSave(
-                                      ticket.id,
-                                      ticket.master_customer_id,
-                                      note,
-                                      isUpdate,
-                                      noteId
-                                    );
-                                  }}
-                                  isLoading={createCallLog.isPending || updateCallLog.isPending}
-                                />
-                              </div>
-                              
-                              {/* Expand button for history if there are notes */}
-                              {hasCallLogs && (
+                            <div className="space-y-3">
+                              {/* Inline editable note input + expand history */}
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1">
+                                  <InlineNoteInput
+                                    ticketId={ticket.id}
+                                    masterCustomerId={ticket.master_customer_id}
+                                    existingNote={latestNote?.notes || ''}
+                                    existingNoteId={latestNote?.id}
+                                    existingOutcome={latestNote?.call_outcome}
+                                    lastUpdated={latestNote?.created_at}
+                                    onSave={async (note, isUpdate, noteId) => {
+                                      await handleInlineNoteSave(
+                                        ticket.id,
+                                        ticket.master_customer_id,
+                                        note,
+                                        isUpdate,
+                                        noteId
+                                      );
+                                    }}
+                                    isLoading={createCallLog.isPending || updateCallLog.isPending}
+                                  />
+                                </div>
+                                
+                                {/* Expand button for status dropdowns */}
                                 <Button
-                                  variant="ghost"
+                                  variant="outline"
                                   size="sm"
-                                  className="h-8 px-2 text-info hover:text-info hover:bg-info/10 flex-shrink-0"
+                                  className="h-8 px-2 text-xs flex-shrink-0"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    toggleNotes(ticket.id);
+                                    toggleStatuses(ticket.id);
                                   }}
                                 >
-                                  {isExpanded ? (
-                                    <ChevronUp className="h-4 w-4" />
+                                  {expandedStatuses[ticket.id] ? (
+                                    <ChevronUp className="h-3 w-3 mr-1" />
                                   ) : (
-                                    <ChevronDown className="h-4 w-4" />
+                                    <ChevronDown className="h-3 w-3 mr-1" />
                                   )}
-                                  <span className="ml-1 text-xs">{ticketCallLogs.length}</span>
+                                  Status
                                 </Button>
+                                
+                                {/* Expand button for call log history */}
+                                {hasCallLogs && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 px-2 text-info hover:text-info hover:bg-info/10 flex-shrink-0"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleNotes(ticket.id);
+                                    }}
+                                  >
+                                    {isExpanded ? (
+                                      <ChevronUp className="h-4 w-4" />
+                                    ) : (
+                                      <ChevronDown className="h-4 w-4" />
+                                    )}
+                                    <span className="ml-1 text-xs">{ticketCallLogs.length}</span>
+                                  </Button>
+                                )}
+                              </div>
+                              
+                              {/* Expandable Status Dropdowns */}
+                              {expandedStatuses[ticket.id] && (
+                                <div className="bg-muted/30 rounded-lg p-3 border" onClick={(e) => e.stopPropagation()}>
+                                  <TicketStatusDropdowns
+                                    ticketArrearStatus={(ticket as any).ticket_arrear_status}
+                                    ticketPaymentStatus={(ticket as any).ticket_payment_status}
+                                    employerReasonForArrears={(ticket as any).employer_reason_for_arrears}
+                                    onArrearStatusChange={(value) => handleTicketStatusUpdate(ticket.id, 'ticket_arrear_status', value)}
+                                    onPaymentStatusChange={(value) => handleTicketStatusUpdate(ticket.id, 'ticket_payment_status', value)}
+                                    onEmployerReasonChange={(value) => handleTicketStatusUpdate(ticket.id, 'employer_reason_for_arrears', value)}
+                                    isLoading={updateTicket.isPending}
+                                    compact
+                                  />
+                                </div>
                               )}
                             </div>
                           </TableCell>

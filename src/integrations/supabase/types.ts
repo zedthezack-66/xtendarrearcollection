@@ -341,6 +341,7 @@ export type Database = {
           call_notes: string | null
           created_at: string
           customer_name: string
+          employer_reason_for_arrears: string | null
           id: string
           master_customer_id: string
           mobile_number: string | null
@@ -348,6 +349,8 @@ export type Database = {
           priority: string
           resolved_date: string | null
           status: string
+          ticket_arrear_status: string | null
+          ticket_payment_status: string | null
           updated_at: string
         }
         Insert: {
@@ -357,6 +360,7 @@ export type Database = {
           call_notes?: string | null
           created_at?: string
           customer_name: string
+          employer_reason_for_arrears?: string | null
           id?: string
           master_customer_id: string
           mobile_number?: string | null
@@ -364,6 +368,8 @@ export type Database = {
           priority?: string
           resolved_date?: string | null
           status?: string
+          ticket_arrear_status?: string | null
+          ticket_payment_status?: string | null
           updated_at?: string
         }
         Update: {
@@ -373,6 +379,7 @@ export type Database = {
           call_notes?: string | null
           created_at?: string
           customer_name?: string
+          employer_reason_for_arrears?: string | null
           id?: string
           master_customer_id?: string
           mobile_number?: string | null
@@ -380,6 +387,8 @@ export type Database = {
           priority?: string
           resolved_date?: string | null
           status?: string
+          ticket_arrear_status?: string | null
+          ticket_payment_status?: string | null
           updated_at?: string
         }
         Relationships: [
