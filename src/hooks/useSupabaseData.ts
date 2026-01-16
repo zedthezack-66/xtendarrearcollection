@@ -18,6 +18,10 @@ export interface MasterCustomerInsert {
   loan_account_number?: string;
   total_owed?: number;
   assigned_agent?: string;
+  next_of_kin_name?: string | null;
+  next_of_kin_contact?: string | null;
+  workplace_contact?: string | null;
+  workplace_destination?: string | null;
 }
 
 export interface TicketInsert {
