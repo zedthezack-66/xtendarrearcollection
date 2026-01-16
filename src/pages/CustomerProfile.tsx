@@ -247,7 +247,33 @@ export default function CustomerProfile() {
               <div><p className="text-sm text-muted-foreground">Employer Subdivision</p><p className="font-medium">{customer.employer_subdivision || '-'}</p></div>
               <div><p className="text-sm text-muted-foreground">Loan Consultant</p><p className="font-medium">{customer.loan_consultant || '-'}</p></div>
               <div><p className="text-sm text-muted-foreground">Tenure</p><p className="font-medium">{customer.tenure || '-'}</p></div>
-              <div><p className="text-sm text-muted-foreground">Last Payment Date</p><p className="font-medium">{customer.last_payment_date ? formatDate(customer.last_payment_date) : '-'}</p></div>
+              
+              {/* Dual Payment Date Display */}
+              <div className="col-span-2 p-3 bg-muted/30 rounded-lg border space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Payment Dates</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Loan Book Last Payment</p>
+                    <p className="font-medium text-primary">
+                      {(customer as any).loan_book_last_payment_date 
+                        ? formatDate((customer as any).loan_book_last_payment_date) 
+                        : customer.last_payment_date 
+                          ? formatDate(customer.last_payment_date) 
+                          : '-'}
+                    </p>
+                    <p className="text-xs text-muted-foreground/60">(Authoritative)</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">System Recorded Payment</p>
+                    <p className="font-medium">
+                      {customerPayments.length > 0 
+                        ? formatDate(customerPayments[customerPayments.length - 1].payment_date)
+                        : '-'}
+                    </p>
+                    <p className="text-xs text-muted-foreground/60">(From agent entry)</p>
+                  </div>
+                </div>
+              </div>
               
               {isEditingWorkplace && isAdmin ? (
                 <>

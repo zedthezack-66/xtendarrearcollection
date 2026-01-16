@@ -11,6 +11,43 @@ interface DashboardStats {
   resolved_tickets: number;
 }
 
+interface ArrearsMovementSummary {
+  cleared: number;
+  reduced: number;
+  increased: number;
+  maintained: number;
+  total_tickets_resolved: number;
+  total_change_amount: number;
+}
+
+interface AgentArrearsBreakdown {
+  agent_id: string;
+  agent_name: string;
+  cleared: number;
+  reduced: number;
+  increased: number;
+  maintained: number;
+  tickets_resolved: number;
+  total_recovered: number;
+}
+
+interface RecentSync {
+  sync_batch_id: string;
+  sync_date: string;
+  admin_user_id: string;
+  records_processed: number;
+}
+
+interface ArrearsMovementAnalytics {
+  summary: ArrearsMovementSummary;
+  by_agent: AgentArrearsBreakdown[];
+  recent_syncs: RecentSync[];
+  date_range: {
+    start_date: string;
+    end_date: string;
+  };
+}
+
 interface AgentCollection {
   agent_id: string;
   name: string;
@@ -101,5 +138,23 @@ export function useTopDefaulters(batchId: string | null, limit = 5) {
       return (data as unknown as TopDefaulter[]) || [];
     },
     staleTime: 30000,
+  });
+}
+
+// Hook for arrears movement analytics - admin only
+export function useArrearsMovementAnalytics(startDate?: string, endDate?: string, agentId?: string) {
+  return useQuery({
+    queryKey: ['arrears_movement_analytics', startDate, endDate, agentId],
+    queryFn: async (): Promise<ArrearsMovementAnalytics> => {
+      const { data, error } = await supabase.rpc('get_arrears_movement_analytics', {
+        p_start_date: startDate || null,
+        p_end_date: endDate || null,
+        p_agent_id: agentId || null,
+      });
+      
+      if (error) throw error;
+      return data as unknown as ArrearsMovementAnalytics;
+    },
+    staleTime: 60000, // 1 minute
   });
 }
