@@ -322,12 +322,12 @@ export default function Tickets() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
+          <div className="w-full">
+            <Table className="w-full table-fixed">
               <TableHeader>
                 <TableRow>
                   {isAdmin && (
-                    <TableHead className="w-[40px] sticky left-0 bg-background z-10">
+                    <TableHead className="w-10">
                       <input 
                         type="checkbox" 
                         checked={selectedTickets.size === filteredTickets.length && filteredTickets.length > 0}
@@ -342,23 +342,20 @@ export default function Tickets() {
                       />
                     </TableHead>
                   )}
-                  <TableHead className="min-w-[100px]">Ticket ID</TableHead>
-                  <TableHead className="min-w-[120px]">Customer</TableHead>
-                  <TableHead className="min-w-[100px]">NRC</TableHead>
-                  <TableHead className="min-w-[100px]">Mobile</TableHead>
-                  <TableHead className="text-right min-w-[100px]">Owed</TableHead>
-                  <TableHead className="text-right min-w-[80px]">Paid</TableHead>
-                  <TableHead className="text-right min-w-[80px]">Balance</TableHead>
-                  <TableHead className="min-w-[70px]">Priority</TableHead>
-                  <TableHead className="min-w-[80px]">Status</TableHead>
-                  <TableHead className="min-w-[80px]">Agent</TableHead>
-                  <TableHead className="min-w-[90px]">Created</TableHead>
-                  <TableHead className="w-[50px] sticky right-0 bg-background z-10"></TableHead>
+                  <TableHead className="w-[15%]">Customer</TableHead>
+                  <TableHead className="w-[12%] hidden sm:table-cell">NRC</TableHead>
+                  <TableHead className="text-right w-[10%]">Owed</TableHead>
+                  <TableHead className="text-right w-[10%] hidden md:table-cell">Paid</TableHead>
+                  <TableHead className="text-right w-[10%]">Balance</TableHead>
+                  <TableHead className="w-[8%] hidden lg:table-cell">Priority</TableHead>
+                  <TableHead className="w-[10%]">Status</TableHead>
+                  <TableHead className="w-[10%] hidden md:table-cell">Agent</TableHead>
+                  <TableHead className="w-12 text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredTickets.length === 0 ? (
-                  <TableRow><TableCell colSpan={isAdmin ? 13 : 12} className="text-center py-8 text-muted-foreground">No tickets found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={isAdmin ? 11 : 10} className="text-center py-8 text-muted-foreground">No tickets found</TableCell></TableRow>
                 ) : (
                   filteredTickets.map((ticket) => {
                     const totalPaid = paymentsByTicket[ticket.id] || 0;
@@ -380,7 +377,7 @@ export default function Tickets() {
                           onClick={hasCallLogs ? () => toggleNotes(ticket.id) : undefined}
                         >
                           {isAdmin && (
-                            <TableCell onClick={(e) => e.stopPropagation()} className="sticky left-0 bg-background z-10">
+                            <TableCell onClick={(e) => e.stopPropagation()} className="py-2">
                               <input 
                                 type="checkbox" 
                                 checked={selectedTickets.has(ticket.id)}
@@ -397,79 +394,80 @@ export default function Tickets() {
                               />
                             </TableCell>
                           )}
-                          <TableCell className="font-mono text-sm pb-1">
-                            <div className="flex items-center gap-2">
+                          <TableCell className="py-2" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center gap-1">
                               {hasCallLogs && (
-                                isExpanded ? <ChevronUp className="h-4 w-4 text-info" /> : <ChevronDown className="h-4 w-4 text-info" />
+                                isExpanded ? <ChevronUp className="h-3 w-3 text-info flex-shrink-0" /> : <ChevronDown className="h-3 w-3 text-info flex-shrink-0" />
                               )}
-                              #{ticket.id.slice(0, 8)}
+                              {hasStaticInfo ? (
+                                <HoverCard>
+                                  <HoverCardTrigger asChild>
+                                    <span className="cursor-help underline decoration-dotted underline-offset-2 truncate font-medium">{ticket.customer_name}</span>
+                                  </HoverCardTrigger>
+                                  <HoverCardContent className="w-72 z-50" side="right">
+                                    <div className="space-y-2">
+                                      <p className="font-semibold text-sm">{ticket.customer_name}</p>
+                                      <p className="text-xs font-mono text-muted-foreground">NRC: {ticket.nrc_number}</p>
+                                      {ticket.mobile_number && <p className="text-xs font-mono text-muted-foreground">Mobile: {ticket.mobile_number}</p>}
+                                      <div className="text-xs space-y-1 text-muted-foreground pt-1 border-t">
+                                        {masterCustomer?.branch_name && (
+                                          <div className="flex items-center gap-2">
+                                            <Building className="h-3 w-3" />
+                                            <span>Branch: {masterCustomer.branch_name}</span>
+                                          </div>
+                                        )}
+                                        {masterCustomer?.employer_name && (
+                                          <div className="flex items-center gap-2">
+                                            <Building className="h-3 w-3" />
+                                            <span>Employer: {masterCustomer.employer_name}</span>
+                                          </div>
+                                        )}
+                                        {masterCustomer?.employer_subdivision && (
+                                          <div className="flex items-center gap-2">
+                                            <Building className="h-3 w-3" />
+                                            <span>Subdivision: {masterCustomer.employer_subdivision}</span>
+                                          </div>
+                                        )}
+                                        {masterCustomer?.loan_consultant && (
+                                          <div className="flex items-center gap-2">
+                                            <User2 className="h-3 w-3" />
+                                            <span>Consultant: {masterCustomer.loan_consultant}</span>
+                                          </div>
+                                        )}
+                                        {masterCustomer?.tenure && (
+                                          <div className="flex items-center gap-2">
+                                            <Clock className="h-3 w-3" />
+                                            <span>Tenure: {masterCustomer.tenure}</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </HoverCardContent>
+                                </HoverCard>
+                              ) : (
+                                <span className="truncate font-medium">{ticket.customer_name}</span>
+                              )}
                             </div>
                           </TableCell>
-                          <TableCell className="font-medium pb-1" onClick={(e) => e.stopPropagation()}>
-                            {hasStaticInfo ? (
-                              <HoverCard>
-                                <HoverCardTrigger asChild>
-                                  <span className="cursor-help underline decoration-dotted underline-offset-2">{ticket.customer_name}</span>
-                                </HoverCardTrigger>
-                                <HoverCardContent className="w-72" side="right">
-                                  <div className="space-y-2">
-                                    <p className="font-semibold text-sm">{ticket.customer_name}</p>
-                                    <div className="text-xs space-y-1 text-muted-foreground">
-                                      {masterCustomer?.branch_name && (
-                                        <div className="flex items-center gap-2">
-                                          <Building className="h-3 w-3" />
-                                          <span>Branch: {masterCustomer.branch_name}</span>
-                                        </div>
-                                      )}
-                                      {masterCustomer?.employer_name && (
-                                        <div className="flex items-center gap-2">
-                                          <Building className="h-3 w-3" />
-                                          <span>Employer: {masterCustomer.employer_name}</span>
-                                        </div>
-                                      )}
-                                      {masterCustomer?.employer_subdivision && (
-                                        <div className="flex items-center gap-2">
-                                          <Building className="h-3 w-3" />
-                                          <span>Subdivision: {masterCustomer.employer_subdivision}</span>
-                                        </div>
-                                      )}
-                                      {masterCustomer?.loan_consultant && (
-                                        <div className="flex items-center gap-2">
-                                          <User2 className="h-3 w-3" />
-                                          <span>Consultant: {masterCustomer.loan_consultant}</span>
-                                        </div>
-                                      )}
-                                      {masterCustomer?.tenure && (
-                                        <div className="flex items-center gap-2">
-                                          <Clock className="h-3 w-3" />
-                                          <span>Tenure: {masterCustomer.tenure}</span>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                </HoverCardContent>
-                              </HoverCard>
-                            ) : (
-                              ticket.customer_name
-                            )}
-                          </TableCell>
-                          <TableCell className="font-mono text-sm pb-1">{ticket.nrc_number}</TableCell>
-                          <TableCell className="font-mono text-sm pb-1">{ticket.mobile_number || '-'}</TableCell>
-                          <TableCell className="text-right font-semibold text-destructive pb-1">{formatCurrency(amountOwed)}</TableCell>
-                          <TableCell className="text-right font-semibold text-success pb-1">{formatCurrency(totalPaid)}</TableCell>
-                          <TableCell className={`text-right font-semibold pb-1 ${balance > 0 ? 'text-destructive' : 'text-success'}`}>
+                          <TableCell className="font-mono text-xs py-2 hidden sm:table-cell truncate">{ticket.nrc_number}</TableCell>
+                          <TableCell className="text-right font-semibold text-destructive py-2 text-sm">{formatCurrency(amountOwed)}</TableCell>
+                          <TableCell className="text-right font-semibold text-success py-2 text-sm hidden md:table-cell">{formatCurrency(totalPaid)}</TableCell>
+                          <TableCell className={`text-right font-semibold py-2 text-sm ${balance > 0 ? 'text-destructive' : 'text-success'}`}>
                             {formatCurrency(balance)}
                           </TableCell>
-                          <TableCell className="pb-1">{getPriorityBadge(ticket.priority)}</TableCell>
-                          <TableCell className="pb-1">{getStatusBadge(ticket.status)}</TableCell>
-                          <TableCell className="text-muted-foreground pb-1">{getAgentName(ticket.assigned_agent)}</TableCell>
-                          <TableCell className="text-muted-foreground pb-1">{formatDate(ticket.created_at)}</TableCell>
-                          <TableCell className="sticky right-0 bg-background z-10 pb-1" onClick={(e) => e.stopPropagation()}>
+                          <TableCell className="py-2 hidden lg:table-cell">{getPriorityBadge(ticket.priority)}</TableCell>
+                          <TableCell className="py-2">{getStatusBadge(ticket.status)}</TableCell>
+                          <TableCell className="text-muted-foreground py-2 text-sm truncate hidden md:table-cell">{getAgentName(ticket.assigned_agent)}</TableCell>
+                          <TableCell className="py-2 text-right" onClick={(e) => e.stopPropagation()}>
                             <DropdownMenu>
-                              <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="z-50">
                                 <DropdownMenuItem asChild><Link to={`/customers/${ticket.master_customer_id}`}><Eye className="h-4 w-4 mr-2" />View Customer</Link></DropdownMenuItem>
-                                {ticket.mobile_number && <DropdownMenuItem asChild><a href={`tel:${ticket.mobile_number}`}><Phone className="h-4 w-4 mr-2" />Call</a></DropdownMenuItem>}
+                                {ticket.mobile_number && <DropdownMenuItem asChild><a href={`tel:${ticket.mobile_number}`}><Phone className="h-4 w-4 mr-2" />Call {ticket.mobile_number}</a></DropdownMenuItem>}
                                 {ticket.status === 'Open' && <DropdownMenuItem onClick={() => updateTicket.mutate({ id: ticket.id, status: 'In Progress' })}><PlayCircle className="h-4 w-4 mr-2" />Mark In Progress</DropdownMenuItem>}
                                 {ticket.status !== 'Resolved' && (
                                   <DropdownMenuItem 
@@ -495,9 +493,9 @@ export default function Tickets() {
                         
                         {/* Call Notes Inline Edit Row (always visible) */}
                         <TableRow className={`${ticket.status === 'Resolved' ? 'bg-success/5' : ''}`}>
-                          <TableCell colSpan={isAdmin ? 13 : 12} className="pt-0 pb-3 border-b">
+                          <TableCell colSpan={isAdmin ? 11 : 10} className="pt-0 pb-3 border-b">
                             <div className="flex flex-wrap items-center justify-center gap-2 py-2">
-                              <div className="flex-1 min-w-[200px] max-w-md">
+                              <div className="flex-1 min-w-[180px] max-w-sm">
                                 <InlineNoteInput
                                   ticketId={ticket.id}
                                   masterCustomerId={ticket.master_customer_id}
@@ -526,7 +524,7 @@ export default function Tickets() {
                               )}
                             </div>
                             {expandedStatuses[ticket.id] && (
-                              <div className="bg-muted/30 rounded-lg p-3 border mt-3 max-w-2xl mx-auto" onClick={(e) => e.stopPropagation()}>
+                              <div className="bg-muted/30 rounded-lg p-3 border mt-3 max-w-xl mx-auto" onClick={(e) => e.stopPropagation()}>
                                 <TicketStatusDropdowns
                                   ticketArrearStatus={(ticket as any).ticket_arrear_status}
                                   ticketPaymentStatus={(ticket as any).ticket_payment_status}
@@ -543,7 +541,7 @@ export default function Tickets() {
                         </TableRow>
                         {hasCallLogs && isExpanded && (
                           <TableRow className="bg-info/5 hover:bg-info/5">
-                            <TableCell colSpan={isAdmin ? 13 : 12} className="p-0">
+                            <TableCell colSpan={isAdmin ? 11 : 10} className="p-0">
                               <div className="p-4 space-y-3">
                                 <div className="flex items-center gap-2 text-sm font-medium text-info">
                                   <MessageSquare className="h-4 w-4" />
