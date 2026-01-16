@@ -47,6 +47,7 @@ import {
 import { InlineNoteInput } from "@/components/InlineNoteInput";
 import { TicketStatusDropdowns, ARREAR_STATUS_OPTIONS, PAYMENT_STATUS_OPTIONS, EMPLOYER_REASON_OPTIONS } from "@/components/TicketStatusDropdowns";
 import { BatchTransferDialog } from "@/components/BatchTransferDialog";
+import { BulkTransferDialog } from "@/components/BulkTransferDialog";
 import { useTickets, useUpdateTicket, useProfiles, useDeleteTicket, usePayments, useCallLogsForTickets, useCreateCallLog, useUpdateCallLog, useMasterCustomers } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -101,6 +102,7 @@ export default function Tickets() {
   const [blockedResolveModal, setBlockedResolveModal] = useState<{ ticketId: string; balance: number } | null>(null);
   const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
   const [expandedStatuses, setExpandedStatuses] = useState<Record<string, boolean>>({});
+  const [selectedTickets, setSelectedTickets] = useState<Set<string>>(new Set());
 
   // Handler for updating ticket status dropdowns
   const handleTicketStatusUpdate = useCallback(async (
@@ -264,9 +266,18 @@ export default function Tickets() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">{displayName}'s Tickets</h1>
-        <p className="text-muted-foreground">Manage collections workflow</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">{displayName}'s Tickets</h1>
+          <p className="text-muted-foreground">Manage collections workflow</p>
+        </div>
+        {isAdmin && (
+          <BulkTransferDialog 
+            selectedTicketIds={Array.from(selectedTickets)} 
+            onTransferComplete={() => setSelectedTickets(new Set())}
+            disabled={selectedTickets.size === 0}
+          />
+        )}
       </div>
       <Card>
         <CardHeader className="pb-4">
@@ -315,6 +326,22 @@ export default function Tickets() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {isAdmin && (
+                    <TableHead className="w-[40px]">
+                      <input 
+                        type="checkbox" 
+                        checked={selectedTickets.size === filteredTickets.length && filteredTickets.length > 0}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedTickets(new Set(filteredTickets.map(t => t.id)));
+                          } else {
+                            setSelectedTickets(new Set());
+                          }
+                        }}
+                        className="h-4 w-4 rounded border-muted"
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>Ticket ID</TableHead>
                   <TableHead>Customer</TableHead>
                   <TableHead>NRC</TableHead>
@@ -352,6 +379,24 @@ export default function Tickets() {
                           className={`${hasCallLogs ? 'cursor-pointer hover:bg-muted/50 border-b-0' : ''} ${ticket.status === 'Resolved' ? 'bg-success/5' : ''}`} 
                           onClick={hasCallLogs ? () => toggleNotes(ticket.id) : undefined}
                         >
+                          {isAdmin && (
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <input 
+                                type="checkbox" 
+                                checked={selectedTickets.has(ticket.id)}
+                                onChange={(e) => {
+                                  const newSelected = new Set(selectedTickets);
+                                  if (e.target.checked) {
+                                    newSelected.add(ticket.id);
+                                  } else {
+                                    newSelected.delete(ticket.id);
+                                  }
+                                  setSelectedTickets(newSelected);
+                                }}
+                                className="h-4 w-4 rounded border-muted"
+                              />
+                            </TableCell>
+                          )}
                           <TableCell className="font-mono text-sm pb-1">
                             <div className="flex items-center gap-2">
                               {hasCallLogs && (

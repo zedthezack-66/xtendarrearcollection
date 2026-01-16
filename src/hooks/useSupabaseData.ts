@@ -1048,3 +1048,56 @@ export function useTransferClientToBatch() {
     },
   });
 }
+
+// Hook for admin bulk transfer - transfer multiple clients to a new agent
+export function useBulkTransferClients() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ 
+      ticketIds, 
+      targetAgentId 
+    }: { 
+      ticketIds: string[]; 
+      targetAgentId: string; 
+    }) => {
+      const { data, error } = await supabase.rpc('bulk_transfer_clients', {
+        p_ticket_ids: ticketIds,
+        p_target_agent_id: targetAgentId
+      });
+      
+      if (error) throw error;
+      return data as {
+        success: boolean;
+        transferred_count: number;
+        failed_count: number;
+        total_requested: number;
+        errors: string[];
+        target_agent_id: string;
+      };
+    },
+    onSuccess: (data) => {
+      // Invalidate all affected queries
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['batches'] });
+      queryClient.invalidateQueries({ queryKey: ['batch_customers'] });
+      queryClient.invalidateQueries({ queryKey: ['master_customers'] });
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
+      queryClient.invalidateQueries({ queryKey: ['collections_by_agent'] });
+      
+      toast({ 
+        title: 'Bulk transfer complete',
+        description: `Successfully transferred ${data.transferred_count} of ${data.total_requested} clients`
+      });
+    },
+    onError: (error: Error) => {
+      toast({ 
+        title: 'Bulk transfer failed', 
+        description: error.message, 
+        variant: 'destructive' 
+      });
+    },
+  });
+}

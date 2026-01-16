@@ -279,6 +279,7 @@ export default function Export() {
       'Outstanding Balance', 'Payment Status', 'Assigned Agent', 'Call Notes', 'Ticket Status', 'Total Collected',
       'Branch Name', 'Arrear Status', 'Employer Name', 'Employer Subdivision', 
       'Loan Consultant', 'Tenure', 'Last Payment Date',
+      'Next of Kin Name', 'Next of Kin Contact', 'Workplace Contact', 'Workplace Destination',
       'Ticket Arrear Status', 'Ticket Payment Status', 'Employer Reason for Arrears'
     ];
     
@@ -317,7 +318,7 @@ export default function Export() {
         callNotesStr,
         ticket?.status || 'N/A',
         totalCollected.toFixed(2),
-        // New loan book fields
+        // Static loan book fields
         customer.branch_name || '',
         customer.arrear_status || '',
         customer.employer_name || '',
@@ -325,6 +326,11 @@ export default function Export() {
         customer.loan_consultant || '',
         customer.tenure || '',
         lastPaymentDate,
+        // New contact fields
+        (customer as any).next_of_kin_name || '',
+        (customer as any).next_of_kin_contact || '',
+        (customer as any).workplace_contact || '',
+        (customer as any).workplace_destination || '',
         // Ticket-level interaction outcomes
         (ticket as any)?.ticket_arrear_status || '',
         (ticket as any)?.ticket_payment_status || '',
@@ -349,6 +355,7 @@ export default function Export() {
       'Call Notes', 'Ticket Status', 'Total Collected',
       'Branch Name', 'Arrear Status', 'Employer Name', 'Employer Subdivision', 
       'Loan Consultant', 'Tenure', 'Last Payment Date',
+      'Next of Kin Name', 'Next of Kin Contact', 'Workplace Contact', 'Workplace Destination',
       'Ticket Arrear Status', 'Ticket Payment Status', 'Employer Reason for Arrears'
     ];
     
@@ -398,6 +405,11 @@ export default function Export() {
         master?.loan_consultant || '',
         master?.tenure || '',
         lastPaymentDate,
+        // New contact fields from master
+        master?.next_of_kin_name || '',
+        master?.next_of_kin_contact || '',
+        master?.workplace_contact || '',
+        master?.workplace_destination || '',
         // Ticket-level interaction outcomes
         (ticket as any)?.ticket_arrear_status || '',
         (ticket as any)?.ticket_payment_status || '',
