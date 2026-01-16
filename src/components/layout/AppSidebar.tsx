@@ -9,7 +9,9 @@ import {
   FileText,
   Database,
   LogOut,
-  Shield
+  Shield,
+  RefreshCw,
+  BarChart3
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -43,6 +45,11 @@ const toolsNavItems = [
   { title: "Weekly Report", url: "/reports", icon: FileText },
   { title: "Master Registry", url: "/master-registry", icon: Database },
   { title: "Settings", url: "/settings", icon: Settings },
+];
+
+const adminNavItems = [
+  { title: "Loan Book Sync", url: "/loan-book-sync", icon: RefreshCw },
+  { title: "Arrears Analytics", url: "/arrears-analytics", icon: BarChart3 },
 ];
 
 export function AppSidebar() {
@@ -133,6 +140,32 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {isAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-sidebar-foreground/60 text-xs uppercase tracking-wider">
+              Admin Tools
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {adminNavItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild>
+                      <NavLink 
+                        to={item.url}
+                        className="flex items-center gap-3 px-3 py-2 rounded-md text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+                        activeClassName="bg-sidebar-primary text-sidebar-primary-foreground"
+                      >
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="p-4 border-t border-sidebar-border">

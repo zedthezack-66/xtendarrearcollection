@@ -17,6 +17,8 @@ import Settings from "./pages/Settings";
 import Export from "./pages/Export";
 import MasterRegistry from "./pages/MasterRegistry";
 import Reports from "./pages/Reports";
+import LoanBookSync from "./pages/LoanBookSync";
+import ArrearsAnalytics from "./pages/ArrearsAnalytics";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -48,6 +50,8 @@ const App = () => (
                       <Route path="/export" element={<Export />} />
                       <Route path="/master-registry" element={<MasterRegistry />} />
                       <Route path="/reports" element={<Reports />} />
+                      <Route path="/loan-book-sync" element={<LoanBookSync />} />
+                      <Route path="/arrears-analytics" element={<ArrearsAnalytics />} />
                       <Route path="*" element={<NotFound />} />
                     </Routes>
                   </AppLayout>

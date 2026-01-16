@@ -14,6 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
+      arrears_sync_logs: {
+        Row: {
+          admin_user_id: string
+          created_at: string
+          id: string
+          loan_book_payment_date: string | null
+          master_customer_id: string | null
+          movement_type: string
+          new_arrears: number
+          nrc_number: string
+          old_arrears: number
+          sync_batch_id: string
+          ticket_resolved: boolean | null
+        }
+        Insert: {
+          admin_user_id: string
+          created_at?: string
+          id?: string
+          loan_book_payment_date?: string | null
+          master_customer_id?: string | null
+          movement_type: string
+          new_arrears?: number
+          nrc_number: string
+          old_arrears?: number
+          sync_batch_id: string
+          ticket_resolved?: boolean | null
+        }
+        Update: {
+          admin_user_id?: string
+          created_at?: string
+          id?: string
+          loan_book_payment_date?: string | null
+          master_customer_id?: string | null
+          movement_type?: string
+          new_arrears?: number
+          nrc_number?: string
+          old_arrears?: number
+          sync_batch_id?: string
+          ticket_resolved?: boolean | null
+        }
+        Relationships: []
+      }
       batch_customers: {
         Row: {
           amount_owed: number
@@ -192,6 +234,8 @@ export type Database = {
           id: string
           last_payment_date: string | null
           loan_account_number: string | null
+          loan_book_arrears: number | null
+          loan_book_last_payment_date: string | null
           loan_consultant: string | null
           mobile_number: string | null
           name: string
@@ -219,6 +263,8 @@ export type Database = {
           id?: string
           last_payment_date?: string | null
           loan_account_number?: string | null
+          loan_book_arrears?: number | null
+          loan_book_last_payment_date?: string | null
           loan_consultant?: string | null
           mobile_number?: string | null
           name: string
@@ -246,6 +292,8 @@ export type Database = {
           id?: string
           last_payment_date?: string | null
           loan_account_number?: string | null
+          loan_book_arrears?: number | null
+          loan_book_last_payment_date?: string | null
           loan_consultant?: string | null
           mobile_number?: string | null
           name?: string
@@ -453,6 +501,14 @@ export type Database = {
         Args: { p_agent_id?: string }
         Returns: Json
       }
+      get_arrears_movement_analytics: {
+        Args: {
+          p_agent_id?: string
+          p_end_date?: string
+          p_start_date?: string
+        }
+        Returns: Json
+      }
       get_collections_by_agent: { Args: { p_batch_id?: string }; Returns: Json }
       get_dashboard_stats: {
         Args: { p_agent_id?: string; p_batch_id?: string }
@@ -488,6 +544,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      process_loan_book_sync: { Args: { p_sync_data: Json }; Returns: Json }
       safe_delete_batch: {
         Args: { p_archive?: boolean; p_batch_id: string; p_chunk_size?: number }
         Returns: Json
