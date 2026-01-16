@@ -321,13 +321,13 @@ export default function Tickets() {
             </Select>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="rounded-md border">
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   {isAdmin && (
-                    <TableHead className="w-[40px]">
+                    <TableHead className="w-[40px] sticky left-0 bg-background z-10">
                       <input 
                         type="checkbox" 
                         checked={selectedTickets.size === filteredTickets.length && filteredTickets.length > 0}
@@ -342,23 +342,23 @@ export default function Tickets() {
                       />
                     </TableHead>
                   )}
-                  <TableHead>Ticket ID</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>NRC</TableHead>
-                  <TableHead>Mobile</TableHead>
-                  <TableHead className="text-right">Amount Owed</TableHead>
-                  <TableHead className="text-right">Total Paid</TableHead>
-                  <TableHead className="text-right">Balance</TableHead>
-                  <TableHead>Priority</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Agent</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
+                  <TableHead className="min-w-[100px]">Ticket ID</TableHead>
+                  <TableHead className="min-w-[120px]">Customer</TableHead>
+                  <TableHead className="min-w-[100px]">NRC</TableHead>
+                  <TableHead className="min-w-[100px]">Mobile</TableHead>
+                  <TableHead className="text-right min-w-[100px]">Owed</TableHead>
+                  <TableHead className="text-right min-w-[80px]">Paid</TableHead>
+                  <TableHead className="text-right min-w-[80px]">Balance</TableHead>
+                  <TableHead className="min-w-[70px]">Priority</TableHead>
+                  <TableHead className="min-w-[80px]">Status</TableHead>
+                  <TableHead className="min-w-[80px]">Agent</TableHead>
+                  <TableHead className="min-w-[90px]">Created</TableHead>
+                  <TableHead className="w-[50px] sticky right-0 bg-background z-10"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredTickets.length === 0 ? (
-                  <TableRow><TableCell colSpan={12} className="text-center py-8 text-muted-foreground">No tickets found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={isAdmin ? 13 : 12} className="text-center py-8 text-muted-foreground">No tickets found</TableCell></TableRow>
                 ) : (
                   filteredTickets.map((ticket) => {
                     const totalPaid = paymentsByTicket[ticket.id] || 0;
@@ -380,7 +380,7 @@ export default function Tickets() {
                           onClick={hasCallLogs ? () => toggleNotes(ticket.id) : undefined}
                         >
                           {isAdmin && (
-                            <TableCell onClick={(e) => e.stopPropagation()}>
+                            <TableCell onClick={(e) => e.stopPropagation()} className="sticky left-0 bg-background z-10">
                               <input 
                                 type="checkbox" 
                                 checked={selectedTickets.has(ticket.id)}
@@ -464,7 +464,7 @@ export default function Tickets() {
                           <TableCell className="pb-1">{getStatusBadge(ticket.status)}</TableCell>
                           <TableCell className="text-muted-foreground pb-1">{getAgentName(ticket.assigned_agent)}</TableCell>
                           <TableCell className="text-muted-foreground pb-1">{formatDate(ticket.created_at)}</TableCell>
-                          <TableCell className="pb-1" onClick={(e) => e.stopPropagation()}>
+                          <TableCell className="sticky right-0 bg-background z-10 pb-1" onClick={(e) => e.stopPropagation()}>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
@@ -494,106 +494,56 @@ export default function Tickets() {
                         </TableRow>
                         
                         {/* Call Notes Inline Edit Row (always visible) */}
-                        <TableRow 
-                          className={`${ticket.status === 'Resolved' ? 'bg-success/5' : ''}`}
-                        >
-                          <TableCell colSpan={12} className="pt-0 pb-3 border-b">
-                            <div className="space-y-3">
-                              {/* Inline editable note input + expand history */}
-                              <div className="flex items-center gap-2">
-                                <div className="flex-1">
-                                  <InlineNoteInput
-                                    ticketId={ticket.id}
-                                    masterCustomerId={ticket.master_customer_id}
-                                    existingNote={latestNote?.notes || ''}
-                                    existingNoteId={latestNote?.id}
-                                    existingOutcome={latestNote?.call_outcome}
-                                    lastUpdated={latestNote?.created_at}
-                                    onSave={async (note, isUpdate, noteId) => {
-                                      await handleInlineNoteSave(
-                                        ticket.id,
-                                        ticket.master_customer_id,
-                                        note,
-                                        isUpdate,
-                                        noteId
-                                      );
-                                    }}
-                                    isLoading={createCallLog.isPending || updateCallLog.isPending}
-                                  />
-                                </div>
-                                
-                                {/* Expand button for status dropdowns */}
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-8 px-2 text-xs flex-shrink-0"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleStatuses(ticket.id);
+                        <TableRow className={`${ticket.status === 'Resolved' ? 'bg-success/5' : ''}`}>
+                          <TableCell colSpan={isAdmin ? 13 : 12} className="pt-0 pb-3 border-b">
+                            <div className="flex flex-wrap items-center justify-center gap-2 py-2">
+                              <div className="flex-1 min-w-[200px] max-w-md">
+                                <InlineNoteInput
+                                  ticketId={ticket.id}
+                                  masterCustomerId={ticket.master_customer_id}
+                                  existingNote={latestNote?.notes || ''}
+                                  existingNoteId={latestNote?.id}
+                                  existingOutcome={latestNote?.call_outcome}
+                                  lastUpdated={latestNote?.created_at}
+                                  onSave={async (note, isUpdate, noteId) => {
+                                    await handleInlineNoteSave(ticket.id, ticket.master_customer_id, note, isUpdate, noteId);
                                   }}
-                                >
-                                  {expandedStatuses[ticket.id] ? (
-                                    <ChevronUp className="h-3 w-3 mr-1" />
-                                  ) : (
-                                    <ChevronDown className="h-3 w-3 mr-1" />
-                                  )}
-                                Status
-                                </Button>
-                                
-                                {/* Admin batch transfer button */}
-                                {isAdmin && (
-                                  <BatchTransferDialog
-                                    ticketId={ticket.id}
-                                    currentBatchId={ticket.batch_id}
-                                    currentAgentId={ticket.assigned_agent}
-                                    customerName={ticket.customer_name}
-                                  />
-                                )}
-                                
-                                {/* Expand button for call log history */}
-                                {hasCallLogs && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 px-2 text-info hover:text-info hover:bg-info/10 flex-shrink-0"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      toggleNotes(ticket.id);
-                                    }}
-                                  >
-                                    {isExpanded ? (
-                                      <ChevronUp className="h-4 w-4" />
-                                    ) : (
-                                      <ChevronDown className="h-4 w-4" />
-                                    )}
-                                    <span className="ml-1 text-xs">{ticketCallLogs.length}</span>
-                                  </Button>
-                                )}
+                                  isLoading={createCallLog.isPending || updateCallLog.isPending}
+                                />
                               </div>
-                              
-                              {/* Expandable Status Dropdowns */}
-                              {expandedStatuses[ticket.id] && (
-                                <div className="bg-muted/30 rounded-lg p-3 border" onClick={(e) => e.stopPropagation()}>
-                                  <TicketStatusDropdowns
-                                    ticketArrearStatus={(ticket as any).ticket_arrear_status}
-                                    ticketPaymentStatus={(ticket as any).ticket_payment_status}
-                                    employerReasonForArrears={(ticket as any).employer_reason_for_arrears}
-                                    onArrearStatusChange={(value) => handleTicketStatusUpdate(ticket.id, 'ticket_arrear_status', value)}
-                                    onPaymentStatusChange={(value) => handleTicketStatusUpdate(ticket.id, 'ticket_payment_status', value)}
-                                    onEmployerReasonChange={(value) => handleTicketStatusUpdate(ticket.id, 'employer_reason_for_arrears', value)}
-                                    isLoading={updateTicket.isPending}
-                                    compact
-                                  />
-                                </div>
+                              <Button variant="outline" size="sm" className="h-8 px-2 text-xs flex-shrink-0" onClick={(e) => { e.stopPropagation(); toggleStatuses(ticket.id); }}>
+                                {expandedStatuses[ticket.id] ? <ChevronUp className="h-3 w-3 mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
+                                Status
+                              </Button>
+                              {isAdmin && (
+                                <BatchTransferDialog ticketId={ticket.id} currentBatchId={ticket.batch_id} currentAgentId={ticket.assigned_agent} customerName={ticket.customer_name} />
+                              )}
+                              {hasCallLogs && (
+                                <Button variant="ghost" size="sm" className="h-8 px-2 text-info hover:text-info hover:bg-info/10 flex-shrink-0" onClick={(e) => { e.stopPropagation(); toggleNotes(ticket.id); }}>
+                                  {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                  <span className="ml-1 text-xs">{ticketCallLogs.length}</span>
+                                </Button>
                               )}
                             </div>
+                            {expandedStatuses[ticket.id] && (
+                              <div className="bg-muted/30 rounded-lg p-3 border mt-3 max-w-2xl mx-auto" onClick={(e) => e.stopPropagation()}>
+                                <TicketStatusDropdowns
+                                  ticketArrearStatus={(ticket as any).ticket_arrear_status}
+                                  ticketPaymentStatus={(ticket as any).ticket_payment_status}
+                                  employerReasonForArrears={(ticket as any).employer_reason_for_arrears}
+                                  onArrearStatusChange={(value) => handleTicketStatusUpdate(ticket.id, 'ticket_arrear_status', value)}
+                                  onPaymentStatusChange={(value) => handleTicketStatusUpdate(ticket.id, 'ticket_payment_status', value)}
+                                  onEmployerReasonChange={(value) => handleTicketStatusUpdate(ticket.id, 'employer_reason_for_arrears', value)}
+                                  isLoading={updateTicket.isPending}
+                                  compact
+                                />
+                              </div>
+                            )}
                           </TableCell>
                         </TableRow>
-
-                        {/* Expandable Full Call Notes History */}
                         {hasCallLogs && isExpanded && (
                           <TableRow className="bg-info/5 hover:bg-info/5">
-                            <TableCell colSpan={12} className="p-0">
+                            <TableCell colSpan={isAdmin ? 13 : 12} className="p-0">
                               <div className="p-4 space-y-3">
                                 <div className="flex items-center gap-2 text-sm font-medium text-info">
                                   <MessageSquare className="h-4 w-4" />
@@ -603,24 +553,14 @@ export default function Tickets() {
                                   {ticketCallLogs.map((log) => (
                                     <div key={log.id} className="bg-background rounded-lg border p-3 space-y-2">
                                       <div className="flex items-center justify-between">
-                                        <Badge variant="outline" className="text-xs">
-                                          {log.call_outcome}
-                                        </Badge>
-                                        <span className="text-xs text-muted-foreground">
-                                          {formatDateTime(log.created_at)}
-                                        </span>
+                                        <Badge variant="outline" className="text-xs">{log.call_outcome}</Badge>
+                                        <span className="text-xs text-muted-foreground">{formatDateTime(log.created_at)}</span>
                                       </div>
-                                      {log.notes && (
-                                        <p className="text-sm text-foreground">{log.notes}</p>
-                                      )}
+                                      {log.notes && <p className="text-sm text-foreground">{log.notes}</p>}
                                       {log.promise_to_pay_date && (
                                         <div className="flex items-center gap-4 text-xs text-muted-foreground">
                                           <span>Promise to Pay: {formatDate(log.promise_to_pay_date)}</span>
-                                          {log.promise_to_pay_amount && (
-                                            <span className="font-semibold text-warning">
-                                              {formatCurrency(Number(log.promise_to_pay_amount))}
-                                            </span>
-                                          )}
+                                          {log.promise_to_pay_amount && <span className="font-semibold text-warning">{formatCurrency(Number(log.promise_to_pay_amount))}</span>}
                                         </div>
                                       )}
                                     </div>
@@ -637,7 +577,7 @@ export default function Tickets() {
               </TableBody>
             </Table>
           </div>
-          <div className="mt-4 text-sm text-muted-foreground">Showing {filteredTickets.length} of {tickets?.length || 0} tickets</div>
+          <div className="p-4 text-sm text-muted-foreground">Showing {filteredTickets.length} of {tickets?.length || 0} tickets</div>
         </CardContent>
       </Card>
 

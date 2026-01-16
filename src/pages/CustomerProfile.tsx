@@ -1,9 +1,10 @@
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Phone, CreditCard, Ticket, Calendar, User, PlayCircle, CheckCircle, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Phone, CreditCard, Ticket, Calendar, User, PlayCircle, CheckCircle, AlertTriangle, Pencil, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -15,6 +16,7 @@ import {
 import { useState, useCallback } from "react";
 import { useMasterCustomers, useTickets, usePayments, useBatchCustomers, useBatches, useUpdateMasterCustomer, useUpdateTicket, useProfiles } from "@/hooks/useSupabaseData";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { TicketStatusDropdowns } from "@/components/TicketStatusDropdowns";
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW', minimumFractionDigits: 0 }).format(amount);
@@ -41,6 +43,7 @@ const getTicketStatusBadge = (status: string) => {
 export default function CustomerProfile() {
   const { id } = useParams();
   const { toast } = useToast();
+  const { isAdmin } = useAuth();
   const { data: masterCustomers = [] } = useMasterCustomers();
   const { data: tickets = [] } = useTickets();
   const { data: payments = [] } = usePayments();
@@ -50,6 +53,8 @@ export default function CustomerProfile() {
   const updateCustomer = useUpdateMasterCustomer();
   const updateTicket = useUpdateTicket();
   const [showBlockedModal, setShowBlockedModal] = useState(false);
+  const [isEditingKin, setIsEditingKin] = useState(false);
+  const [isEditingWorkplace, setIsEditingWorkplace] = useState(false);
   
   const getAgentName = (agentId: string | null) => {
     if (!agentId) return '-';
@@ -59,6 +64,53 @@ export default function CustomerProfile() {
   
   const customer = masterCustomers.find(c => c.id === id);
   const [callNotes, setCallNotes] = useState(customer?.call_notes || '');
+  
+  // Editable fields state
+  const [kinName, setKinName] = useState('');
+  const [kinContact, setKinContact] = useState('');
+  const [workplaceContact, setWorkplaceContact] = useState('');
+  const [workplaceDestination, setWorkplaceDestination] = useState('');
+  
+  // Initialize editable fields when customer data is available
+  const initKinFields = () => {
+    setKinName((customer as any)?.next_of_kin_name || '');
+    setKinContact((customer as any)?.next_of_kin_contact || '');
+    setIsEditingKin(true);
+  };
+  
+  const initWorkplaceFields = () => {
+    setWorkplaceContact((customer as any)?.workplace_contact || '');
+    setWorkplaceDestination((customer as any)?.workplace_destination || '');
+    setIsEditingWorkplace(true);
+  };
+  
+  const handleSaveKinInfo = async () => {
+    try {
+      await updateCustomer.mutateAsync({ 
+        id: customer!.id, 
+        next_of_kin_name: kinName || null,
+        next_of_kin_contact: kinContact || null
+      });
+      toast({ title: "Next of Kin information saved" });
+      setIsEditingKin(false);
+    } catch (error: any) {
+      toast({ title: "Error saving", description: error.message, variant: "destructive" });
+    }
+  };
+  
+  const handleSaveWorkplaceInfo = async () => {
+    try {
+      await updateCustomer.mutateAsync({ 
+        id: customer!.id, 
+        workplace_contact: workplaceContact || null,
+        workplace_destination: workplaceDestination || null
+      });
+      toast({ title: "Workplace information saved" });
+      setIsEditingWorkplace(false);
+    } catch (error: any) {
+      toast({ title: "Error saving", description: error.message, variant: "destructive" });
+    }
+  };
   
   if (!customer) {
     return (
@@ -140,18 +192,55 @@ export default function CustomerProfile() {
             </CardContent>
           </Card>
 
-          {/* Static Client Fields - Read-Only for agents, Editable for admins */}
+          {/* Next of Kin - Editable for admins */}
           <Card>
-            <CardHeader><CardTitle className="text-lg">Customer Information</CardTitle></CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-lg">Next of Kin</CardTitle>
+              {isAdmin && !isEditingKin && (
+                <Button variant="ghost" size="sm" onClick={initKinFields}>
+                  <Pencil className="h-4 w-4 mr-1" />Edit
+                </Button>
+              )}
+            </CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
-              <div><p className="text-sm text-muted-foreground">Next of Kin Name</p><p className="font-medium">{(customer as any).next_of_kin_name || '-'}</p></div>
-              <div><p className="text-sm text-muted-foreground">Next of Kin Contact</p><p className="font-medium">{(customer as any).next_of_kin_contact || '-'}</p></div>
+              {isEditingKin && isAdmin ? (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-sm text-muted-foreground">Next of Kin Name</label>
+                    <Input value={kinName} onChange={(e) => setKinName(e.target.value)} placeholder="Enter name" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm text-muted-foreground">Next of Kin Contact</label>
+                    <Input value={kinContact} onChange={(e) => setKinContact(e.target.value)} placeholder="Enter contact" />
+                  </div>
+                  <div className="col-span-2 flex gap-2">
+                    <Button size="sm" onClick={handleSaveKinInfo} disabled={updateCustomer.isPending}>
+                      <Save className="h-4 w-4 mr-1" />Save
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setIsEditingKin(false)}>
+                      <X className="h-4 w-4 mr-1" />Cancel
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div><p className="text-sm text-muted-foreground">Next of Kin Name</p><p className="font-medium">{(customer as any).next_of_kin_name || '-'}</p></div>
+                  <div><p className="text-sm text-muted-foreground">Next of Kin Contact</p><p className="font-medium">{(customer as any).next_of_kin_contact || '-'}</p></div>
+                </>
+              )}
             </CardContent>
           </Card>
 
-          {/* Employment & Loan Details */}
+          {/* Employment & Loan Details - Workplace editable for admins */}
           <Card>
-            <CardHeader><CardTitle className="text-lg">Employment & Loan Details</CardTitle></CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-lg">Employment & Loan Details</CardTitle>
+              {isAdmin && !isEditingWorkplace && (
+                <Button variant="ghost" size="sm" onClick={initWorkplaceFields}>
+                  <Pencil className="h-4 w-4 mr-1" />Edit Workplace
+                </Button>
+              )}
+            </CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
               <div><p className="text-sm text-muted-foreground">Branch Name</p><p className="font-medium">{customer.branch_name || '-'}</p></div>
               <div><p className="text-sm text-muted-foreground">Employer Name</p><p className="font-medium">{customer.employer_name || '-'}</p></div>
@@ -159,8 +248,32 @@ export default function CustomerProfile() {
               <div><p className="text-sm text-muted-foreground">Loan Consultant</p><p className="font-medium">{customer.loan_consultant || '-'}</p></div>
               <div><p className="text-sm text-muted-foreground">Tenure</p><p className="font-medium">{customer.tenure || '-'}</p></div>
               <div><p className="text-sm text-muted-foreground">Last Payment Date</p><p className="font-medium">{customer.last_payment_date ? formatDate(customer.last_payment_date) : '-'}</p></div>
-              <div><p className="text-sm text-muted-foreground">Workplace Contact</p><p className="font-medium">{(customer as any).workplace_contact || '-'}</p></div>
-              <div><p className="text-sm text-muted-foreground">Workplace Destination</p><p className="font-medium">{(customer as any).workplace_destination || '-'}</p></div>
+              
+              {isEditingWorkplace && isAdmin ? (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-sm text-muted-foreground">Workplace Contact</label>
+                    <Input value={workplaceContact} onChange={(e) => setWorkplaceContact(e.target.value)} placeholder="Enter contact" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm text-muted-foreground">Workplace Destination</label>
+                    <Input value={workplaceDestination} onChange={(e) => setWorkplaceDestination(e.target.value)} placeholder="Enter destination" />
+                  </div>
+                  <div className="col-span-2 flex gap-2">
+                    <Button size="sm" onClick={handleSaveWorkplaceInfo} disabled={updateCustomer.isPending}>
+                      <Save className="h-4 w-4 mr-1" />Save
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setIsEditingWorkplace(false)}>
+                      <X className="h-4 w-4 mr-1" />Cancel
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div><p className="text-sm text-muted-foreground">Workplace Contact</p><p className="font-medium">{(customer as any).workplace_contact || '-'}</p></div>
+                  <div><p className="text-sm text-muted-foreground">Workplace Destination</p><p className="font-medium">{(customer as any).workplace_destination || '-'}</p></div>
+                </>
+              )}
             </CardContent>
           </Card>
 
