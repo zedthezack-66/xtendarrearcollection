@@ -195,6 +195,8 @@ export type Database = {
           loan_consultant: string | null
           mobile_number: string | null
           name: string
+          next_of_kin_contact: string | null
+          next_of_kin_name: string | null
           nrc_number: string
           outstanding_balance: number
           payment_status: string
@@ -203,6 +205,8 @@ export type Database = {
           total_owed: number
           total_paid: number
           updated_at: string
+          workplace_contact: string | null
+          workplace_destination: string | null
         }
         Insert: {
           arrear_status?: string | null
@@ -218,6 +222,8 @@ export type Database = {
           loan_consultant?: string | null
           mobile_number?: string | null
           name: string
+          next_of_kin_contact?: string | null
+          next_of_kin_name?: string | null
           nrc_number: string
           outstanding_balance?: number
           payment_status?: string
@@ -226,6 +232,8 @@ export type Database = {
           total_owed?: number
           total_paid?: number
           updated_at?: string
+          workplace_contact?: string | null
+          workplace_destination?: string | null
         }
         Update: {
           arrear_status?: string | null
@@ -241,6 +249,8 @@ export type Database = {
           loan_consultant?: string | null
           mobile_number?: string | null
           name?: string
+          next_of_kin_contact?: string | null
+          next_of_kin_name?: string | null
           nrc_number?: string
           outstanding_balance?: number
           payment_status?: string
@@ -249,6 +259,8 @@ export type Database = {
           total_owed?: number
           total_paid?: number
           updated_at?: string
+          workplace_contact?: string | null
+          workplace_destination?: string | null
         }
         Relationships: []
       }
@@ -432,6 +444,10 @@ export type Database = {
     }
     Functions: {
       admin_delete_user: { Args: { p_user_id: string }; Returns: Json }
+      bulk_transfer_clients: {
+        Args: { p_target_agent_id: string; p_ticket_ids: string[] }
+        Returns: Json
+      }
       clear_all_data: { Args: never; Returns: Json }
       get_admin_agent_analytics: {
         Args: { p_agent_id?: string }

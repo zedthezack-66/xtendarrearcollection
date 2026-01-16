@@ -140,7 +140,16 @@ export default function CustomerProfile() {
             </CardContent>
           </Card>
 
-          {/* Static Client Fields - Read-Only */}
+          {/* Static Client Fields - Read-Only for agents, Editable for admins */}
+          <Card>
+            <CardHeader><CardTitle className="text-lg">Customer Information</CardTitle></CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
+              <div><p className="text-sm text-muted-foreground">Next of Kin Name</p><p className="font-medium">{(customer as any).next_of_kin_name || '-'}</p></div>
+              <div><p className="text-sm text-muted-foreground">Next of Kin Contact</p><p className="font-medium">{(customer as any).next_of_kin_contact || '-'}</p></div>
+            </CardContent>
+          </Card>
+
+          {/* Employment & Loan Details */}
           <Card>
             <CardHeader><CardTitle className="text-lg">Employment & Loan Details</CardTitle></CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -150,6 +159,8 @@ export default function CustomerProfile() {
               <div><p className="text-sm text-muted-foreground">Loan Consultant</p><p className="font-medium">{customer.loan_consultant || '-'}</p></div>
               <div><p className="text-sm text-muted-foreground">Tenure</p><p className="font-medium">{customer.tenure || '-'}</p></div>
               <div><p className="text-sm text-muted-foreground">Last Payment Date</p><p className="font-medium">{customer.last_payment_date ? formatDate(customer.last_payment_date) : '-'}</p></div>
+              <div><p className="text-sm text-muted-foreground">Workplace Contact</p><p className="font-medium">{(customer as any).workplace_contact || '-'}</p></div>
+              <div><p className="text-sm text-muted-foreground">Workplace Destination</p><p className="font-medium">{(customer as any).workplace_destination || '-'}</p></div>
             </CardContent>
           </Card>
 

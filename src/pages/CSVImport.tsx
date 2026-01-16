@@ -44,8 +44,12 @@ interface CSVRow {
   'Employer Subdivision'?: string;
   'Loan Consultant'?: string;
   'Tenure'?: string;
-  'Reason for Arrears'?: string;
   'Last Payment Date'?: string;
+  // New contact fields
+  'Next of Kin Name'?: string;
+  'Next of Kin Contact'?: string;
+  'Workplace Contact'?: string;
+  'Workplace Destination'?: string;
   [key: string]: string | undefined;
 }
 
@@ -69,14 +73,18 @@ interface ParsedRow {
   employerSubdivision: string;
   loanConsultant: string;
   tenure: string;
-  reasonForArrears: string;
   lastPaymentDate: string;
+  // New contact fields
+  nextOfKinName: string;
+  nextOfKinContact: string;
+  workplaceContact: string;
+  workplaceDestination: string;
 }
 
-const SAMPLE_CSV = `Customer Name,NRC Number,Amount Owed,Mobile Number,Assigned Agent,Branch Name,Arrear Status,Employer Name,Employer Subdivision,Loan Consultant,Tenure,Last Payment Date
-John Mwanza,123456/10/1,15000,260971234567,Ziba,Lusaka Main,60+ Days,Ministry of Health,Finance Dept,Grace Tembo,24 months,2025-12-15
-Jane Banda,234567/20/2,8500,260972345678,Mary,Ndola Branch,30+ Days,Zambia Airways,Operations,Peter Sakala,12 months,
-Peter Phiri,345678/30/3,22000,260973456789,Ziba,Kitwe Branch,90+ Days,Zambia Sugar,Production,Mary Mulenga,36 months,2025-11-20`;
+const SAMPLE_CSV = `Customer Name,NRC Number,Amount Owed,Mobile Number,Assigned Agent,Next of Kin Name,Next of Kin Contact,Branch Name,Arrear Status,Employer Name,Employer Subdivision,Workplace Contact,Workplace Destination,Loan Consultant,Tenure,Last Payment Date
+John Mwanza,123456/10/1,15000,260971234567,Ziba,Mary Mwanza,260977654321,Lusaka Main,60+ Days,Ministry of Health,Finance Dept,260211234567,Cairo Road HQ,Grace Tembo,24 months,2025-12-15
+Jane Banda,234567/20/2,8500,260972345678,Mary,Peter Banda,260978765432,Ndola Branch,30+ Days,Zambia Airways,Operations,260212345678,Kenneth Kaunda Intl,Peter Sakala,12 months,
+Peter Phiri,345678/30/3,22000,260973456789,Ziba,Susan Phiri,260979876543,Kitwe Branch,90+ Days,Zambia Sugar,Production,260213456789,Nakambala Estate,Mary Mulenga,36 months,2025-11-20`;
 
 export default function CSVImport() {
   const navigate = useNavigate();
@@ -154,8 +162,12 @@ export default function CSVImport() {
       const employerSubdivision = row['Employer Subdivision']?.toString().trim() || '';
       const loanConsultant = row['Loan Consultant']?.toString().trim() || '';
       const tenure = row['Tenure']?.toString().trim() || '';
-      const reasonForArrears = row['Reason for Arrears']?.toString().trim() || '';
       const lastPaymentDate = row['Last Payment Date']?.toString().trim() || '';
+      // Parse new contact fields
+      const nextOfKinName = row['Next of Kin Name']?.toString().trim() || '';
+      const nextOfKinContact = row['Next of Kin Contact']?.toString().trim() || '';
+      const workplaceContact = row['Workplace Contact']?.toString().trim() || '';
+      const workplaceDestination = row['Workplace Destination']?.toString().trim() || '';
       
       const errors: string[] = [];
       
@@ -207,8 +219,12 @@ export default function CSVImport() {
         employerSubdivision,
         loanConsultant,
         tenure,
-        reasonForArrears,
         lastPaymentDate,
+        // New contact fields
+        nextOfKinName,
+        nextOfKinContact,
+        workplaceContact,
+        workplaceDestination,
       };
     });
     setParsedData(parsed);
@@ -378,15 +394,19 @@ export default function CSVImport() {
             total_owed: 0,
             outstanding_balance: 0,
             assigned_agent: row.assignedAgentId,
-            // New loan book fields
+            // Static identity fields
             branch_name: row.branchName || null,
             arrear_status: row.arrearStatus || null,
             employer_name: row.employerName || null,
             employer_subdivision: row.employerSubdivision || null,
             loan_consultant: row.loanConsultant || null,
             tenure: row.tenure || null,
-            reason_for_arrears: row.reasonForArrears || null,
             last_payment_date: row.lastPaymentDate ? new Date(row.lastPaymentDate).toISOString() : null,
+            // New contact fields
+            next_of_kin_name: row.nextOfKinName || null,
+            next_of_kin_contact: row.nextOfKinContact || null,
+            workplace_contact: row.workplaceContact || null,
+            workplace_destination: row.workplaceDestination || null,
           }));
 
           const { data: insertedCustomers, error: customersError } = await supabase
@@ -435,7 +455,6 @@ export default function CSVImport() {
                 assigned_agent_id: row?.assignedAgentId,
                 // Only batch-specific fields - NOT static identity fields
                 arrear_status: row?.arrearStatus || null,
-                reason_for_arrears: row?.reasonForArrears || null,
                 last_payment_date: row?.lastPaymentDate ? new Date(row.lastPaymentDate).toISOString() : null,
               };
             });
@@ -483,6 +502,19 @@ export default function CSVImport() {
               if (!existingMaster.tenure && row.tenure) {
                 masterUpdate.tenure = row.tenure;
               }
+              // New contact fields: only populate if currently NULL/empty
+              if (!(existingMaster as any).next_of_kin_name && row.nextOfKinName) {
+                masterUpdate.next_of_kin_name = row.nextOfKinName;
+              }
+              if (!(existingMaster as any).next_of_kin_contact && row.nextOfKinContact) {
+                masterUpdate.next_of_kin_contact = row.nextOfKinContact;
+              }
+              if (!(existingMaster as any).workplace_contact && row.workplaceContact) {
+                masterUpdate.workplace_contact = row.workplaceContact;
+              }
+              if (!(existingMaster as any).workplace_destination && row.workplaceDestination) {
+                masterUpdate.workplace_destination = row.workplaceDestination;
+              }
               
               // Apply updates if any fields need updating
               if (Object.keys(masterUpdate).length > 0) {
@@ -499,9 +531,8 @@ export default function CSVImport() {
                 mobile_number: row.mobileNumber || null,
                 amount_owed: row.amountOwed,
                 assigned_agent_id: row.assignedAgentId,
-                // Only batch-specific fields - NOT static identity fields
+                // Only batch-specific fields
                 arrear_status: row.arrearStatus || null,
-                reason_for_arrears: row.reasonForArrears || null,
                 last_payment_date: row.lastPaymentDate ? new Date(row.lastPaymentDate).toISOString() : null,
               });
 
