@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, TrendingUp, TrendingDown, Minus, RotateCcw } from "lucide-react";
+import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, TrendingUp, TrendingDown, Minus, RotateCcw, Download } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -14,7 +14,7 @@ import Papa from "papaparse";
 
 interface SyncRecord {
   nrc_number: string;
-  arrears_amount: number;
+  arrears_amount: number | null;
   last_payment_date: string | null;
 }
 
@@ -33,6 +33,31 @@ const SAMPLE_CSV = `NRC Number,Arrears Amount,Last Payment Date
 987654/32/1,0,2026-01-15
 456789/01/2,2500,`;
 
+// Helper to check empty/N/A values
+const isEmptyValue = (value: string | undefined | null): boolean => {
+  if (value === undefined || value === null) return true;
+  const v = value.toString().trim().toUpperCase();
+  return v === '' || v === '#N/A' || v === 'N/A' || v === 'NULL';
+};
+
+// Parse arrears amount with fault tolerance
+const parseArrearsAmount = (value: string | undefined | null): number | null => {
+  if (isEmptyValue(value)) return null;
+  const parsed = parseFloat(value!.toString().trim());
+  return isNaN(parsed) ? null : parsed;
+};
+
+// Parse date with validation (1900-2100 range)
+const parseSyncDate = (value: string | undefined | null): string | null => {
+  if (isEmptyValue(value)) return null;
+  const trimmed = value!.toString().trim();
+  const date = new Date(trimmed);
+  if (isNaN(date.getTime())) return null;
+  const year = date.getFullYear();
+  if (year < 1900 || year > 2100) return null;
+  return trimmed;
+};
+
 export default function LoanBookSync() {
   const { isAdmin } = useAuth();
   const { toast } = useToast();
@@ -41,6 +66,7 @@ export default function LoanBookSync() {
   const [file, setFile] = useState<File | null>(null);
   const [parsedData, setParsedData] = useState<SyncRecord[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
   const [progress, setProgress] = useState(0);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
@@ -63,20 +89,21 @@ export default function LoanBookSync() {
         
         results.data.forEach((row: any, index: number) => {
           const nrc = row['NRC Number']?.toString().trim();
-          const arrearsStr = row['Arrears Amount']?.toString().trim();
-          const paymentDate = row['Last Payment Date']?.toString().trim();
+          const arrearsStr = row['Arrears Amount'];
+          const paymentDate = row['Last Payment Date'];
           
-          if (!nrc) {
+          if (!nrc || isEmptyValue(nrc)) {
             errors.push(`Row ${index + 2}: Missing NRC Number`);
             return;
           }
           
-          const arrears = parseFloat(arrearsStr) || 0;
+          const arrears = parseArrearsAmount(arrearsStr);
+          const date = parseSyncDate(paymentDate);
           
           records.push({
             nrc_number: nrc,
             arrears_amount: arrears,
-            last_payment_date: paymentDate || null,
+            last_payment_date: date,
           });
         });
         
@@ -179,7 +206,7 @@ export default function LoanBookSync() {
     setProgress(0);
   };
 
-  const downloadTemplate = () => {
+  const downloadEmptyTemplate = () => {
     const blob = new Blob([SAMPLE_CSV], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -187,6 +214,63 @@ export default function LoanBookSync() {
     a.download = 'loan_book_sync_template.csv';
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // Download pre-populated template with ALL NRCs from the system
+  const downloadPrePopulatedTemplate = async () => {
+    setIsDownloadingTemplate(true);
+    try {
+      // Fetch all NRCs from master_customers
+      const { data: customers, error } = await supabase
+        .from('master_customers')
+        .select('nrc_number, name, loan_book_arrears, outstanding_balance')
+        .order('nrc_number');
+      
+      if (error) throw error;
+      
+      if (!customers || customers.length === 0) {
+        toast({
+          title: "No customers found",
+          description: "There are no customers in the system to include in the template.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Build CSV with pre-populated NRCs
+      const headers = ['NRC Number', 'Arrears Amount', 'Last Payment Date'];
+      const rows = customers.map(c => [
+        c.nrc_number,
+        '', // Admin fills this
+        ''  // Admin fills this
+      ]);
+      
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.join(','))
+      ].join('\n');
+      
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `daily_sync_template_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      
+      toast({
+        title: "Template downloaded",
+        description: `Template includes ${customers.length} customer NRCs. Fill in the arrears and payment dates.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Download failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloadingTemplate(false);
+    }
   };
 
   if (!isAdmin) {
@@ -222,9 +306,19 @@ export default function LoanBookSync() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={downloadTemplate}>
-                Download Template
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={downloadEmptyTemplate}>
+                <Download className="h-4 w-4 mr-1" />
+                Empty Template
+              </Button>
+              <Button 
+                variant="default" 
+                size="sm" 
+                onClick={downloadPrePopulatedTemplate}
+                disabled={isDownloadingTemplate}
+              >
+                <Download className="h-4 w-4 mr-1" />
+                {isDownloadingTemplate ? 'Loading...' : 'Download with All NRCs'}
               </Button>
               {file && (
                 <Button variant="ghost" size="sm" onClick={handleReset}>
@@ -362,12 +456,17 @@ export default function LoanBookSync() {
                   <TableRow key={index}>
                     <TableCell className="font-mono">{record.nrc_number}</TableCell>
                     <TableCell className="text-right font-mono">
-                      {new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW', minimumFractionDigits: 0 }).format(record.arrears_amount)}
+                      {record.arrears_amount !== null
+                        ? new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW', minimumFractionDigits: 0 }).format(record.arrears_amount)
+                        : <span className="text-muted-foreground italic">No change</span>
+                      }
                     </TableCell>
-                    <TableCell>{record.last_payment_date || '-'}</TableCell>
+                    <TableCell>{record.last_payment_date || <span className="text-muted-foreground">-</span>}</TableCell>
                     <TableCell>
                       {record.arrears_amount === 0 ? (
                         <Badge className="bg-success/10 text-success">Will Resolve</Badge>
+                      ) : record.arrears_amount === null ? (
+                        <Badge variant="outline">No Change</Badge>
                       ) : (
                         <Badge variant="secondary">Will Update</Badge>
                       )}
