@@ -58,27 +58,30 @@ interface ParsedRow {
   name: string;
   nrcNumber: string;
   amountOwed: number;
+  amountOwedIsEmpty: boolean; // true = cell was empty/N/A, false = explicit value (including 0)
   mobileNumber: string;
   assignedAgent: string;
   assignedAgentId: string | null;
   isValid: boolean;
+  isValidForUpdate: boolean; // Tolerant validation for update mode (only NRC required)
   errors: string[];
+  updateModeErrors: string[]; // Errors specific to update mode (only critical ones)
   existsInMaster: boolean;
   isDuplicateNrc: boolean;
   isDuplicateMobile: boolean;
-  // New loan book fields
-  branchName: string;
-  arrearStatus: string;
-  employerName: string;
-  employerSubdivision: string;
-  loanConsultant: string;
-  tenure: string;
-  lastPaymentDate: string;
-  // New contact fields
-  nextOfKinName: string;
-  nextOfKinContact: string;
-  workplaceContact: string;
-  workplaceDestination: string;
+  // New loan book fields (all nullable)
+  branchName: string | null;
+  arrearStatus: string | null;
+  employerName: string | null;
+  employerSubdivision: string | null;
+  loanConsultant: string | null;
+  tenure: string | null;
+  lastPaymentDate: string | null;
+  // New contact fields (all nullable)
+  nextOfKinName: string | null;
+  nextOfKinContact: string | null;
+  workplaceContact: string | null;
+  workplaceDestination: string | null;
 }
 
 const SAMPLE_CSV = `Customer Name,NRC Number,Amount Owed,Mobile Number,Assigned Agent,Next of Kin Name,Next of Kin Contact,Branch Name,Arrear Status,Employer Name,Employer Subdivision,Workplace Contact,Workplace Destination,Loan Consultant,Tenure,Last Payment Date
@@ -86,11 +89,27 @@ John Mwanza,123456/10/1,15000,260971234567,Ziba,Mary Mwanza,260977654321,Lusaka 
 Jane Banda,234567/20/2,0,260972345678,Mary,Peter Banda,260978765432,Ndola Branch,Cleared,Zambia Airways,Operations,260212345678,Kenneth Kaunda Intl,Peter Sakala,12 months,
 Peter Phiri,345678/30/3,22000,260973456789,Ziba,Susan Phiri,260979876543,Kitwe Branch,90+ Days,Zambia Sugar,Production,260213456789,Nakambala Estate,Mary Mulenga,36 months,2025-11-20`;
 
+// Helper to detect "empty" values from Excel artifacts
+const isEmptyValue = (value: string | undefined | null): boolean => {
+  if (value === undefined || value === null) return true;
+  const trimmed = value.toString().trim().toLowerCase();
+  if (trimmed === '') return true;
+  // Excel artifacts and common null representations
+  const emptyPatterns = ['#n/a', 'n/a', 'null', '#ref!', '#value!', '#name?', '#div/0!', '-', '--'];
+  return emptyPatterns.includes(trimmed);
+};
+
+// Helper to clean a string value - returns null if empty/N/A
+const cleanString = (value: string | undefined | null): string | null => {
+  if (isEmptyValue(value)) return null;
+  return value!.toString().trim();
+};
+
 // Date validation helper - validates dates in 1900-2100 range, returns null for invalid/empty
-const validateAndParseDate = (dateStr: string | undefined): string | null => {
-  if (!dateStr || dateStr.trim() === '') return null;
+const validateAndParseDate = (dateStr: string | undefined | null): string | null => {
+  if (isEmptyValue(dateStr)) return null;
   
-  const trimmed = dateStr.trim();
+  const trimmed = dateStr!.toString().trim();
   
   // Try to parse the date
   const date = new Date(trimmed);
@@ -103,6 +122,21 @@ const validateAndParseDate = (dateStr: string | undefined): string | null => {
   if (year < 1900 || year > 2100) return null;
   
   return date.toISOString();
+};
+
+// Parse amount - returns { value: number, isEmpty: boolean }
+// isEmpty = true means the cell was empty/N/A (no change in update mode)
+// isEmpty = false + value = 0 means explicit zero (valid override)
+const parseAmount = (amountStr: string | undefined | null): { value: number; isEmpty: boolean } => {
+  if (isEmptyValue(amountStr)) {
+    return { value: 0, isEmpty: true };
+  }
+  const cleaned = amountStr!.toString().trim().replace(/[^0-9.-]/g, '');
+  const parsed = parseFloat(cleaned);
+  if (isNaN(parsed)) {
+    return { value: 0, isEmpty: true };
+  }
+  return { value: parsed, isEmpty: false };
 };
 
 export default function CSVImport() {
@@ -167,51 +201,69 @@ export default function CSVImport() {
     // Second pass: build parsed rows with validation
     const parsed: ParsedRow[] = data.map((row, index) => {
       const rowNumber = index + 1;
-      const name = row['Customer Name']?.toString().trim() || '';
-      const nrcNumber = row['NRC Number']?.toString().trim() || '';
-      const amountOwedStr = row['Amount Owed']?.toString().trim() || '0';
-      const amountOwed = parseFloat(amountOwedStr.replace(/[^0-9.-]/g, ''));
-      const mobileNumber = row['Mobile Number']?.toString().trim() || '';
-      const assignedAgent = row['Assigned Agent']?.toString().trim() || '';
       
-      // Parse new loan book fields (all optional)
-      const branchName = row['Branch Name']?.toString().trim() || '';
-      const arrearStatus = row['Arrear Status']?.toString().trim() || '';
-      const employerName = row['Employer Name']?.toString().trim() || '';
-      const employerSubdivision = row['Employer Subdivision']?.toString().trim() || '';
-      const loanConsultant = row['Loan Consultant']?.toString().trim() || '';
-      const tenure = row['Tenure']?.toString().trim() || '';
-      const lastPaymentDate = row['Last Payment Date']?.toString().trim() || '';
-      // Parse new contact fields
-      const nextOfKinName = row['Next of Kin Name']?.toString().trim() || '';
-      const nextOfKinContact = row['Next of Kin Contact']?.toString().trim() || '';
-      const workplaceContact = row['Workplace Contact']?.toString().trim() || '';
-      const workplaceDestination = row['Workplace Destination']?.toString().trim() || '';
+      // Clean critical fields
+      const name = cleanString(row['Customer Name']) || '';
+      const nrcNumber = cleanString(row['NRC Number']) || '';
+      const mobileNumber = cleanString(row['Mobile Number']) || '';
+      const assignedAgent = cleanString(row['Assigned Agent']) || '';
+      
+      // Parse amount with isEmpty flag
+      const amountResult = parseAmount(row['Amount Owed']);
+      const amountOwed = amountResult.value;
+      const amountOwedIsEmpty = amountResult.isEmpty;
+      
+      // Parse optional fields - all return null if empty/N/A
+      const branchName = cleanString(row['Branch Name']);
+      const arrearStatus = cleanString(row['Arrear Status']);
+      const employerName = cleanString(row['Employer Name']);
+      const employerSubdivision = cleanString(row['Employer Subdivision']);
+      const loanConsultant = cleanString(row['Loan Consultant']);
+      const tenure = cleanString(row['Tenure']);
+      const lastPaymentDate = cleanString(row['Last Payment Date']);
+      const nextOfKinName = cleanString(row['Next of Kin Name']);
+      const nextOfKinContact = cleanString(row['Next of Kin Contact']);
+      const workplaceContact = cleanString(row['Workplace Contact']);
+      const workplaceDestination = cleanString(row['Workplace Destination']);
       
       const errors: string[] = [];
+      const updateModeErrors: string[] = [];
       
-      // Required field validation
-      if (!name) errors.push('Customer Name is required');
-      if (!nrcNumber) errors.push('NRC Number is required');
-      // Allow 0 as valid amount (for cleared arrears tracking)
-      if (isNaN(amountOwed) || amountOwed < 0) errors.push('Valid Amount Owed is required (0 or positive number)');
-      if (!assignedAgent) errors.push('Assigned Agent is required');
-      
-      // Map agent display_name to ID
-      const assignedAgentId = assignedAgent ? agentDisplayNameMap.get(assignedAgent.toLowerCase()) || null : null;
-      if (assignedAgent && !assignedAgentId) {
-        errors.push(`Agent "${assignedAgent}" not found in system`);
+      // CRITICAL: NRC is always required
+      if (!nrcNumber) {
+        errors.push('NRC Number is required');
+        updateModeErrors.push('NRC Number is required');
       }
       
-      // Duplicate detection
+      // Duplicate detection (critical for all modes)
       const isDuplicateNrc = duplicateNrcs.has(nrcNumber);
       const isDuplicateMobile = mobileNumber && duplicateMobiles.has(mobileNumber);
       
       if (isDuplicateNrc) {
         const otherRows = nrcOccurrences.get(nrcNumber)!.filter(r => r !== rowNumber);
-        errors.push(`Duplicate NRC in file (also in row${otherRows.length > 1 ? 's' : ''} ${otherRows.join(', ')})`);
+        const msg = `Duplicate NRC in file (also in row${otherRows.length > 1 ? 's' : ''} ${otherRows.join(', ')})`;
+        errors.push(msg);
+        updateModeErrors.push(msg);
       }
       
+      // For new batch/add modes: name, agent are required
+      if (!name) errors.push('Customer Name is required');
+      if (!assignedAgent) errors.push('Assigned Agent is required');
+      
+      // Amount: if explicit value, must be 0 or positive
+      if (!amountOwedIsEmpty && amountOwed < 0) {
+        errors.push('Amount Owed cannot be negative');
+        updateModeErrors.push('Amount Owed cannot be negative');
+      }
+      
+      // Map agent display_name to ID
+      const assignedAgentId = assignedAgent ? agentDisplayNameMap.get(assignedAgent.toLowerCase()) || null : null;
+      if (assignedAgent && !assignedAgentId) {
+        errors.push(`Agent "${assignedAgent}" not found in system`);
+        // For update mode, unknown agent is non-critical - just won't update agent
+      }
+      
+      // Duplicate mobile is a warning, not blocking
       if (isDuplicateMobile) {
         const otherRows = mobileOccurrences.get(mobileNumber)!.filter(r => r !== rowNumber);
         errors.push(`Duplicate mobile in file (also in row${otherRows.length > 1 ? 's' : ''} ${otherRows.join(', ')})`);
@@ -223,16 +275,19 @@ export default function CSVImport() {
         rowNumber,
         name,
         nrcNumber,
-        amountOwed: isNaN(amountOwed) ? 0 : amountOwed,
+        amountOwed,
+        amountOwedIsEmpty,
         mobileNumber,
         assignedAgent,
         assignedAgentId,
         isValid: errors.length === 0,
+        isValidForUpdate: updateModeErrors.length === 0,
         errors,
+        updateModeErrors,
         existsInMaster,
         isDuplicateNrc,
         isDuplicateMobile: !!isDuplicateMobile,
-        // New loan book fields
+        // Loan book fields (nullable)
         branchName,
         arrearStatus,
         employerName,
@@ -240,7 +295,7 @@ export default function CSVImport() {
         loanConsultant,
         tenure,
         lastPaymentDate,
-        // New contact fields
+        // Contact fields (nullable)
         nextOfKinName,
         nextOfKinContact,
         workplaceContact,
@@ -347,9 +402,16 @@ export default function CSVImport() {
       }
     }
 
-    const validRows = parsedData.filter((r) => r.isValid);
+    // Use different validation based on mode
+    const validRows = uploadMode === "update" 
+      ? parsedData.filter((r) => r.isValidForUpdate)
+      : parsedData.filter((r) => r.isValid);
+      
     if (validRows.length === 0) {
-      toast({ title: "No Valid Data", description: "There are no valid rows to import. Ensure all rows have valid Assigned Agent names.", variant: "destructive" });
+      const msg = uploadMode === "update" 
+        ? "There are no valid rows to import. Ensure all rows have valid NRC Numbers."
+        : "There are no valid rows to import. Ensure all rows have valid Assigned Agent names.";
+      toast({ title: "No Valid Data", description: msg, variant: "destructive" });
       return;
     }
 
@@ -413,16 +475,22 @@ export default function CSVImport() {
 
           const masterCustomerId = existingNrcsInBatch.get(row.nrcNumber);
           
-          // Fetch current values to calculate amount delta
-          const { data: currentBatchCustomer } = await supabase
-            .from('batch_customers')
-            .select('amount_owed')
-            .eq('batch_id', batch.id)
-            .eq('nrc_number', row.nrcNumber)
-            .single();
+          // Fetch current values to calculate amount delta (only if we're updating amount)
+          let amountToUpdate: number | null = null;
           
-          const oldAmount = currentBatchCustomer?.amount_owed || 0;
-          amountDelta += row.amountOwed - oldAmount;
+          if (!row.amountOwedIsEmpty) {
+            // Explicit amount value (including 0) - will update
+            const { data: currentBatchCustomer } = await supabase
+              .from('batch_customers')
+              .select('amount_owed')
+              .eq('batch_id', batch.id)
+              .eq('nrc_number', row.nrcNumber)
+              .single();
+            
+            const oldAmount = currentBatchCustomer?.amount_owed || 0;
+            amountDelta += row.amountOwed - oldAmount;
+            amountToUpdate = row.amountOwed;
+          }
 
           // Update master_customers with COALESCE pattern (non-empty only)
           const masterUpdate: Record<string, any> = {};
@@ -448,37 +516,42 @@ export default function CSVImport() {
             await supabase.from('master_customers').update(masterUpdate).eq('id', masterCustomerId);
           }
 
-          // Update batch_customers - amount_owed ALWAYS updates (0 is valid)
-          const batchCustomerUpdate: Record<string, any> = {
-            amount_owed: row.amountOwed,
-          };
+          // Update batch_customers - only update amount if explicit value provided
+          const batchCustomerUpdate: Record<string, any> = {};
+          if (amountToUpdate !== null) {
+            batchCustomerUpdate.amount_owed = amountToUpdate;
+          }
           if (row.name) batchCustomerUpdate.name = row.name;
           if (row.mobileNumber) batchCustomerUpdate.mobile_number = row.mobileNumber;
           if (row.arrearStatus) batchCustomerUpdate.arrear_status = row.arrearStatus;
           if (row.assignedAgentId) batchCustomerUpdate.assigned_agent_id = row.assignedAgentId;
           if (parsedDate) batchCustomerUpdate.last_payment_date = parsedDate;
 
-          await supabase.from('batch_customers').update(batchCustomerUpdate)
-            .eq('batch_id', batch.id)
-            .eq('nrc_number', row.nrcNumber);
+          if (Object.keys(batchCustomerUpdate).length > 0) {
+            await supabase.from('batch_customers').update(batchCustomerUpdate)
+              .eq('batch_id', batch.id)
+              .eq('nrc_number', row.nrcNumber);
+          }
 
-          // Update ticket - amount_owed and status
-          const ticketUpdate: Record<string, any> = {
-            amount_owed: row.amountOwed,
-          };
+          // Update ticket - only update amount if explicit value provided
+          const ticketUpdate: Record<string, any> = {};
+          if (amountToUpdate !== null) {
+            ticketUpdate.amount_owed = amountToUpdate;
+            // If amount = 0, resolve the ticket
+            if (amountToUpdate === 0) {
+              ticketUpdate.status = 'Resolved';
+              ticketUpdate.resolved_date = new Date().toISOString();
+            }
+          }
           if (row.name) ticketUpdate.customer_name = row.name;
           if (row.mobileNumber) ticketUpdate.mobile_number = row.mobileNumber;
           if (row.assignedAgentId) ticketUpdate.assigned_agent = row.assignedAgentId;
-          
-          // If amount = 0, resolve the ticket
-          if (row.amountOwed === 0) {
-            ticketUpdate.status = 'Resolved';
-            ticketUpdate.resolved_date = new Date().toISOString();
-          }
 
-          await supabase.from('tickets').update(ticketUpdate)
-            .eq('batch_id', batch.id)
-            .eq('nrc_number', row.nrcNumber);
+          if (Object.keys(ticketUpdate).length > 0) {
+            await supabase.from('tickets').update(ticketUpdate)
+              .eq('batch_id', batch.id)
+              .eq('nrc_number', row.nrcNumber);
+          }
 
           updatedCount++;
           setImportProgress(10 + (updatedCount / validRows.length) * 80);
@@ -755,9 +828,14 @@ export default function CSVImport() {
     URL.revokeObjectURL(url);
   };
 
-  const validCount = parsedData.filter((r) => r.isValid).length;
-  const invalidCount = parsedData.filter((r) => !r.isValid).length;
-  const existingCount = parsedData.filter((r) => r.existsInMaster && r.isValid).length;
+  // Use mode-appropriate validation for counts
+  const validCount = uploadMode === "update" 
+    ? parsedData.filter((r) => r.isValidForUpdate).length
+    : parsedData.filter((r) => r.isValid).length;
+  const invalidCount = uploadMode === "update"
+    ? parsedData.filter((r) => !r.isValidForUpdate).length
+    : parsedData.filter((r) => !r.isValid).length;
+  const existingCount = parsedData.filter((r) => r.existsInMaster && (uploadMode === "update" ? r.isValidForUpdate : r.isValid)).length;
   const rejectedAgentCount = parsedData.filter((r) => r.errors.some(e => e.includes('not found'))).length;
   const duplicateNrcCount = parsedData.filter((r) => r.isDuplicateNrc).length;
   const duplicateMobileCount = parsedData.filter((r) => r.isDuplicateMobile).length;
@@ -791,9 +869,19 @@ export default function CSVImport() {
 
       <Alert>
         <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Required CSV Columns</AlertTitle>
+        <AlertTitle>CSV Column Requirements</AlertTitle>
         <AlertDescription>
-          Your file must have: <strong>Customer Name</strong>, <strong>NRC Number</strong>, <strong>Amount Owed</strong>, <strong>Mobile Number</strong>, <strong>Assigned Agent</strong> (must match agent's display name)
+          {uploadMode === "update" ? (
+            <>
+              <strong>NRC Number</strong> is required. All other fields are optional — empty cells or #N/A values will not overwrite existing data.
+              <strong> Amount Owed = 0</strong> is valid and will clear arrears.
+            </>
+          ) : (
+            <>
+              Your file must have: <strong>Customer Name</strong>, <strong>NRC Number</strong>, <strong>Amount Owed</strong>, <strong>Mobile Number</strong>, <strong>Assigned Agent</strong> (must match agent's display name).
+              Empty cells, #N/A, and N/A values are treated as blank.
+            </>
+          )}
         </AlertDescription>
       </Alert>
 
