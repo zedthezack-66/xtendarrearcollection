@@ -83,8 +83,27 @@ interface ParsedRow {
 
 const SAMPLE_CSV = `Customer Name,NRC Number,Amount Owed,Mobile Number,Assigned Agent,Next of Kin Name,Next of Kin Contact,Branch Name,Arrear Status,Employer Name,Employer Subdivision,Workplace Contact,Workplace Destination,Loan Consultant,Tenure,Last Payment Date
 John Mwanza,123456/10/1,15000,260971234567,Ziba,Mary Mwanza,260977654321,Lusaka Main,60+ Days,Ministry of Health,Finance Dept,260211234567,Cairo Road HQ,Grace Tembo,24 months,2025-12-15
-Jane Banda,234567/20/2,8500,260972345678,Mary,Peter Banda,260978765432,Ndola Branch,30+ Days,Zambia Airways,Operations,260212345678,Kenneth Kaunda Intl,Peter Sakala,12 months,
+Jane Banda,234567/20/2,0,260972345678,Mary,Peter Banda,260978765432,Ndola Branch,Cleared,Zambia Airways,Operations,260212345678,Kenneth Kaunda Intl,Peter Sakala,12 months,
 Peter Phiri,345678/30/3,22000,260973456789,Ziba,Susan Phiri,260979876543,Kitwe Branch,90+ Days,Zambia Sugar,Production,260213456789,Nakambala Estate,Mary Mulenga,36 months,2025-11-20`;
+
+// Date validation helper - validates dates in 1900-2100 range, returns null for invalid/empty
+const validateAndParseDate = (dateStr: string | undefined): string | null => {
+  if (!dateStr || dateStr.trim() === '') return null;
+  
+  const trimmed = dateStr.trim();
+  
+  // Try to parse the date
+  const date = new Date(trimmed);
+  
+  // Check if date is valid
+  if (isNaN(date.getTime())) return null;
+  
+  // Check if year is in valid range (1900-2100)
+  const year = date.getFullYear();
+  if (year < 1900 || year > 2100) return null;
+  
+  return date.toISOString();
+};
 
 export default function CSVImport() {
   const navigate = useNavigate();
@@ -174,7 +193,8 @@ export default function CSVImport() {
       // Required field validation
       if (!name) errors.push('Customer Name is required');
       if (!nrcNumber) errors.push('NRC Number is required');
-      if (isNaN(amountOwed) || amountOwed <= 0) errors.push('Valid Amount Owed is required');
+      // Allow 0 as valid amount (for cleared arrears tracking)
+      if (isNaN(amountOwed) || amountOwed < 0) errors.push('Valid Amount Owed is required (0 or positive number)');
       if (!assignedAgent) errors.push('Assigned Agent is required');
       
       // Map agent display_name to ID
@@ -390,9 +410,10 @@ export default function CSVImport() {
             nrc_number: row.nrcNumber,
             name: row.name,
             mobile_number: row.mobileNumber || null,
-            // No arrears at master level - set to 0
-            total_owed: 0,
-            outstanding_balance: 0,
+            // Store arrears at master level for new customers
+            total_owed: row.amountOwed,
+            outstanding_balance: row.amountOwed,
+            loan_book_arrears: row.amountOwed,
             assigned_agent: row.assignedAgentId,
             // Static identity fields
             branch_name: row.branchName || null,
@@ -401,7 +422,8 @@ export default function CSVImport() {
             employer_subdivision: row.employerSubdivision || null,
             loan_consultant: row.loanConsultant || null,
             tenure: row.tenure || null,
-            last_payment_date: row.lastPaymentDate ? new Date(row.lastPaymentDate).toISOString() : null,
+            last_payment_date: validateAndParseDate(row.lastPaymentDate),
+            loan_book_last_payment_date: validateAndParseDate(row.lastPaymentDate),
             // New contact fields
             next_of_kin_name: row.nextOfKinName || null,
             next_of_kin_contact: row.nextOfKinContact || null,
@@ -419,19 +441,22 @@ export default function CSVImport() {
           if (insertedCustomers && insertedCustomers.length > 0) {
             newlyAddedCount += insertedCustomers.length;
 
-            // Create tickets for new customers - amount from row, not master
+            // Create tickets for new customers - amount from row
+            // If amount = 0, set status to Resolved for cleared arrears tracking
             const newTickets = insertedCustomers.map(mc => {
               const row = chunk.find(r => r.nrcNumber === mc.nrc_number);
+              const amountOwed = row?.amountOwed ?? 0;
               return {
                 master_customer_id: mc.id,
                 batch_id: batch.id,
                 customer_name: mc.name,
                 nrc_number: mc.nrc_number,
                 mobile_number: mc.mobile_number,
-                amount_owed: row?.amountOwed || 0,
+                amount_owed: amountOwed,
                 assigned_agent: mc.assigned_agent,
-                priority: 'High',
-                status: 'Open',
+                priority: amountOwed === 0 ? 'Low' : 'High',
+                status: amountOwed === 0 ? 'Resolved' : 'Open',
+                resolved_date: amountOwed === 0 ? new Date().toISOString() : null,
               };
             });
 
@@ -451,11 +476,11 @@ export default function CSVImport() {
                 nrc_number: mc.nrc_number,
                 name: mc.name,
                 mobile_number: mc.mobile_number,
-                amount_owed: row?.amountOwed || 0,
+                amount_owed: row?.amountOwed ?? 0,
                 assigned_agent_id: row?.assignedAgentId,
                 // Only batch-specific fields - NOT static identity fields
                 arrear_status: row?.arrearStatus || null,
-                last_payment_date: row?.lastPaymentDate ? new Date(row.lastPaymentDate).toISOString() : null,
+                last_payment_date: validateAndParseDate(row?.lastPaymentDate),
               };
             });
 
@@ -533,12 +558,15 @@ export default function CSVImport() {
                 assigned_agent_id: row.assignedAgentId,
                 // Only batch-specific fields
                 arrear_status: row.arrearStatus || null,
-                last_payment_date: row.lastPaymentDate ? new Date(row.lastPaymentDate).toISOString() : null,
+                last_payment_date: validateAndParseDate(row.lastPaymentDate),
               });
 
               newlyAddedCount++;
 
               // Create ticket for this batch - new ticket since customer is new to this batch
+              // If amount = 0, set status to Resolved for cleared arrears tracking
+              const ticketStatus = row.amountOwed === 0 ? 'Resolved' : 'Open';
+              const ticketPriority = row.amountOwed === 0 ? 'Low' : 'High';
               await supabase.from('tickets').insert({
                 master_customer_id: existingMaster.id,
                 batch_id: batch.id,
@@ -547,8 +575,9 @@ export default function CSVImport() {
                 mobile_number: row.mobileNumber || null,
                 amount_owed: row.amountOwed,
                 assigned_agent: row.assignedAgentId,
-                priority: 'High',
-                status: 'Open',
+                priority: ticketPriority,
+                status: ticketStatus,
+                resolved_date: row.amountOwed === 0 ? new Date().toISOString() : null,
               });
             }
           }
@@ -567,25 +596,85 @@ export default function CSVImport() {
 
       setImportProgress(85);
 
-      // Handle customers already in this batch - update ONLY changed fields, never overwrite
+      // Handle customers already in this batch - update ALL uploadable fields with COALESCE pattern
+      // Amount Owed = 0 is explicitly valid and MUST overwrite existing value
       if (alreadyInBatchRows.length > 0) {
         for (const row of alreadyInBatchRows) {
           const existingMaster = masterCustomers.find(mc => mc.nrc_number === row.nrcNumber);
           if (existingMaster) {
-            // Only update mobile if it was missing
+            // Build master_customers update - only update NULL/empty fields with non-empty values
+            // EXCEPT for amount which we handle separately via ticket/batch_customers
+            const masterUpdate: Record<string, any> = {};
+            
+            // Static identity fields: only populate if currently NULL/empty
             if (!existingMaster.mobile_number && row.mobileNumber) {
-              await supabase.from('master_customers').update({
-                mobile_number: row.mobileNumber,
-              }).eq('id', existingMaster.id);
-              
-              // Also update batch_customers mobile if missing
-              await supabase.from('batch_customers').update({
-                mobile_number: row.mobileNumber,
-              }).eq('batch_id', batch.id).eq('nrc_number', row.nrcNumber);
-              
-              updatedCount++;
+              masterUpdate.mobile_number = row.mobileNumber;
             }
-            // NEVER create new tickets or overwrite existing ticket data for duplicates
+            if (!existingMaster.branch_name && row.branchName) {
+              masterUpdate.branch_name = row.branchName;
+            }
+            if (!existingMaster.employer_name && row.employerName) {
+              masterUpdate.employer_name = row.employerName;
+            }
+            if (!existingMaster.employer_subdivision && row.employerSubdivision) {
+              masterUpdate.employer_subdivision = row.employerSubdivision;
+            }
+            if (!existingMaster.loan_consultant && row.loanConsultant) {
+              masterUpdate.loan_consultant = row.loanConsultant;
+            }
+            if (!existingMaster.tenure && row.tenure) {
+              masterUpdate.tenure = row.tenure;
+            }
+            // Contact fields: only populate if currently NULL/empty
+            if (!(existingMaster as any).next_of_kin_name && row.nextOfKinName) {
+              masterUpdate.next_of_kin_name = row.nextOfKinName;
+            }
+            if (!(existingMaster as any).next_of_kin_contact && row.nextOfKinContact) {
+              masterUpdate.next_of_kin_contact = row.nextOfKinContact;
+            }
+            if (!(existingMaster as any).workplace_contact && row.workplaceContact) {
+              masterUpdate.workplace_contact = row.workplaceContact;
+            }
+            if (!(existingMaster as any).workplace_destination && row.workplaceDestination) {
+              masterUpdate.workplace_destination = row.workplaceDestination;
+            }
+            
+            // Apply master updates if any
+            if (Object.keys(masterUpdate).length > 0) {
+              await supabase.from('master_customers').update(masterUpdate).eq('id', existingMaster.id);
+            }
+            
+            // Update batch_customers with new amount_owed (0 is valid and must overwrite)
+            // Also update other batch-specific fields
+            const batchCustomerUpdate: Record<string, any> = {
+              amount_owed: row.amountOwed, // ALWAYS update amount (0 is valid)
+            };
+            if (row.mobileNumber) batchCustomerUpdate.mobile_number = row.mobileNumber;
+            if (row.arrearStatus) batchCustomerUpdate.arrear_status = row.arrearStatus;
+            
+            const parsedDate = validateAndParseDate(row.lastPaymentDate);
+            if (parsedDate) batchCustomerUpdate.last_payment_date = parsedDate;
+            
+            await supabase.from('batch_customers').update(batchCustomerUpdate)
+              .eq('batch_id', batch.id)
+              .eq('nrc_number', row.nrcNumber);
+            
+            // Update the existing ticket's amount_owed and status
+            // If amount = 0, resolve the ticket
+            const ticketUpdate: Record<string, any> = {
+              amount_owed: row.amountOwed, // ALWAYS update amount (0 is valid)
+            };
+            if (row.amountOwed === 0) {
+              ticketUpdate.status = 'Resolved';
+              ticketUpdate.resolved_date = new Date().toISOString();
+            }
+            
+            await supabase.from('tickets').update(ticketUpdate)
+              .eq('batch_id', batch.id)
+              .eq('nrc_number', row.nrcNumber);
+            
+            updatedCount++;
+            // NEVER create new tickets or overwrite call notes/payments for duplicates
           }
         }
       }
