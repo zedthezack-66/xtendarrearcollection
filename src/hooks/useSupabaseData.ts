@@ -1029,14 +1029,21 @@ export function useTransferClientToBatch() {
       };
     },
     onSuccess: (data) => {
-      // Invalidate all affected queries
+      // Invalidate ALL affected queries for complete dashboard recalculation
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['tickets_sorted'] });
       queryClient.invalidateQueries({ queryKey: ['batches'] });
       queryClient.invalidateQueries({ queryKey: ['batch_customers'] });
       queryClient.invalidateQueries({ queryKey: ['master_customers'] });
       queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['call_logs'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
       queryClient.invalidateQueries({ queryKey: ['collections_by_agent'] });
+      queryClient.invalidateQueries({ queryKey: ['recent_tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['top_defaulters'] });
+      queryClient.invalidateQueries({ queryKey: ['weekly_report_stats'] });
+      queryClient.invalidateQueries({ queryKey: ['interaction_analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['admin_agent_analytics'] });
       
       toast({ 
         title: 'Client transferred successfully',
@@ -1082,14 +1089,21 @@ export function useBulkTransferClients() {
       };
     },
     onSuccess: (data) => {
-      // Invalidate all affected queries
+      // Invalidate ALL affected queries for complete dashboard recalculation
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['tickets_sorted'] });
       queryClient.invalidateQueries({ queryKey: ['batches'] });
       queryClient.invalidateQueries({ queryKey: ['batch_customers'] });
       queryClient.invalidateQueries({ queryKey: ['master_customers'] });
       queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['call_logs'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
       queryClient.invalidateQueries({ queryKey: ['collections_by_agent'] });
+      queryClient.invalidateQueries({ queryKey: ['recent_tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['top_defaulters'] });
+      queryClient.invalidateQueries({ queryKey: ['weekly_report_stats'] });
+      queryClient.invalidateQueries({ queryKey: ['interaction_analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['admin_agent_analytics'] });
       
       toast({ 
         title: 'Bulk transfer complete',
