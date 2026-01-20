@@ -32,14 +32,14 @@ export function useAdminExport() {
 
   return useMutation({
     mutationFn: async (params: ExportParams): Promise<ExportResult> => {
-      // Call the RPC function with proper parameters
+      // Call the RPC function with TEXT parameters (unified signature)
       const { data, error } = await supabase.rpc('get_admin_full_export', {
         p_export_type: params.exportType,
         p_filter: params.filter || 'all',
-        p_batch_id: params.batchId || null,
-        p_agent_id: params.agentId || null,
-        p_start_date: params.startDate || null,
-        p_end_date: params.endDate || null,
+        p_batch_id: params.batchId || '',
+        p_agent_id: params.agentId || '',
+        p_start_date: params.startDate || '',
+        p_end_date: params.endDate || '',
         p_worked_only: params.workedOnly || false,
       });
 
