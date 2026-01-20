@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, FileSpreadsheet, Users, Database, FileText, CalendarIcon } from "lucide-react";
+import { Download, FileSpreadsheet, Users, Database, FileText, CalendarIcon, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -10,7 +10,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { useMasterCustomers, useBatches, useBatchCustomers, useTickets, usePayments, useProfiles, useCallLogs } from "@/hooks/useSupabaseData";
+import { useAdminExport, ExportFilter as AdminExportFilter } from "@/hooks/useAdminExport";
 import { useAuth } from "@/contexts/AuthContext";
 import { format, isWithinInterval, startOfDay, endOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -39,9 +42,13 @@ export default function Export() {
   const { data: profiles = [] } = useProfiles();
   const { data: callLogs = [] } = useCallLogs();
   
+  const adminExport = useAdminExport();
+  
   const [exportFilter, setExportFilter] = useState<ExportFilter>('all');
   const [selectedBatchId, setSelectedBatchId] = useState<string>('all');
+  const [selectedAgentId, setSelectedAgentId] = useState<string>('all');
   const [exportAll, setExportAll] = useState(false);
+  const [lastExportStats, setLastExportStats] = useState<{ expected: number; exported: number } | null>(null);
   
   // Date range state
   const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>('all');
@@ -65,7 +72,6 @@ export default function Export() {
         setEndDate(endOfDay(now));
         break;
       case 'custom':
-        // Keep current dates or set to last week as default
         if (!startDate) setStartDate(startOfDay(subDays(now, 7)));
         if (!endDate) setEndDate(endOfDay(now));
         break;
@@ -108,56 +114,7 @@ export default function Export() {
     return statusChanged || hasNotes || hasPayments;
   };
 
-  const getFilteredMasterCustomers = () => {
-    let filtered = masterCustomers;
-    
-    // Apply date range filter based on created_at
-    if (startDate && endDate) {
-      filtered = filtered.filter(c => isInDateRange(c.created_at));
-    }
-    
-    switch (exportFilter) {
-      case 'outstanding': filtered = filtered.filter((c) => c.payment_status !== 'Fully Paid'); break;
-      case 'resolved': filtered = filtered.filter((c) => c.payment_status === 'Fully Paid'); break;
-    }
-    if (!exportAll) {
-      filtered = filtered.filter((c) => {
-        const ticket = tickets.find(t => t.master_customer_id === c.id);
-        if (!ticket) return false;
-        return isTicketWorkedOn(ticket.id, c.id);
-      });
-    }
-    return filtered;
-  };
-
-  const getFilteredBatchCustomers = () => {
-    let filtered = batchCustomers;
-    
-    // Apply date range filter based on created_at
-    if (startDate && endDate) {
-      filtered = filtered.filter(bc => isInDateRange(bc.created_at));
-    }
-    
-    if (selectedBatchId !== 'all') filtered = filtered.filter(bc => bc.batch_id === selectedBatchId);
-    if (exportFilter !== 'all') {
-      filtered = filtered.filter(bc => {
-        const master = masterCustomers.find(mc => mc.id === bc.master_customer_id);
-        if (!master) return false;
-        return exportFilter === 'outstanding' ? master.payment_status !== 'Fully Paid' : master.payment_status === 'Fully Paid';
-      });
-    }
-    if (!exportAll) {
-      filtered = filtered.filter(bc => {
-        const ticket = tickets.find(t => t.master_customer_id === bc.master_customer_id);
-        if (!ticket) return false;
-        return isTicketWorkedOn(ticket.id, bc.master_customer_id);
-      });
-    }
-    return filtered;
-  };
-
   const downloadStyledExcel = (data: any[][], headers: string[], filename: string, resolvedRows: number[]) => {
-    // Create workbook and worksheet
     const wb = XLSX.utils.book_new();
     const wsData = [headers, ...data];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
@@ -165,19 +122,15 @@ export default function Export() {
     // Set generous column widths
     const colWidths = headers.map((header) => {
       const headerLen = header.length;
-      // Make financial columns wider
       if (header.includes('Amount') || header.includes('Balance') || header.includes('Paid') || header.includes('Collected')) {
         return { wch: 24 };
       }
-      // Call notes extra wide
       if (header.includes('Notes')) {
         return { wch: 50 };
       }
-      // Name columns
       if (header.includes('Name') || header.includes('Agent')) {
         return { wch: 28 };
       }
-      // NRC and other ID columns
       if (header.includes('NRC') || header.includes('Number')) {
         return { wch: 20 };
       }
@@ -185,7 +138,7 @@ export default function Export() {
     });
     ws['!cols'] = colWidths;
 
-    // Style header row - bold with background color
+    // Style header row
     const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
     for (let col = range.s.c; col <= range.e.c; col++) {
       const cellRef = XLSX.utils.encode_cell({ r: 0, c: col });
@@ -204,7 +157,7 @@ export default function Export() {
       }
     }
 
-    // Style data rows - highlight resolved/fully paid rows in green
+    // Style data rows
     for (let row = 1; row <= range.e.r; row++) {
       const isResolved = resolvedRows.includes(row);
       for (let col = range.s.c; col <= range.e.c; col++) {
@@ -225,12 +178,10 @@ export default function Export() {
       }
     }
 
-    // Set row heights
-    ws['!rows'] = [{ hpt: 28 }]; // Taller header row
+    ws['!rows'] = [{ hpt: 28 }];
 
     XLSX.utils.book_append_sheet(wb, ws, 'Export');
 
-    // Generate and download file
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
@@ -243,21 +194,10 @@ export default function Export() {
     URL.revokeObjectURL(url);
   };
 
-  // Helper to escape CSV values - wrap in quotes and escape internal quotes
-  const escapeCSV = (value: string | null | undefined): string => {
-    if (!value) return '';
-    const str = String(value);
-    // Always wrap in quotes and escape internal quotes
-    return `"${str.replace(/"/g, '""')}"`;
-  };
-
-  // Helper to format last payment date - compute from payments if not stored
   const getLastPaymentDate = (customerId: string, storedDate?: string | null) => {
-    // If stored date exists and is recent, use it
     if (storedDate) {
       return format(new Date(storedDate), 'yyyy-MM-dd');
     }
-    // Otherwise compute from payments
     const customerPayments = payments.filter(p => p.master_customer_id === customerId);
     if (customerPayments.length === 0) return '';
     const latestPayment = customerPayments.reduce((latest, p) => {
@@ -267,7 +207,286 @@ export default function Export() {
     return format(new Date(latestPayment.payment_date), 'yyyy-MM-dd');
   };
 
+  // Admin export using server-side RPC - guarantees ALL data
+  const handleAdminExportTickets = async () => {
+    try {
+      const result = await adminExport.mutateAsync({
+        exportType: 'tickets',
+        filter: exportFilter as AdminExportFilter,
+        batchId: selectedBatchId !== 'all' ? selectedBatchId : null,
+        agentId: selectedAgentId !== 'all' ? selectedAgentId : null,
+        startDate: startDate ? format(startDate, 'yyyy-MM-dd') : null,
+        endDate: endDate ? format(endDate, 'yyyy-MM-dd') : null,
+        workedOnly: !exportAll,
+      });
+
+      if (!result.data || result.data.length === 0) {
+        toast({ title: "No Data", description: "No tickets match the selected filters", variant: "destructive" });
+        return;
+      }
+
+      setLastExportStats({ expected: result.rows_expected, exported: result.rows_exported });
+
+      const headers = [
+        'Ticket ID', 'Customer Name', 'NRC Number', 'Mobile Number', 'Amount Owed', 
+        'Status', 'Priority', 'Batch Name', 'Agent Name', 'Call Notes',
+        'Total Owed', 'Total Paid', 'Outstanding Balance', 'Payment Status',
+        'Branch Name', 'Employer Name', 'Employer Subdivision', 'Loan Consultant',
+        'Tenure', 'Arrear Status', 'Last Payment Date', 'Loan Book Payment Date',
+        'Next of Kin Name', 'Next of Kin Contact', 'Workplace Contact', 'Workplace Destination',
+        'Ticket Arrear Status', 'Ticket Payment Status', 'Employer Reason',
+        'Total Collected', 'Created At', 'Resolved Date'
+      ];
+
+      const resolvedRows: number[] = [];
+      const rows = result.data.map((t: any, index: number) => {
+        const isResolved = t.status === 'Resolved';
+        if (isResolved) resolvedRows.push(index + 1);
+
+        return [
+          t.id || '',
+          t.customer_name || '',
+          t.nrc_number || '',
+          t.mobile_number || '',
+          Number(t.amount_owed || 0).toFixed(2),
+          t.status || '',
+          t.priority || '',
+          t.batch_name || '',
+          t.agent_name || '',
+          t.call_notes || '',
+          Number(t.total_owed || 0).toFixed(2),
+          Number(t.total_paid || 0).toFixed(2),
+          Number(t.outstanding_balance || 0).toFixed(2),
+          t.payment_status || '',
+          t.branch_name || '',
+          t.employer_name || '',
+          t.employer_subdivision || '',
+          t.loan_consultant || '',
+          t.tenure || '',
+          t.master_arrear_status || '',
+          t.last_payment_date || '',
+          t.loan_book_last_payment_date || '',
+          t.next_of_kin_name || '',
+          t.next_of_kin_contact || '',
+          t.workplace_contact || '',
+          t.workplace_destination || '',
+          t.ticket_arrear_status || '',
+          t.ticket_payment_status || '',
+          t.employer_reason_for_arrears || '',
+          Number(t.total_collected || 0).toFixed(2),
+          t.created_at ? format(new Date(t.created_at), 'yyyy-MM-dd HH:mm') : '',
+          t.resolved_date ? format(new Date(t.resolved_date), 'yyyy-MM-dd') : ''
+        ];
+      });
+
+      downloadStyledExcel(rows, headers, `tickets-export-${exportFilter}${exportAll ? '-all' : '-worked'}`, resolvedRows);
+      toast({ 
+        title: "Export Complete", 
+        description: `Successfully exported ${result.rows_exported} tickets (validated: ${result.rows_expected} expected)` 
+      });
+    } catch (error) {
+      console.error('Export error:', error);
+    }
+  };
+
+  const handleAdminExportMaster = async () => {
+    try {
+      const result = await adminExport.mutateAsync({
+        exportType: 'master_customers',
+        filter: exportFilter as AdminExportFilter,
+        agentId: selectedAgentId !== 'all' ? selectedAgentId : null,
+        startDate: startDate ? format(startDate, 'yyyy-MM-dd') : null,
+        endDate: endDate ? format(endDate, 'yyyy-MM-dd') : null,
+        workedOnly: !exportAll,
+      });
+
+      if (!result.data || result.data.length === 0) {
+        toast({ title: "No Data", description: "No customers match the selected filters", variant: "destructive" });
+        return;
+      }
+
+      setLastExportStats({ expected: result.rows_expected, exported: result.rows_exported });
+
+      const headers = [
+        'Customer Name', 'NRC Number', 'Mobile Number', 'Total Owed', 'Total Paid',
+        'Outstanding Balance', 'Payment Status', 'Agent Name', 'Call Notes', 'Ticket Status',
+        'Total Collected', 'Branch Name', 'Arrear Status', 'Employer Name', 'Employer Subdivision',
+        'Loan Consultant', 'Tenure', 'Last Payment Date', 'Loan Book Payment Date',
+        'Next of Kin Name', 'Next of Kin Contact', 'Workplace Contact', 'Workplace Destination',
+        'Ticket Arrear Status', 'Ticket Payment Status', 'Employer Reason'
+      ];
+
+      const resolvedRows: number[] = [];
+      const rows = result.data.map((c: any, index: number) => {
+        const isResolved = c.payment_status === 'Fully Paid' || c.ticket_status === 'Resolved';
+        if (isResolved) resolvedRows.push(index + 1);
+
+        return [
+          c.name || '',
+          c.nrc_number || '',
+          c.mobile_number || '',
+          Number(c.total_owed || 0).toFixed(2),
+          Number(c.total_paid || 0).toFixed(2),
+          Number(c.outstanding_balance || 0).toFixed(2),
+          c.payment_status || '',
+          c.agent_name || '',
+          c.call_notes || '',
+          c.ticket_status || '',
+          Number(c.total_collected || 0).toFixed(2),
+          c.branch_name || '',
+          c.arrear_status || '',
+          c.employer_name || '',
+          c.employer_subdivision || '',
+          c.loan_consultant || '',
+          c.tenure || '',
+          c.last_payment_date || '',
+          c.loan_book_last_payment_date || '',
+          c.next_of_kin_name || '',
+          c.next_of_kin_contact || '',
+          c.workplace_contact || '',
+          c.workplace_destination || '',
+          c.ticket_arrear_status || '',
+          c.ticket_payment_status || '',
+          c.employer_reason_for_arrears || ''
+        ];
+      });
+
+      downloadStyledExcel(rows, headers, `master-customers-${exportFilter}${exportAll ? '-all' : '-worked'}`, resolvedRows);
+      toast({ 
+        title: "Export Complete", 
+        description: `Successfully exported ${result.rows_exported} customers (validated: ${result.rows_expected} expected)` 
+      });
+    } catch (error) {
+      console.error('Export error:', error);
+    }
+  };
+
+  const handleAdminExportBatch = async () => {
+    try {
+      const result = await adminExport.mutateAsync({
+        exportType: 'batch_customers',
+        filter: exportFilter as AdminExportFilter,
+        batchId: selectedBatchId !== 'all' ? selectedBatchId : null,
+        agentId: selectedAgentId !== 'all' ? selectedAgentId : null,
+        startDate: startDate ? format(startDate, 'yyyy-MM-dd') : null,
+        endDate: endDate ? format(endDate, 'yyyy-MM-dd') : null,
+        workedOnly: !exportAll,
+      });
+
+      if (!result.data || result.data.length === 0) {
+        toast({ title: "No Data", description: "No batch customers match the selected filters", variant: "destructive" });
+        return;
+      }
+
+      setLastExportStats({ expected: result.rows_expected, exported: result.rows_exported });
+
+      const headers = [
+        'Batch Name', 'Customer Name', 'NRC Number', 'Mobile Number', 'Batch Amount Owed',
+        'Total Paid (Global)', 'Outstanding Balance (Global)', 'Payment Status', 'Agent Name',
+        'Call Notes', 'Ticket Status', 'Total Collected',
+        'Branch Name', 'Arrear Status', 'Employer Name', 'Employer Subdivision',
+        'Loan Consultant', 'Tenure', 'Last Payment Date', 'Loan Book Payment Date',
+        'Next of Kin Name', 'Next of Kin Contact', 'Workplace Contact', 'Workplace Destination',
+        'Ticket Arrear Status', 'Ticket Payment Status', 'Employer Reason'
+      ];
+
+      const resolvedRows: number[] = [];
+      const rows = result.data.map((bc: any, index: number) => {
+        const isResolved = bc.payment_status === 'Fully Paid' || bc.ticket_status === 'Resolved';
+        if (isResolved) resolvedRows.push(index + 1);
+
+        return [
+          bc.batch_name || '',
+          bc.name || '',
+          bc.nrc_number || '',
+          bc.mobile_number || '',
+          Number(bc.amount_owed || 0).toFixed(2),
+          Number(bc.total_paid || 0).toFixed(2),
+          Number(bc.outstanding_balance || 0).toFixed(2),
+          bc.payment_status || '',
+          bc.agent_name || '',
+          bc.master_call_notes || '',
+          bc.ticket_status || '',
+          Number(bc.total_collected || 0).toFixed(2),
+          bc.branch_name || '',
+          bc.arrear_status || '',
+          bc.employer_name || '',
+          bc.employer_subdivision || '',
+          bc.loan_consultant || '',
+          bc.tenure || '',
+          bc.last_payment_date || '',
+          bc.loan_book_last_payment_date || '',
+          bc.next_of_kin_name || '',
+          bc.next_of_kin_contact || '',
+          bc.workplace_contact || '',
+          bc.workplace_destination || '',
+          bc.ticket_arrear_status || '',
+          bc.ticket_payment_status || '',
+          bc.employer_reason_for_arrears || ''
+        ];
+      });
+
+      const batchSuffix = selectedBatchId === 'all' ? 'all-batches' : batches.find(b => b.id === selectedBatchId)?.name || 'batch';
+      downloadStyledExcel(rows, headers, `batch-export-${batchSuffix}-${exportFilter}${exportAll ? '-all' : '-worked'}`, resolvedRows);
+      toast({ 
+        title: "Export Complete", 
+        description: `Successfully exported ${result.rows_exported} batch customers (validated: ${result.rows_expected} expected)` 
+      });
+    } catch (error) {
+      console.error('Export error:', error);
+    }
+  };
+
+  // Keep legacy export for non-admin users (agent-scoped via RLS)
+  const getFilteredMasterCustomers = () => {
+    let filtered = masterCustomers;
+    if (startDate && endDate) {
+      filtered = filtered.filter(c => isInDateRange(c.created_at));
+    }
+    switch (exportFilter) {
+      case 'outstanding': filtered = filtered.filter((c) => c.payment_status !== 'Fully Paid'); break;
+      case 'resolved': filtered = filtered.filter((c) => c.payment_status === 'Fully Paid'); break;
+    }
+    if (!exportAll) {
+      filtered = filtered.filter((c) => {
+        const ticket = tickets.find(t => t.master_customer_id === c.id);
+        if (!ticket) return false;
+        return isTicketWorkedOn(ticket.id, c.id);
+      });
+    }
+    return filtered;
+  };
+
+  const getFilteredBatchCustomers = () => {
+    let filtered = batchCustomers;
+    if (startDate && endDate) {
+      filtered = filtered.filter(bc => isInDateRange(bc.created_at));
+    }
+    if (selectedBatchId !== 'all') filtered = filtered.filter(bc => bc.batch_id === selectedBatchId);
+    if (exportFilter !== 'all') {
+      filtered = filtered.filter(bc => {
+        const master = masterCustomers.find(mc => mc.id === bc.master_customer_id);
+        if (!master) return false;
+        return exportFilter === 'outstanding' ? master.payment_status !== 'Fully Paid' : master.payment_status === 'Fully Paid';
+      });
+    }
+    if (!exportAll) {
+      filtered = filtered.filter(bc => {
+        const ticket = tickets.find(t => t.master_customer_id === bc.master_customer_id);
+        if (!ticket) return false;
+        return isTicketWorkedOn(ticket.id, bc.master_customer_id);
+      });
+    }
+    return filtered;
+  };
+
   const handleExportMaster = () => {
+    // For admin, use server-side export to get ALL data
+    if (isAdmin) {
+      handleAdminExportMaster();
+      return;
+    }
+
     const filteredCustomers = getFilteredMasterCustomers();
     if (filteredCustomers.length === 0) {
       toast({ title: "No Data", description: exportAll ? "There are no customers to export" : "No worked-on tickets to export. Enable 'Export All' to include all.", variant: "destructive" });
@@ -286,22 +505,17 @@ export default function Export() {
     const resolvedRows: number[] = [];
     const rows = filteredCustomers.map((customer: any, index: number) => {
       const ticket = tickets.find((t) => t.master_customer_id === customer.id);
-      // Calculate total collected from payments for this customer
       const totalCollected = payments
         .filter(p => p.master_customer_id === customer.id)
         .reduce((sum, p) => sum + Number(p.amount), 0);
-      // Use customer.call_notes directly from master_customers
       const callNotesStr = customer.call_notes || '';
-      // Get last payment date (computed or stored)
       const lastPaymentDate = getLastPaymentDate(customer.id, customer.last_payment_date);
       
-      // Track resolved/fully paid rows for highlighting
       const isResolved = customer.payment_status === 'Fully Paid' || ticket?.status === 'Resolved';
       if (isResolved) {
-        resolvedRows.push(index + 1); // +1 because of header row
+        resolvedRows.push(index + 1);
       }
       
-      // Calculate outstanding dynamically - never blank
       const totalOwed = Number(customer.total_owed) || 0;
       const totalPaid = Number(customer.total_paid) || 0;
       const outstandingBalance = Math.max(totalOwed - totalPaid, 0);
@@ -318,7 +532,6 @@ export default function Export() {
         callNotesStr,
         ticket?.status || 'N/A',
         totalCollected.toFixed(2),
-        // Static loan book fields
         customer.branch_name || '',
         customer.arrear_status || '',
         customer.employer_name || '',
@@ -326,12 +539,10 @@ export default function Export() {
         customer.loan_consultant || '',
         customer.tenure || '',
         lastPaymentDate,
-        // New contact fields
         (customer as any).next_of_kin_name || '',
         (customer as any).next_of_kin_contact || '',
         (customer as any).workplace_contact || '',
         (customer as any).workplace_destination || '',
-        // Ticket-level interaction outcomes
         (ticket as any)?.ticket_arrear_status || '',
         (ticket as any)?.ticket_payment_status || '',
         (ticket as any)?.employer_reason_for_arrears || ''
@@ -343,6 +554,12 @@ export default function Export() {
   };
 
   const handleExportBatch = () => {
+    // For admin, use server-side export to get ALL data
+    if (isAdmin) {
+      handleAdminExportBatch();
+      return;
+    }
+
     const filteredCustomers = getFilteredBatchCustomers();
     if (filteredCustomers.length === 0) {
       toast({ title: "No Data", description: exportAll ? "There are no customers to export" : "No worked-on tickets to export. Enable 'Export All' to include all.", variant: "destructive" });
@@ -364,22 +581,17 @@ export default function Export() {
       const master = masterCustomers.find(mc => mc.id === bc.master_customer_id) as any;
       const batch = batches.find(b => b.id === bc.batch_id);
       const ticket = tickets.find((t) => t.master_customer_id === bc.master_customer_id);
-      // Calculate total collected from payments for this customer
       const totalCollected = payments
         .filter(p => p.master_customer_id === bc.master_customer_id)
         .reduce((sum, p) => sum + Number(p.amount), 0);
-      // Use master?.call_notes from master_customers
       const callNotesStr = master?.call_notes || '';
-      // Get last payment date - prefer batch_customer, fallback to master, then compute
       const lastPaymentDate = getLastPaymentDate(bc.master_customer_id, bc.last_payment_date || master?.last_payment_date);
       
-      // Track resolved/fully paid rows for highlighting
       const isResolved = master?.payment_status === 'Fully Paid' || ticket?.status === 'Resolved';
       if (isResolved) {
-        resolvedRows.push(index + 1); // +1 because of header row
+        resolvedRows.push(index + 1);
       }
       
-      // Calculate outstanding dynamically - never blank
       const batchAmountOwed = Number(bc.amount_owed) || 0;
       const totalPaid = Number(master?.total_paid) || 0;
       const outstandingBalance = Math.max(batchAmountOwed - totalPaid, 0);
@@ -397,7 +609,6 @@ export default function Export() {
         callNotesStr,
         ticket?.status || 'N/A',
         totalCollected.toFixed(2),
-        // Static fields - ALWAYS from master_customers only (never batch)
         master?.branch_name || '',
         bc.arrear_status || master?.arrear_status || '',
         master?.employer_name || '',
@@ -405,12 +616,10 @@ export default function Export() {
         master?.loan_consultant || '',
         master?.tenure || '',
         lastPaymentDate,
-        // New contact fields from master
         master?.next_of_kin_name || '',
         master?.next_of_kin_contact || '',
         master?.workplace_contact || '',
         master?.workplace_destination || '',
-        // Ticket-level interaction outcomes
         (ticket as any)?.ticket_arrear_status || '',
         (ticket as any)?.ticket_payment_status || '',
         (ticket as any)?.employer_reason_for_arrears || ''
@@ -422,300 +631,61 @@ export default function Export() {
     toast({ title: "Export Complete", description: `Successfully exported ${filteredCustomers.length} batch customers to Excel` });
   };
 
-  const handleExportPDF = (type: 'master' | 'batch') => {
-    const filteredCustomers = type === 'master' ? getFilteredMasterCustomers() : getFilteredBatchCustomers();
-    if (filteredCustomers.length === 0) {
-      toast({ title: "No Data", description: "No data to export to PDF", variant: "destructive" });
-      return;
-    }
-
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 14;
-    let yPos = 20;
-
-    // Header
-    doc.setFontSize(18);
-    doc.setFont("helvetica", "bold");
-    doc.text("Xtenda Loan Collections Report", margin, yPos);
-    yPos += 10;
-
-    // Report metadata with agent name
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Generated by: ${currentAgentName}`, margin, yPos);
-    yPos += 5;
-    doc.text(`Date: ${new Date().toLocaleDateString('en-ZM', { year: 'numeric', month: 'long', day: 'numeric' })}`, margin, yPos);
-    yPos += 5;
-    doc.text(`Report Type: ${type === 'master' ? 'Master Registry' : 'Batch Export'}`, margin, yPos);
-    yPos += 5;
-    doc.text(`Period: ${getDateRangeLabel()}`, margin, yPos);
-    yPos += 5;
-    doc.text(`Filter: ${exportFilter === 'all' ? 'All Customers' : exportFilter === 'outstanding' ? 'Outstanding Only' : 'Fully Paid Only'}`, margin, yPos);
-    yPos += 5;
-    doc.text(`Total Records: ${filteredCustomers.length}`, margin, yPos);
-    yPos += 10;
-
-    // Draw a line
-    doc.setDrawColor(200, 200, 200);
-    doc.line(margin, yPos, pageWidth - margin, yPos);
-    yPos += 10;
-
-    // Customer details
-    doc.setFontSize(9);
-    const maxTextWidth = pageWidth - margin * 2 - 8;
-    
-    if (type === 'master') {
-      const masterData = filteredCustomers as any[];
-      masterData.forEach((customer, index) => {
-        if (yPos > 220) {
-          doc.addPage();
-          yPos = 20;
-        }
-
-        const ticket = tickets.find((t) => t.master_customer_id === customer.id);
-        const agentName = getAgentName(customer.assigned_agent);
-        // Use customer.call_notes from master_customers
-        const hasCallNotes = customer.call_notes && customer.call_notes.trim().length > 0;
-        const lastPaymentDate = getLastPaymentDate(customer.id, customer.last_payment_date);
-
-        doc.setFont("helvetica", "bold");
-        doc.text(`${index + 1}. ${customer.name}`, margin, yPos);
-        yPos += 5;
-
-        doc.setFont("helvetica", "normal");
-        doc.text(`NRC: ${customer.nrc_number}  |  Mobile: ${customer.mobile_number || 'N/A'}  |  Agent: ${agentName}`, margin + 4, yPos);
-        yPos += 5;
-        
-        // Loan book fields - Branch, Employer, Arrear Status
-        const branchInfo = customer.branch_name ? `Branch: ${customer.branch_name}` : '';
-        const employerInfo = customer.employer_name ? `Employer: ${customer.employer_name}` : '';
-        const arrearInfo = customer.arrear_status ? `Arrear Status: ${customer.arrear_status}` : '';
-        const loanBookLine = [branchInfo, employerInfo, arrearInfo].filter(Boolean).join('  |  ');
-        if (loanBookLine) {
-          doc.text(loanBookLine, margin + 4, yPos);
-          yPos += 5;
-        }
-        
-        // Loan Consultant and Tenure
-        const consultantInfo = customer.loan_consultant ? `Loan Consultant: ${customer.loan_consultant}` : '';
-        const tenureInfo = customer.tenure ? `Tenure: ${customer.tenure}` : '';
-        const lastPaymentInfo = lastPaymentDate ? `Last Payment: ${lastPaymentDate}` : '';
-        const consultantLine = [consultantInfo, tenureInfo, lastPaymentInfo].filter(Boolean).join('  |  ');
-        if (consultantLine) {
-          doc.text(consultantLine, margin + 4, yPos);
-          yPos += 5;
-        }
-        
-        yPos += 1;
-        
-        // Financial amounts - emphasized and accurate - calculate dynamically
-        const totalOwed = Number(customer.total_owed) || 0;
-        const totalPaid = Number(customer.total_paid) || 0;
-        const outstandingBalance = Math.max(totalOwed - totalPaid, 0);
-        
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(10);
-        doc.text(`Total Owed: ${formatCurrency(totalOwed)}`, margin + 4, yPos);
-        yPos += 5;
-        doc.text(`Total Paid: ${formatCurrency(totalPaid)}`, margin + 4, yPos);
-        yPos += 5;
-        doc.text(`Outstanding Balance: ${formatCurrency(outstandingBalance)}`, margin + 4, yPos);
-        yPos += 5;
-        
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(9);
-        doc.text(`Status: ${customer.payment_status}  |  Ticket: ${ticket?.status || 'N/A'}`, margin + 4, yPos);
-        yPos += 5;
-        
-        // Ticket-level interaction outcomes
-        const ticketArrearStatus = (ticket as any)?.ticket_arrear_status;
-        const ticketPaymentStatus = (ticket as any)?.ticket_payment_status;
-        const employerReason = (ticket as any)?.employer_reason_for_arrears;
-        const interactionLine = [
-          ticketArrearStatus ? `Arrear: ${ticketArrearStatus}` : '',
-          ticketPaymentStatus ? `Payment: ${ticketPaymentStatus}` : '',
-          employerReason ? `Employer Reason: ${employerReason}` : ''
-        ].filter(Boolean).join('  |  ');
-        if (interactionLine) {
-          doc.setFont("helvetica", "italic");
-          doc.setFontSize(8);
-          doc.text(interactionLine, margin + 4, yPos);
-          yPos += 4;
-          doc.setFontSize(9);
-          doc.setFont("helvetica", "normal");
-        }
-
-        // Add call notes if they exist
-        if (hasCallNotes) {
-          if (yPos > 260) {
-            doc.addPage();
-            yPos = 20;
-          }
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(8);
-          doc.text(`Call Notes:`, margin + 4, yPos);
-          yPos += 4;
-          
-          doc.setFont("helvetica", "normal");
-          const splitNotes = doc.splitTextToSize(customer.call_notes!, maxTextWidth);
-          doc.text(splitNotes, margin + 8, yPos);
-          yPos += splitNotes.length * 3 + 3;
-          doc.setFontSize(9);
-        }
-        
-        yPos += 4;
-      });
-    } else {
-      const batchData = filteredCustomers as any[];
-      batchData.forEach((bc, index) => {
-        if (yPos > 220) {
-          doc.addPage();
-          yPos = 20;
-        }
-
-        const master = masterCustomers.find(mc => mc.id === bc.master_customer_id) as any;
-        const batch = batches.find(b => b.id === bc.batch_id);
-        const ticket = tickets.find((t) => t.master_customer_id === bc.master_customer_id);
-        const agentName = getAgentName(master?.assigned_agent || null);
-        // Use master?.call_notes from master_customers
-        const hasCallNotes = master?.call_notes && master.call_notes.trim().length > 0;
-        const lastPaymentDate = getLastPaymentDate(bc.master_customer_id, bc.last_payment_date || master?.last_payment_date);
-
-        doc.setFont("helvetica", "bold");
-        doc.text(`${index + 1}. ${bc.name}`, margin, yPos);
-        yPos += 5;
-
-        doc.setFont("helvetica", "normal");
-        doc.text(`Batch: ${batch?.name || 'Unknown'}  |  NRC: ${bc.nrc_number}  |  Agent: ${agentName}`, margin + 4, yPos);
-        yPos += 5;
-        doc.text(`Mobile: ${bc.mobile_number || 'N/A'}`, margin + 4, yPos);
-        yPos += 5;
-        
-        // Loan book fields - Branch, Employer, Arrear Status (prefer batch level, fallback to master)
-        const branchName = bc.branch_name || master?.branch_name;
-        const employerName = bc.employer_name || master?.employer_name;
-        const arrearStatus = bc.arrear_status || master?.arrear_status;
-        const branchInfo = branchName ? `Branch: ${branchName}` : '';
-        const employerInfo = employerName ? `Employer: ${employerName}` : '';
-        const arrearInfo = arrearStatus ? `Arrear Status: ${arrearStatus}` : '';
-        const loanBookLine = [branchInfo, employerInfo, arrearInfo].filter(Boolean).join('  |  ');
-        if (loanBookLine) {
-          doc.text(loanBookLine, margin + 4, yPos);
-          yPos += 5;
-        }
-        
-        // Loan Consultant and Tenure
-        const loanConsultant = bc.loan_consultant || master?.loan_consultant;
-        const tenure = bc.tenure || master?.tenure;
-        const consultantInfo = loanConsultant ? `Loan Consultant: ${loanConsultant}` : '';
-        const tenureInfo = tenure ? `Tenure: ${tenure}` : '';
-        const lastPaymentInfo = lastPaymentDate ? `Last Payment: ${lastPaymentDate}` : '';
-        const consultantLine = [consultantInfo, tenureInfo, lastPaymentInfo].filter(Boolean).join('  |  ');
-        if (consultantLine) {
-          doc.text(consultantLine, margin + 4, yPos);
-          yPos += 5;
-        }
-        
-        yPos += 1;
-        
-        // Financial amounts - emphasized and accurate - calculate dynamically
-        const batchAmountOwed = Number(bc.amount_owed) || 0;
-        const totalPaid = Number(master?.total_paid) || 0;
-        const outstandingBalance = Math.max(batchAmountOwed - totalPaid, 0);
-        
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(10);
-        doc.text(`Batch Amount Owed: ${formatCurrency(batchAmountOwed)}`, margin + 4, yPos);
-        yPos += 5;
-        doc.text(`Global Total Paid: ${formatCurrency(totalPaid)}`, margin + 4, yPos);
-        yPos += 5;
-        doc.text(`Global Outstanding: ${formatCurrency(outstandingBalance)}`, margin + 4, yPos);
-        yPos += 5;
-        
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(9);
-        doc.text(`Status: ${master?.payment_status || 'N/A'}  |  Ticket: ${ticket?.status || 'N/A'}`, margin + 4, yPos);
-        yPos += 5;
-        
-        // Ticket-level interaction outcomes
-        const ticketArrearStatus = (ticket as any)?.ticket_arrear_status;
-        const ticketPaymentStatus = (ticket as any)?.ticket_payment_status;
-        const employerReason = (ticket as any)?.employer_reason_for_arrears;
-        const interactionLine = [
-          ticketArrearStatus ? `Arrear: ${ticketArrearStatus}` : '',
-          ticketPaymentStatus ? `Payment: ${ticketPaymentStatus}` : '',
-          employerReason ? `Employer Reason: ${employerReason}` : ''
-        ].filter(Boolean).join('  |  ');
-        if (interactionLine) {
-          doc.setFont("helvetica", "italic");
-          doc.setFontSize(8);
-          doc.text(interactionLine, margin + 4, yPos);
-          yPos += 4;
-          doc.setFontSize(9);
-          doc.setFont("helvetica", "normal");
-        }
-
-        // Add call notes if they exist
-        if (hasCallNotes) {
-          if (yPos > 260) {
-            doc.addPage();
-            yPos = 20;
-          }
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(8);
-          doc.text(`Call Notes:`, margin + 4, yPos);
-          yPos += 4;
-          
-          doc.setFont("helvetica", "normal");
-          const splitNotes = doc.splitTextToSize(master!.call_notes!, maxTextWidth);
-          doc.text(splitNotes, margin + 8, yPos);
-          yPos += splitNotes.length * 3 + 3;
-          doc.setFontSize(9);
-        }
-        
-        yPos += 4;
-      });
-    }
-
-    // Footer
-    const pageCount = doc.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(8);
-      doc.setTextColor(150);
-      doc.text(`Page ${i} of ${pageCount}  |  Generated by ${currentAgentName}  |  Xtenda Collections`, pageWidth / 2, 290, { align: 'center' });
-    }
-
-    const prefix = type === 'master' ? 'master-report' : `batch-report-${selectedBatchId === 'all' ? 'all' : batches.find(b => b.id === selectedBatchId)?.name || 'batch'}`;
-    doc.save(`${prefix}-${new Date().toISOString().split('T')[0]}.pdf`);
-    toast({ title: "PDF Export Complete", description: `Successfully exported ${filteredCustomers.length} records to PDF` });
-  };
-
-  const masterFilteredCount = getFilteredMasterCustomers().length;
-  const batchFilteredCount = getFilteredBatchCustomers().length;
+  const masterFilteredCount = isAdmin ? masterCustomers.length : getFilteredMasterCustomers().length;
+  const batchFilteredCount = isAdmin ? batchCustomers.length : getFilteredBatchCustomers().length;
   const workedOnCount = tickets.filter(t => isTicketWorkedOn(t.id, t.master_customer_id)).length;
 
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Export Data</h1>
-        <p className="text-muted-foreground">Download customer and collection data as CSV or PDF</p>
+        <p className="text-muted-foreground">Download customer and collection data as Excel</p>
       </div>
+
+      {isAdmin && (
+        <Alert className="bg-success/10 border-success/30">
+          <CheckCircle2 className="h-4 w-4 text-success" />
+          <AlertDescription className="text-success">
+            <strong>Admin Mode:</strong> Exports will include ALL data system-wide, regardless of who uploaded it. 
+            Row count validation ensures complete exports.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {lastExportStats && (
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Last export: {lastExportStats.exported} rows exported ({lastExportStats.expected} expected)
+            {lastExportStats.expected === lastExportStats.exported ? (
+              <Badge className="ml-2 bg-success">Validated</Badge>
+            ) : (
+              <Badge className="ml-2" variant="destructive">Mismatch</Badge>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Card>
         <CardContent className="pt-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label htmlFor="export-all" className="font-medium">Export All Tickets</Label>
-              <p className="text-sm text-muted-foreground">{exportAll ? "Exporting all tickets regardless of activity" : `Exporting only worked-on tickets (${workedOnCount} of ${tickets.length})`}</p>
+              <p className="text-sm text-muted-foreground">
+                {exportAll ? "Exporting all tickets regardless of activity" : `Exporting only worked-on tickets (${workedOnCount} of ${tickets.length})`}
+              </p>
             </div>
             <Switch id="export-all" checked={exportAll} onCheckedChange={setExportAll} />
           </div>
           {!exportAll && (
             <div className="p-3 bg-muted rounded-lg text-sm text-muted-foreground">
               <p className="font-medium mb-1">Worked-on tickets include:</p>
-              <ul className="list-disc list-inside space-y-0.5"><li>Status changed from Open</li><li>Call notes added</li><li>Payments recorded</li></ul>
+              <ul className="list-disc list-inside space-y-0.5">
+                <li>Status changed from Open</li>
+                <li>Call notes added</li>
+                <li>Payments recorded</li>
+                <li>Synced via daily loan book sync</li>
+              </ul>
             </div>
           )}
         </CardContent>
@@ -751,22 +721,14 @@ export default function Export() {
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className={cn(
-                        "w-[200px] justify-start text-left font-normal",
-                        !startDate && "text-muted-foreground"
-                      )}
+                      className={cn("w-[200px] justify-start text-left font-normal", !startDate && "text-muted-foreground")}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {startDate ? format(startDate, "PPP") : "Pick a date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={startDate}
-                      onSelect={setStartDate}
-                      initialFocus
-                    />
+                    <Calendar mode="single" selected={startDate} onSelect={setStartDate} initialFocus />
                   </PopoverContent>
                 </Popover>
               </div>
@@ -777,22 +739,14 @@ export default function Export() {
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className={cn(
-                        "w-[200px] justify-start text-left font-normal",
-                        !endDate && "text-muted-foreground"
-                      )}
+                      className={cn("w-[200px] justify-start text-left font-normal", !endDate && "text-muted-foreground")}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {endDate ? format(endDate, "PPP") : "Pick a date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={endDate}
-                      onSelect={setEndDate}
-                      initialFocus
-                    />
+                    <Calendar mode="single" selected={endDate} onSelect={setEndDate} initialFocus />
                   </PopoverContent>
                 </Popover>
               </div>
@@ -805,28 +759,168 @@ export default function Export() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="master" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="master" className="flex items-center gap-2"><Database className="h-4 w-4" />Master Registry</TabsTrigger>
-          <TabsTrigger value="batch" className="flex items-center gap-2"><Users className="h-4 w-4" />Batch Export</TabsTrigger>
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Agent Filter
+            </CardTitle>
+            <CardDescription>Filter exports by assigned agent</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select an agent" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Agents</SelectItem>
+                {profiles.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {(p as any).display_name || p.full_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
+      )}
+
+      <Tabs defaultValue="tickets" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="tickets" className="flex items-center gap-2">
+            <FileSpreadsheet className="h-4 w-4" />Tickets
+          </TabsTrigger>
+          <TabsTrigger value="master" className="flex items-center gap-2">
+            <Database className="h-4 w-4" />Master Registry
+          </TabsTrigger>
+          <TabsTrigger value="batch" className="flex items-center gap-2">
+            <Users className="h-4 w-4" />Batch Export
+          </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="tickets">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileSpreadsheet className="h-5 w-5" />Export All Tickets
+              </CardTitle>
+              <CardDescription>
+                {isAdmin ? 'Export ALL tickets system-wide with validation' : 'Export tickets assigned to you'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <RadioGroup value={exportFilter} onValueChange={(v) => setExportFilter(v as ExportFilter)}>
+                <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer">
+                  <RadioGroupItem value="all" id="ticket-all" />
+                  <Label htmlFor="ticket-all" className="flex-1 cursor-pointer">
+                    <span className="font-medium">All Tickets</span>
+                    <p className="text-sm text-muted-foreground">Export complete ticket list</p>
+                  </Label>
+                  <span className="text-sm text-muted-foreground">{tickets.length} records</span>
+                </div>
+                <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer">
+                  <RadioGroupItem value="outstanding" id="ticket-outstanding" />
+                  <Label htmlFor="ticket-outstanding" className="flex-1 cursor-pointer">
+                    <span className="font-medium">Active (Open + In Progress)</span>
+                    <p className="text-sm text-muted-foreground">Tickets not yet resolved</p>
+                  </Label>
+                  <span className="text-sm text-muted-foreground">
+                    {tickets.filter((t) => t.status !== 'Resolved').length} records
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer">
+                  <RadioGroupItem value="resolved" id="ticket-resolved" />
+                  <Label htmlFor="ticket-resolved" className="flex-1 cursor-pointer">
+                    <span className="font-medium">Resolved Only</span>
+                    <p className="text-sm text-muted-foreground">Completed tickets</p>
+                  </Label>
+                  <span className="text-sm text-muted-foreground">
+                    {tickets.filter((t) => t.status === 'Resolved').length} records
+                  </span>
+                </div>
+              </RadioGroup>
+              
+              {isAdmin && (
+                <div className="space-y-2">
+                  <Label>Filter by Batch</Label>
+                  <Select value={selectedBatchId} onValueChange={setSelectedBatchId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a batch" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Batches</SelectItem>
+                      {batches.map((batch) => (
+                        <SelectItem key={batch.id} value={batch.id}>
+                          {batch.name} ({batch.customer_count} customers)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              
+              <Button 
+                onClick={isAdmin ? handleAdminExportTickets : handleExportMaster} 
+                disabled={adminExport.isPending}
+                className="w-full"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                {adminExport.isPending ? 'Exporting...' : `Export Tickets (${isAdmin ? 'All' : tickets.length})`}
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="master">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><FileSpreadsheet className="h-5 w-5" />Export Master Customer List</CardTitle>
-              <CardDescription>Export global customer data with all payment history</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <FileSpreadsheet className="h-5 w-5" />Export Master Customer List
+              </CardTitle>
+              <CardDescription>
+                {isAdmin ? 'Export ALL customers system-wide' : 'Export global customer data with payment history'}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <RadioGroup value={exportFilter} onValueChange={(v) => setExportFilter(v as ExportFilter)}>
-                <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer"><RadioGroupItem value="all" id="master-all" /><Label htmlFor="master-all" className="flex-1 cursor-pointer"><span className="font-medium">All Customers</span><p className="text-sm text-muted-foreground">Export complete master registry</p></Label><span className="text-sm text-muted-foreground">{masterCustomers.length} records</span></div>
-                <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer"><RadioGroupItem value="outstanding" id="master-outstanding" /><Label htmlFor="master-outstanding" className="flex-1 cursor-pointer"><span className="font-medium">Outstanding Only</span><p className="text-sm text-muted-foreground">Customers with unpaid balances</p></Label><span className="text-sm text-muted-foreground">{masterCustomers.filter((c) => c.payment_status !== 'Fully Paid').length} records</span></div>
-                <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer"><RadioGroupItem value="resolved" id="master-resolved" /><Label htmlFor="master-resolved" className="flex-1 cursor-pointer"><span className="font-medium">Fully Paid Only</span><p className="text-sm text-muted-foreground">Customers who have paid in full</p></Label><span className="text-sm text-muted-foreground">{masterCustomers.filter((c) => c.payment_status === 'Fully Paid').length} records</span></div>
+                <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer">
+                  <RadioGroupItem value="all" id="master-all" />
+                  <Label htmlFor="master-all" className="flex-1 cursor-pointer">
+                    <span className="font-medium">All Customers</span>
+                    <p className="text-sm text-muted-foreground">Export complete master registry</p>
+                  </Label>
+                  <span className="text-sm text-muted-foreground">{masterCustomers.length} records</span>
+                </div>
+                <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer">
+                  <RadioGroupItem value="outstanding" id="master-outstanding" />
+                  <Label htmlFor="master-outstanding" className="flex-1 cursor-pointer">
+                    <span className="font-medium">Outstanding Only</span>
+                    <p className="text-sm text-muted-foreground">Customers with unpaid balances</p>
+                  </Label>
+                  <span className="text-sm text-muted-foreground">
+                    {masterCustomers.filter((c) => c.payment_status !== 'Fully Paid').length} records
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer">
+                  <RadioGroupItem value="resolved" id="master-resolved" />
+                  <Label htmlFor="master-resolved" className="flex-1 cursor-pointer">
+                    <span className="font-medium">Fully Paid Only</span>
+                    <p className="text-sm text-muted-foreground">Customers who have paid in full</p>
+                  </Label>
+                  <span className="text-sm text-muted-foreground">
+                    {masterCustomers.filter((c) => c.payment_status === 'Fully Paid').length} records
+                  </span>
+                </div>
               </RadioGroup>
-              <div className="flex gap-2">
-                <Button onClick={handleExportMaster} disabled={masterFilteredCount === 0} className="flex-1"><Download className="h-4 w-4 mr-2" />Export CSV ({masterFilteredCount})</Button>
-                <Button onClick={() => handleExportPDF('master')} disabled={masterFilteredCount === 0} variant="outline" className="flex-1"><FileText className="h-4 w-4 mr-2" />Export PDF</Button>
-              </div>
+              <Button 
+                onClick={handleExportMaster} 
+                disabled={masterFilteredCount === 0 || adminExport.isPending}
+                className="w-full"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                {adminExport.isPending ? 'Exporting...' : `Export Customers (${masterFilteredCount})`}
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -834,29 +928,61 @@ export default function Export() {
         <TabsContent value="batch">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><FileSpreadsheet className="h-5 w-5" />Export Batch Data</CardTitle>
-              <CardDescription>Export customer data per batch or all batches</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <FileSpreadsheet className="h-5 w-5" />Export Batch Data
+              </CardTitle>
+              <CardDescription>
+                {isAdmin ? 'Export ALL batch data system-wide' : 'Export customer data per batch'}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
                 <Label>Select Batch</Label>
                 <Select value={selectedBatchId} onValueChange={setSelectedBatchId}>
-                  <SelectTrigger><SelectValue placeholder="Select a batch" /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a batch" />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Batches</SelectItem>
-                    {batches.map((batch) => (<SelectItem key={batch.id} value={batch.id}>{batch.name} ({batch.customer_count} customers)</SelectItem>))}
+                    {batches.map((batch) => (
+                      <SelectItem key={batch.id} value={batch.id}>
+                        {batch.name} ({batch.customer_count} customers)
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
               <RadioGroup value={exportFilter} onValueChange={(v) => setExportFilter(v as ExportFilter)}>
-                <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer"><RadioGroupItem value="all" id="batch-all" /><Label htmlFor="batch-all" className="flex-1 cursor-pointer"><span className="font-medium">All Customers</span><p className="text-sm text-muted-foreground">Export all customers in selected batch(es)</p></Label></div>
-                <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer"><RadioGroupItem value="outstanding" id="batch-outstanding" /><Label htmlFor="batch-outstanding" className="flex-1 cursor-pointer"><span className="font-medium">Outstanding Only</span><p className="text-sm text-muted-foreground">Customers with unpaid balances</p></Label></div>
-                <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer"><RadioGroupItem value="resolved" id="batch-resolved" /><Label htmlFor="batch-resolved" className="flex-1 cursor-pointer"><span className="font-medium">Fully Paid Only</span><p className="text-sm text-muted-foreground">Customers who have paid in full</p></Label></div>
+                <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer">
+                  <RadioGroupItem value="all" id="batch-all" />
+                  <Label htmlFor="batch-all" className="flex-1 cursor-pointer">
+                    <span className="font-medium">All Customers</span>
+                    <p className="text-sm text-muted-foreground">Export all customers in selected batch(es)</p>
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer">
+                  <RadioGroupItem value="outstanding" id="batch-outstanding" />
+                  <Label htmlFor="batch-outstanding" className="flex-1 cursor-pointer">
+                    <span className="font-medium">Outstanding Only</span>
+                    <p className="text-sm text-muted-foreground">Customers with unpaid balances</p>
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer">
+                  <RadioGroupItem value="resolved" id="batch-resolved" />
+                  <Label htmlFor="batch-resolved" className="flex-1 cursor-pointer">
+                    <span className="font-medium">Fully Paid Only</span>
+                    <p className="text-sm text-muted-foreground">Customers who have paid in full</p>
+                  </Label>
+                </div>
               </RadioGroup>
-              <div className="flex gap-2">
-                <Button onClick={handleExportBatch} disabled={batchFilteredCount === 0} className="flex-1"><Download className="h-4 w-4 mr-2" />Export CSV ({batchFilteredCount})</Button>
-                <Button onClick={() => handleExportPDF('batch')} disabled={batchFilteredCount === 0} variant="outline" className="flex-1"><FileText className="h-4 w-4 mr-2" />Export PDF</Button>
-              </div>
+              <Button 
+                onClick={handleExportBatch} 
+                disabled={batchFilteredCount === 0 || adminExport.isPending}
+                className="w-full"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                {adminExport.isPending ? 'Exporting...' : `Export Batch Data (${batchFilteredCount})`}
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
