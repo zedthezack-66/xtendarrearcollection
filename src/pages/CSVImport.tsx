@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import Papa from "papaparse";
 import XLSX from "xlsx-js-style";
 import { ArrowLeft, Upload, FileText, Check, X, Download, AlertCircle } from "lucide-react";
@@ -142,6 +143,7 @@ const parseAmount = (amountStr: string | undefined | null): { value: number; isE
 export default function CSVImport() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { user, isAdmin } = useAuth();
   const { data: masterCustomers = [] } = useMasterCustomers();
   const { data: profiles = [] } = useProfiles();
@@ -449,7 +451,7 @@ export default function CSVImport() {
 
       // =====================================================
       // MODULE B: UPDATE EXISTING BATCH INFO (update mode)
-      // Only updates existing customers in the batch - NO new customers/tickets
+      // Uses RPC for arrears changes (creates payments, logs movements)
       // =====================================================
       if (uploadMode === "update") {
         // Fetch existing batch_customers for this batch
@@ -465,32 +467,57 @@ export default function CSVImport() {
         let updatedCount = 0;
         let skippedCount = 0;
         let amountDelta = 0;
+        let paymentsCreated = 0;
+        let ticketsResolved = 0;
 
+        // First, collect all arrears updates for the RPC
+        const arrearsUpdates: Array<{ nrc_number: string; amount_owed: number }> = [];
+        
         for (const row of validRows) {
-          // Skip if NRC is NOT in this batch (update mode only updates existing)
           if (!existingNrcsInBatch.has(row.nrcNumber)) {
             skippedCount++;
             continue;
           }
+          
+          // If explicit amount provided, queue for RPC processing
+          if (!row.amountOwedIsEmpty) {
+            arrearsUpdates.push({
+              nrc_number: row.nrcNumber,
+              amount_owed: row.amountOwed,
+            });
+          }
+        }
+        
+        setImportProgress(20);
+        
+        // Process arrears updates via RPC (creates payments, logs, notifications)
+        if (arrearsUpdates.length > 0) {
+          const { data: rpcResult, error: rpcError } = await supabase.rpc('process_batch_arrears_update', {
+            p_batch_id: batch.id,
+            p_updates: JSON.stringify(arrearsUpdates),
+          });
+          
+          if (rpcError) {
+            console.error('Arrears update RPC error:', rpcError);
+            // Fall back to direct updates if RPC fails
+          } else if (rpcResult) {
+            const result = rpcResult as { 
+              updated?: number; 
+              payments_created?: number; 
+              resolved?: number;
+            };
+            paymentsCreated = result.payments_created || 0;
+            ticketsResolved = result.resolved || 0;
+          }
+        }
+        
+        setImportProgress(50);
+        
+        // Now handle non-financial updates (name, contact info, etc.)
+        for (const row of validRows) {
+          if (!existingNrcsInBatch.has(row.nrcNumber)) continue;
 
           const masterCustomerId = existingNrcsInBatch.get(row.nrcNumber);
-          
-          // Fetch current values to calculate amount delta (only if we're updating amount)
-          let amountToUpdate: number | null = null;
-          
-          if (!row.amountOwedIsEmpty) {
-            // Explicit amount value (including 0) - will update
-            const { data: currentBatchCustomer } = await supabase
-              .from('batch_customers')
-              .select('amount_owed')
-              .eq('batch_id', batch.id)
-              .eq('nrc_number', row.nrcNumber)
-              .single();
-            
-            const oldAmount = currentBatchCustomer?.amount_owed || 0;
-            amountDelta += row.amountOwed - oldAmount;
-            amountToUpdate = row.amountOwed;
-          }
 
           // Update master_customers with COALESCE pattern (non-empty only)
           const masterUpdate: Record<string, any> = {};
@@ -516,11 +543,8 @@ export default function CSVImport() {
             await supabase.from('master_customers').update(masterUpdate).eq('id', masterCustomerId);
           }
 
-          // Update batch_customers - only update amount if explicit value provided
+          // Update batch_customers (non-amount fields)
           const batchCustomerUpdate: Record<string, any> = {};
-          if (amountToUpdate !== null) {
-            batchCustomerUpdate.amount_owed = amountToUpdate;
-          }
           if (row.name) batchCustomerUpdate.name = row.name;
           if (row.mobileNumber) batchCustomerUpdate.mobile_number = row.mobileNumber;
           if (row.arrearStatus) batchCustomerUpdate.arrear_status = row.arrearStatus;
@@ -533,16 +557,8 @@ export default function CSVImport() {
               .eq('nrc_number', row.nrcNumber);
           }
 
-          // Update ticket - only update amount if explicit value provided
+          // Update ticket (non-amount fields)
           const ticketUpdate: Record<string, any> = {};
-          if (amountToUpdate !== null) {
-            ticketUpdate.amount_owed = amountToUpdate;
-            // If amount = 0, resolve the ticket
-            if (amountToUpdate === 0) {
-              ticketUpdate.status = 'Resolved';
-              ticketUpdate.resolved_date = new Date().toISOString();
-            }
-          }
           if (row.name) ticketUpdate.customer_name = row.name;
           if (row.mobileNumber) ticketUpdate.mobile_number = row.mobileNumber;
           if (row.assignedAgentId) ticketUpdate.assigned_agent = row.assignedAgentId;
@@ -554,20 +570,28 @@ export default function CSVImport() {
           }
 
           updatedCount++;
-          setImportProgress(10 + (updatedCount / validRows.length) * 80);
+          setImportProgress(50 + (updatedCount / validRows.length) * 40);
         }
 
-        // Update batch total_amount with the delta
-        if (amountDelta !== 0) {
-          await supabase.from('batches').update({
-            total_amount: Math.max(0, batch.total_amount + amountDelta),
-          }).eq('id', batch.id);
-        }
+        // Invalidate queries to refresh dashboards
+        queryClient.invalidateQueries({ queryKey: ['master_customers'] });
+        queryClient.invalidateQueries({ queryKey: ['tickets'] });
+        queryClient.invalidateQueries({ queryKey: ['payments'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
+        queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        queryClient.invalidateQueries({ queryKey: ['notifications_unread_count'] });
 
         setImportProgress(100);
         
-        const message = `Updated ${updatedCount} customers in batch "${batch.name}"${skippedCount > 0 ? `, skipped ${skippedCount} (not in batch)` : ''}`;
-        toast({ title: "Update Complete", description: message });
+        const messageParts = [`Updated ${updatedCount} customers`];
+        if (paymentsCreated > 0) messageParts.push(`${paymentsCreated} payments auto-created`);
+        if (ticketsResolved > 0) messageParts.push(`${ticketsResolved} tickets resolved`);
+        if (skippedCount > 0) messageParts.push(`${skippedCount} skipped`);
+        
+        toast({ 
+          title: "Batch Update Complete", 
+          description: `${messageParts.join(', ')} in batch "${batch.name}"`
+        });
         navigate('/customers');
         return;
       }

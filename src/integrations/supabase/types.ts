@@ -72,6 +72,69 @@ export type Database = {
           },
         ]
       }
+      arrears_snapshots: {
+        Row: {
+          agent_id: string | null
+          agent_ticket_count: number
+          agent_total_arrears: number
+          batch_id: string | null
+          batch_ticket_count: number
+          batch_total_arrears: number
+          created_at: string
+          id: string
+          snapshot_date: string
+          source: string
+          sync_batch_id: string | null
+          system_total_arrears: number | null
+          system_total_tickets: number | null
+        }
+        Insert: {
+          agent_id?: string | null
+          agent_ticket_count?: number
+          agent_total_arrears?: number
+          batch_id?: string | null
+          batch_ticket_count?: number
+          batch_total_arrears?: number
+          created_at?: string
+          id?: string
+          snapshot_date?: string
+          source: string
+          sync_batch_id?: string | null
+          system_total_arrears?: number | null
+          system_total_tickets?: number | null
+        }
+        Update: {
+          agent_id?: string | null
+          agent_ticket_count?: number
+          agent_total_arrears?: number
+          batch_id?: string | null
+          batch_ticket_count?: number
+          batch_total_arrears?: number
+          created_at?: string
+          id?: string
+          snapshot_date?: string
+          source?: string
+          sync_batch_id?: string | null
+          system_total_arrears?: number | null
+          system_total_tickets?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "arrears_snapshots_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "arrears_snapshots_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       arrears_sync_logs: {
         Row: {
           admin_user_id: string
@@ -83,6 +146,7 @@ export type Database = {
           new_arrears: number
           nrc_number: string
           old_arrears: number
+          source: string | null
           sync_batch_id: string
           ticket_resolved: boolean | null
         }
@@ -96,6 +160,7 @@ export type Database = {
           new_arrears?: number
           nrc_number: string
           old_arrears?: number
+          source?: string | null
           sync_batch_id: string
           ticket_resolved?: boolean | null
         }
@@ -109,6 +174,7 @@ export type Database = {
           new_arrears?: number
           nrc_number?: string
           old_arrears?: number
+          source?: string | null
           sync_batch_id?: string
           ticket_resolved?: boolean | null
         }
@@ -555,6 +621,10 @@ export type Database = {
         Returns: Json
       }
       clear_all_data: { Args: never; Returns: Json }
+      create_arrears_snapshots: {
+        Args: { p_source?: string; p_sync_batch_id: string }
+        Returns: Json
+      }
       get_admin_agent_analytics: {
         Args: { p_agent_id?: string }
         Returns: Json
@@ -627,19 +697,11 @@ export type Database = {
         }
         Returns: boolean
       }
-      process_loan_book_sync:
-        | {
-            Args: { p_sync_data: Json }
-            Returns: {
-              error: true
-            } & "Could not choose the best candidate function between: public.process_loan_book_sync(p_sync_data => text), public.process_loan_book_sync(p_sync_data => jsonb). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
-          }
-        | {
-            Args: { p_sync_data: string }
-            Returns: {
-              error: true
-            } & "Could not choose the best candidate function between: public.process_loan_book_sync(p_sync_data => text), public.process_loan_book_sync(p_sync_data => jsonb). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
-          }
+      process_batch_arrears_update: {
+        Args: { p_batch_id: string; p_updates: Json }
+        Returns: Json
+      }
+      process_loan_book_sync: { Args: { p_sync_data: string }; Returns: Json }
       safe_delete_batch: {
         Args: { p_archive?: boolean; p_batch_id: string; p_chunk_size?: number }
         Returns: Json
