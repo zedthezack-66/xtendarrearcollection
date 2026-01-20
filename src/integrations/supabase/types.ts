@@ -559,6 +559,18 @@ export type Database = {
         Args: { p_agent_id?: string }
         Returns: Json
       }
+      get_admin_full_export: {
+        Args: {
+          p_agent_id?: string
+          p_batch_id?: string
+          p_end_date?: string
+          p_export_type?: string
+          p_filter?: string
+          p_start_date?: string
+          p_worked_only?: boolean
+        }
+        Returns: Json
+      }
       get_arrears_movement_analytics: {
         Args: {
           p_agent_id?: string
