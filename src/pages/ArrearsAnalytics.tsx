@@ -68,109 +68,66 @@ export default function ArrearsAnalytics() {
   };
 
   const exportPivotReport = () => {
-    if (!analytics) return;
+    if (!analytics?.by_agent) return;
+
+    const headers = ['Agent', 'Movement Type', 'Sum of Previous Arrears', 'Sum of Current Arrears', 'Sum of Movement', 'Count'];
+    const rows: any[][] = [];
+    
+    let grandTotalPrevious = 0;
+    let grandTotalCurrent = 0;
+    let grandTotalMovement = 0;
+    let grandTotalCount = 0;
+
+    analytics.by_agent.forEach((agent: any) => {
+      // Agent summary row
+      const agentMovement = -agent.total_recovered || 0;
+      const agentCount = agent.cleared + agent.reduced + agent.increased + agent.maintained;
+      grandTotalCount += agentCount;
+      grandTotalMovement += agentMovement;
+      
+      rows.push([agent.agent_name, '', '', '', formatCurrency(agentMovement), agentCount]);
+      
+      // Movement type breakdown
+      if (agent.cleared > 0) {
+        rows.push(['  ', 'Arrears Cleared', '', '', '', agent.cleared]);
+      }
+      if (agent.increased > 0) {
+        rows.push(['  ', 'Arrears Increased', '', '', '', agent.increased]);
+      }
+      if (agent.maintained > 0) {
+        rows.push(['  ', 'Arrears Maintained', '', '', '', agent.maintained]);
+      }
+      if (agent.reduced > 0) {
+        rows.push(['  ', 'Arrears Reduced', '', '', '', agent.reduced]);
+      }
+    });
+
+    // Grand total
+    rows.push(['Grand Total', '', '', '', formatCurrency(grandTotalMovement), grandTotalCount]);
 
     const wb = XLSX.utils.book_new();
+    const wsData = [headers, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
 
-    // Sheet 1: Date A vs Date B Snapshot Comparison (Primary View)
-    if (analytics.agent_snapshots && analytics.agent_snapshots.length > 0) {
-      const snapshotHeaders = ['Agent', `Arrears (${dateRange.start})`, `Arrears (${dateRange.end})`, 'Net Movement', 'Classification'];
-      const snapshotRows: any[][] = [];
-      
-      let totalDateA = 0;
-      let totalDateB = 0;
-      let totalMovement = 0;
-
-      analytics.agent_snapshots.forEach((snapshot: any) => {
-        totalDateA += snapshot.arrears_date_a || 0;
-        totalDateB += snapshot.arrears_date_b || 0;
-        totalMovement += snapshot.net_movement || 0;
-        
-        snapshotRows.push([
-          snapshot.agent_name,
-          snapshot.arrears_date_a,
-          snapshot.arrears_date_b,
-          snapshot.net_movement,
-          snapshot.movement_classification
-        ]);
-      });
-
-      // Grand total
-      snapshotRows.push(['Grand Total', totalDateA, totalDateB, totalMovement, '-']);
-
-      const wsSnapshot = XLSX.utils.aoa_to_sheet([snapshotHeaders, ...snapshotRows]);
-      
-      // Style header
-      for (let col = 0; col < snapshotHeaders.length; col++) {
-        const cellRef = XLSX.utils.encode_cell({ r: 0, c: col });
-        if (wsSnapshot[cellRef]) {
-          wsSnapshot[cellRef].s = {
-            font: { bold: true, sz: 11, color: { rgb: "FFFFFF" } },
-            fill: { fgColor: { rgb: "4472C4" } },
-            alignment: { horizontal: "center" }
-          };
-        }
+    // Style header
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cellRef = XLSX.utils.encode_cell({ r: 0, c: col });
+      if (ws[cellRef]) {
+        ws[cellRef].s = {
+          font: { bold: true, sz: 11, color: { rgb: "FFFFFF" } },
+          fill: { fgColor: { rgb: "4472C4" } },
+          alignment: { horizontal: "center" }
+        };
       }
-
-      // Format currency columns
-      const range = XLSX.utils.decode_range(wsSnapshot['!ref'] || 'A1');
-      for (let row = 1; row <= range.e.r; row++) {
-        for (let col = 1; col <= 3; col++) {
-          const cellRef = XLSX.utils.encode_cell({ r: row, c: col });
-          if (wsSnapshot[cellRef] && typeof wsSnapshot[cellRef].v === 'number') {
-            wsSnapshot[cellRef].z = '#,##0';
-          }
-        }
-      }
-
-      wsSnapshot['!cols'] = [
-        { wch: 25 }, { wch: 22 }, { wch: 22 }, { wch: 18 }, { wch: 15 }
-      ];
-
-      XLSX.utils.book_append_sheet(wb, wsSnapshot, 'Date Comparison');
     }
 
-    // Sheet 2: Movement Breakdown by Agent (Sync Log Based)
-    if (analytics.by_agent && analytics.by_agent.length > 0) {
-      const headers = ['Agent', 'Movement Type', 'Sum of Movement', 'Count'];
-      const rows: any[][] = [];
-      
-      let grandTotalMovement = 0;
-      let grandTotalCount = 0;
+    // Column widths
+    ws['!cols'] = [
+      { wch: 25 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 18 }, { wch: 12 }
+    ];
 
-      analytics.by_agent.forEach((agent: any) => {
-        const agentMovement = -agent.total_recovered || 0;
-        const agentCount = agent.cleared + agent.reduced + agent.increased + agent.maintained;
-        grandTotalCount += agentCount;
-        grandTotalMovement += agentMovement;
-        
-        rows.push([agent.agent_name, '', agentMovement, agentCount]);
-        
-        if (agent.cleared > 0) rows.push(['  ', 'Arrears Cleared', '', agent.cleared]);
-        if (agent.increased > 0) rows.push(['  ', 'Arrears Increased', '', agent.increased]);
-        if (agent.maintained > 0) rows.push(['  ', 'Arrears Maintained', '', agent.maintained]);
-        if (agent.reduced > 0) rows.push(['  ', 'Arrears Reduced', '', agent.reduced]);
-      });
-
-      rows.push(['Grand Total', '', grandTotalMovement, grandTotalCount]);
-
-      const wsMovement = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-      
-      for (let col = 0; col < headers.length; col++) {
-        const cellRef = XLSX.utils.encode_cell({ r: 0, c: col });
-        if (wsMovement[cellRef]) {
-          wsMovement[cellRef].s = {
-            font: { bold: true, sz: 11, color: { rgb: "FFFFFF" } },
-            fill: { fgColor: { rgb: "4472C4" } },
-            alignment: { horizontal: "center" }
-          };
-        }
-      }
-
-      wsMovement['!cols'] = [{ wch: 25 }, { wch: 20 }, { wch: 18 }, { wch: 12 }];
-      XLSX.utils.book_append_sheet(wb, wsMovement, 'Movement Details');
-    }
-
+    XLSX.utils.book_append_sheet(wb, ws, 'Arrears Movement');
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
@@ -340,87 +297,14 @@ export default function ArrearsAnalytics() {
         </Card>
       </div>
 
-      {/* Date A vs Date B Snapshot Comparison - NEW PRIMARY VIEW */}
-      {analytics?.agent_snapshots && analytics.agent_snapshots.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              Arrears Movement: {dateRange.start} → {dateRange.end}
-            </CardTitle>
-            <CardDescription>
-              Total arrears per agent compared between Date A and Date B (snapshot-based)
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-primary text-primary-foreground">
-                  <TableHead className="text-primary-foreground font-bold">Agent</TableHead>
-                  <TableHead className="text-right text-primary-foreground font-bold">Arrears (Date A)</TableHead>
-                  <TableHead className="text-right text-primary-foreground font-bold">Arrears (Date B)</TableHead>
-                  <TableHead className="text-right text-primary-foreground font-bold">Net Movement</TableHead>
-                  <TableHead className="text-right text-primary-foreground font-bold">Classification</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {analytics.agent_snapshots.map((snapshot: any) => (
-                  <TableRow key={snapshot.agent_id} className="hover:bg-muted/50">
-                    <TableCell className="font-semibold">{snapshot.agent_name}</TableCell>
-                    <TableCell className="text-right font-mono">{formatCurrency(snapshot.arrears_date_a)}</TableCell>
-                    <TableCell className="text-right font-mono">{formatCurrency(snapshot.arrears_date_b)}</TableCell>
-                    <TableCell className="text-right font-mono">
-                      <span className={snapshot.net_movement < 0 ? 'text-success' : snapshot.net_movement > 0 ? 'text-destructive' : ''}>
-                        {snapshot.net_movement < 0 ? '-' : snapshot.net_movement > 0 ? '+' : ''}
-                        {formatCurrency(Math.abs(snapshot.net_movement))}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant={
-                        snapshot.movement_classification === 'Cleared' ? 'default' :
-                        snapshot.movement_classification === 'Reduced' ? 'secondary' :
-                        snapshot.movement_classification === 'Increased' ? 'destructive' : 'outline'
-                      }>
-                        {snapshot.movement_classification}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {/* Grand Total Row */}
-                <TableRow className="bg-primary/10 font-bold border-t-2">
-                  <TableCell>Grand Total</TableCell>
-                  <TableCell className="text-right font-mono">
-                    {formatCurrency(analytics.agent_snapshots.reduce((sum: number, s: any) => sum + (s.arrears_date_a || 0), 0))}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {formatCurrency(analytics.agent_snapshots.reduce((sum: number, s: any) => sum + (s.arrears_date_b || 0), 0))}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {(() => {
-                      const total = analytics.agent_snapshots.reduce((sum: number, s: any) => sum + (s.net_movement || 0), 0);
-                      return (
-                        <span className={total < 0 ? 'text-success' : total > 0 ? 'text-destructive' : ''}>
-                          {total < 0 ? '-' : total > 0 ? '+' : ''}{formatCurrency(Math.abs(total))}
-                        </span>
-                      );
-                    })()}
-                  </TableCell>
-                  <TableCell className="text-right">-</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Pivot-Style Agent Breakdown (sync log based) */}
+      {/* Pivot-Style Agent Breakdown (matches Excel sample) */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            Movement Details by Agent (Sync Logs)
+            Arrears Movement by Agent (Pivot View)
           </CardTitle>
-          <CardDescription>Click agent rows to expand movement breakdown by type</CardDescription>
+          <CardDescription>Click agent rows to expand movement breakdown (matches manual Excel reports)</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
