@@ -14,6 +14,64 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_notifications: {
+        Row: {
+          agent_id: string
+          created_at: string
+          id: string
+          is_read: boolean
+          message: string
+          related_customer_id: string | null
+          related_ticket_id: string | null
+          title: string
+          type: string
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          message: string
+          related_customer_id?: string | null
+          related_ticket_id?: string | null
+          title: string
+          type?: string
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          message?: string
+          related_customer_id?: string | null
+          related_ticket_id?: string | null
+          title?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_notifications_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_notifications_related_customer_id_fkey"
+            columns: ["related_customer_id"]
+            isOneToOne: false
+            referencedRelation: "master_customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_notifications_related_ticket_id_fkey"
+            columns: ["related_ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       arrears_sync_logs: {
         Row: {
           admin_user_id: string
@@ -544,7 +602,19 @@ export type Database = {
         }
         Returns: boolean
       }
-      process_loan_book_sync: { Args: { p_sync_data: Json }; Returns: Json }
+      process_loan_book_sync:
+        | {
+            Args: { p_sync_data: Json }
+            Returns: {
+              error: true
+            } & "Could not choose the best candidate function between: public.process_loan_book_sync(p_sync_data => text), public.process_loan_book_sync(p_sync_data => jsonb). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
+          }
+        | {
+            Args: { p_sync_data: string }
+            Returns: {
+              error: true
+            } & "Could not choose the best candidate function between: public.process_loan_book_sync(p_sync_data => text), public.process_loan_book_sync(p_sync_data => jsonb). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
+          }
       safe_delete_batch: {
         Args: { p_archive?: boolean; p_batch_id: string; p_chunk_size?: number }
         Returns: Json
