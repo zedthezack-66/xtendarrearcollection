@@ -25,6 +25,7 @@ interface SyncResult {
   updated: number;
   not_found: number;
   resolved: number;
+  payments_created: number;
   errors: string[];
 }
 
@@ -143,6 +144,7 @@ export default function LoanBookSync() {
       let totalUpdated = 0;
       let totalNotFound = 0;
       let totalResolved = 0;
+      let totalPaymentsCreated = 0;
       let allErrors: string[] = [];
       let lastBatchId = '';
 
@@ -160,6 +162,7 @@ export default function LoanBookSync() {
         totalUpdated += result.updated;
         totalNotFound += result.not_found;
         totalResolved += result.resolved;
+        totalPaymentsCreated += result.payments_created || 0;
         allErrors = [...allErrors, ...result.errors];
         lastBatchId = result.sync_batch_id;
         
@@ -175,17 +178,21 @@ export default function LoanBookSync() {
         updated: totalUpdated,
         not_found: totalNotFound,
         resolved: totalResolved,
+        payments_created: totalPaymentsCreated,
         errors: allErrors,
       });
 
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: ['master_customers'] });
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications_unread_count'] });
 
       toast({
         title: "Sync completed",
-        description: `${totalUpdated} records updated, ${totalResolved} tickets resolved`,
+        description: `${totalUpdated} records updated, ${totalResolved} tickets resolved, ${totalPaymentsCreated} payments created`,
       });
     } catch (error: any) {
       toast({
@@ -409,8 +416,12 @@ export default function LoanBookSync() {
                     <p className="text-xs text-muted-foreground">Tickets Resolved</p>
                   </div>
                   <div className="p-3 bg-muted/50 rounded-lg">
+                    <p className="text-2xl font-bold text-success">{syncResult.payments_created || 0}</p>
+                    <p className="text-xs text-muted-foreground">Payments Created</p>
+                  </div>
+                  <div className="p-3 bg-muted/50 rounded-lg col-span-2">
                     <p className="text-2xl font-bold text-warning">{syncResult.not_found}</p>
-                    <p className="text-xs text-muted-foreground">Not Found</p>
+                    <p className="text-xs text-muted-foreground">Not Found in System</p>
                   </div>
                 </div>
 
