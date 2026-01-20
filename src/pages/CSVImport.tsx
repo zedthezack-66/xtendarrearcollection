@@ -1,6 +1,5 @@
 import { useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
 import Papa from "papaparse";
 import XLSX from "xlsx-js-style";
 import { ArrowLeft, Upload, FileText, Check, X, Download, AlertCircle } from "lucide-react";
@@ -143,7 +142,6 @@ const parseAmount = (amountStr: string | undefined | null): { value: number; isE
 export default function CSVImport() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   const { user, isAdmin } = useAuth();
   const { data: masterCustomers = [] } = useMasterCustomers();
   const { data: profiles = [] } = useProfiles();
@@ -451,7 +449,7 @@ export default function CSVImport() {
 
       // =====================================================
       // MODULE B: UPDATE EXISTING BATCH INFO (update mode)
-      // Uses RPC for arrears changes (creates payments, logs movements)
+      // Only updates existing customers in the batch - NO new customers/tickets
       // =====================================================
       if (uploadMode === "update") {
         // Fetch existing batch_customers for this batch
@@ -467,57 +465,32 @@ export default function CSVImport() {
         let updatedCount = 0;
         let skippedCount = 0;
         let amountDelta = 0;
-        let paymentsCreated = 0;
-        let ticketsResolved = 0;
 
-        // First, collect all arrears updates for the RPC
-        const arrearsUpdates: Array<{ nrc_number: string; amount_owed: number }> = [];
-        
         for (const row of validRows) {
+          // Skip if NRC is NOT in this batch (update mode only updates existing)
           if (!existingNrcsInBatch.has(row.nrcNumber)) {
             skippedCount++;
             continue;
           }
-          
-          // If explicit amount provided, queue for RPC processing
-          if (!row.amountOwedIsEmpty) {
-            arrearsUpdates.push({
-              nrc_number: row.nrcNumber,
-              amount_owed: row.amountOwed,
-            });
-          }
-        }
-        
-        setImportProgress(20);
-        
-        // Process arrears updates via RPC (creates payments, logs, notifications)
-        if (arrearsUpdates.length > 0) {
-          const { data: rpcResult, error: rpcError } = await supabase.rpc('process_batch_arrears_update', {
-            p_batch_id: batch.id,
-            p_updates: JSON.stringify(arrearsUpdates),
-          });
-          
-          if (rpcError) {
-            console.error('Arrears update RPC error:', rpcError);
-            // Fall back to direct updates if RPC fails
-          } else if (rpcResult) {
-            const result = rpcResult as { 
-              updated?: number; 
-              payments_created?: number; 
-              resolved?: number;
-            };
-            paymentsCreated = result.payments_created || 0;
-            ticketsResolved = result.resolved || 0;
-          }
-        }
-        
-        setImportProgress(50);
-        
-        // Now handle non-financial updates (name, contact info, etc.)
-        for (const row of validRows) {
-          if (!existingNrcsInBatch.has(row.nrcNumber)) continue;
 
           const masterCustomerId = existingNrcsInBatch.get(row.nrcNumber);
+          
+          // Fetch current values to calculate amount delta (only if we're updating amount)
+          let amountToUpdate: number | null = null;
+          
+          if (!row.amountOwedIsEmpty) {
+            // Explicit amount value (including 0) - will update
+            const { data: currentBatchCustomer } = await supabase
+              .from('batch_customers')
+              .select('amount_owed')
+              .eq('batch_id', batch.id)
+              .eq('nrc_number', row.nrcNumber)
+              .single();
+            
+            const oldAmount = currentBatchCustomer?.amount_owed || 0;
+            amountDelta += row.amountOwed - oldAmount;
+            amountToUpdate = row.amountOwed;
+          }
 
           // Update master_customers with COALESCE pattern (non-empty only)
           const masterUpdate: Record<string, any> = {};
@@ -543,8 +516,11 @@ export default function CSVImport() {
             await supabase.from('master_customers').update(masterUpdate).eq('id', masterCustomerId);
           }
 
-          // Update batch_customers (non-amount fields)
+          // Update batch_customers - only update amount if explicit value provided
           const batchCustomerUpdate: Record<string, any> = {};
+          if (amountToUpdate !== null) {
+            batchCustomerUpdate.amount_owed = amountToUpdate;
+          }
           if (row.name) batchCustomerUpdate.name = row.name;
           if (row.mobileNumber) batchCustomerUpdate.mobile_number = row.mobileNumber;
           if (row.arrearStatus) batchCustomerUpdate.arrear_status = row.arrearStatus;
@@ -557,8 +533,16 @@ export default function CSVImport() {
               .eq('nrc_number', row.nrcNumber);
           }
 
-          // Update ticket (non-amount fields)
+          // Update ticket - only update amount if explicit value provided
           const ticketUpdate: Record<string, any> = {};
+          if (amountToUpdate !== null) {
+            ticketUpdate.amount_owed = amountToUpdate;
+            // If amount = 0, resolve the ticket
+            if (amountToUpdate === 0) {
+              ticketUpdate.status = 'Resolved';
+              ticketUpdate.resolved_date = new Date().toISOString();
+            }
+          }
           if (row.name) ticketUpdate.customer_name = row.name;
           if (row.mobileNumber) ticketUpdate.mobile_number = row.mobileNumber;
           if (row.assignedAgentId) ticketUpdate.assigned_agent = row.assignedAgentId;
@@ -570,28 +554,20 @@ export default function CSVImport() {
           }
 
           updatedCount++;
-          setImportProgress(50 + (updatedCount / validRows.length) * 40);
+          setImportProgress(10 + (updatedCount / validRows.length) * 80);
         }
 
-        // Invalidate queries to refresh dashboards
-        queryClient.invalidateQueries({ queryKey: ['master_customers'] });
-        queryClient.invalidateQueries({ queryKey: ['tickets'] });
-        queryClient.invalidateQueries({ queryKey: ['payments'] });
-        queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
-        queryClient.invalidateQueries({ queryKey: ['notifications'] });
-        queryClient.invalidateQueries({ queryKey: ['notifications_unread_count'] });
+        // Update batch total_amount with the delta
+        if (amountDelta !== 0) {
+          await supabase.from('batches').update({
+            total_amount: Math.max(0, batch.total_amount + amountDelta),
+          }).eq('id', batch.id);
+        }
 
         setImportProgress(100);
         
-        const messageParts = [`Updated ${updatedCount} customers`];
-        if (paymentsCreated > 0) messageParts.push(`${paymentsCreated} payments auto-created`);
-        if (ticketsResolved > 0) messageParts.push(`${ticketsResolved} tickets resolved`);
-        if (skippedCount > 0) messageParts.push(`${skippedCount} skipped`);
-        
-        toast({ 
-          title: "Batch Update Complete", 
-          description: `${messageParts.join(', ')} in batch "${batch.name}"`
-        });
+        const message = `Updated ${updatedCount} customers in batch "${batch.name}"${skippedCount > 0 ? `, skipped ${skippedCount} (not in batch)` : ''}`;
+        toast({ title: "Update Complete", description: message });
         navigate('/customers');
         return;
       }
@@ -875,24 +851,6 @@ export default function CSVImport() {
     return profile?.display_name || profile?.full_name || '-';
   };
 
-  const getModeTitle = () => {
-    switch (uploadMode) {
-      case "new": return "Create New Batch";
-      case "existing": return "Add New Clients to Batch";
-      case "update": return "Update Batch Data";
-      default: return "Batch Import";
-    }
-  };
-
-  const getModeDescription = () => {
-    switch (uploadMode) {
-      case "new": return "Upload CSV/Excel to create a new batch with customers and tickets";
-      case "existing": return "Add only new customers (by NRC) to an existing batch";
-      case "update": return "Update existing customer data within a batch - no new customers added";
-      default: return "Upload CSV/Excel to manage batch data";
-    }
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -900,8 +858,8 @@ export default function CSVImport() {
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-foreground">{getModeTitle()}</h1>
-          <p className="text-muted-foreground">{getModeDescription()}</p>
+          <h1 className="text-2xl font-bold text-foreground">Create New Batch</h1>
+          <p className="text-muted-foreground">Upload CSV/Excel to create a new batch with customers and tickets</p>
         </div>
         <Button variant="outline" onClick={downloadSample}>
           <Download className="h-4 w-4 mr-2" />
@@ -952,93 +910,43 @@ export default function CSVImport() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Upload Mode</CardTitle>
-          <CardDescription>Choose the appropriate action for your file</CardDescription>
+          <CardTitle>Batch Details</CardTitle>
+          <CardDescription>Choose to create a new batch, add new clients, or update existing client data</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-3">
-            <button
-              type="button"
-              onClick={() => setUploadMode("new")}
-              className={`p-4 rounded-lg border-2 text-left transition-colors ${
-                uploadMode === "new" 
-                  ? "border-primary bg-primary/5" 
-                  : "border-border hover:border-muted-foreground/50"
-              }`}
-            >
-              <div className="font-semibold text-foreground mb-1">Create New Batch</div>
-              <p className="text-xs text-muted-foreground">
-                Start a new collection period with fresh customer data
-              </p>
-              <div className="mt-2 flex flex-wrap gap-1">
-                <Badge variant="secondary" className="text-[10px]">Creates customers</Badge>
-                <Badge variant="secondary" className="text-[10px]">Creates tickets</Badge>
-              </div>
-            </button>
-            
-            <button
-              type="button"
-              onClick={() => setUploadMode("existing")}
-              className={`p-4 rounded-lg border-2 text-left transition-colors ${
-                uploadMode === "existing" 
-                  ? "border-primary bg-primary/5" 
-                  : "border-border hover:border-muted-foreground/50"
-              }`}
-            >
-              <div className="font-semibold text-foreground mb-1">Add New Clients</div>
-              <p className="text-xs text-muted-foreground">
-                Add only NEW customers to an existing batch. Existing NRCs skipped.
-              </p>
-              <div className="mt-2 flex flex-wrap gap-1">
-                <Badge variant="outline" className="text-[10px] text-success border-success">New only</Badge>
-                <Badge variant="secondary" className="text-[10px]">Skips duplicates</Badge>
-              </div>
-            </button>
-            
-            <button
-              type="button"
-              onClick={() => setUploadMode("update")}
-              className={`p-4 rounded-lg border-2 text-left transition-colors ${
-                uploadMode === "update" 
-                  ? "border-primary bg-primary/5" 
-                  : "border-border hover:border-muted-foreground/50"
-              }`}
-            >
-              <div className="font-semibold text-foreground mb-1">Update Existing Data</div>
-              <p className="text-xs text-muted-foreground">
-                Update info for customers already in batch. No new customers added.
-              </p>
-              <div className="mt-2 flex flex-wrap gap-1">
-                <Badge variant="outline" className="text-[10px] text-warning border-warning">Updates only</Badge>
-                <Badge variant="secondary" className="text-[10px]">Preserves notes</Badge>
-              </div>
-            </button>
-          </div>
+          <RadioGroup value={uploadMode} onValueChange={(v) => setUploadMode(v as "new" | "existing" | "update")} className="flex flex-wrap gap-4">
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="new" id="new-batch" />
+              <Label htmlFor="new-batch">Create New Batch</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="existing" id="existing-batch" />
+              <Label htmlFor="existing-batch">Add to Existing Batch</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="update" id="update-batch" />
+              <Label htmlFor="update-batch">Update Existing Batch Info</Label>
+            </div>
+          </RadioGroup>
 
           {uploadMode === "new" && (
-            <Alert className="bg-primary/5 border-primary/20">
-              <AlertCircle className="h-4 w-4 text-primary" />
-              <AlertDescription>
-                <strong>New Batch:</strong> Creates a fresh batch. If a customer's NRC already exists in the master registry, they'll get a new ticket in this batch (no duplicate customers).
-              </AlertDescription>
+            <Alert className="bg-muted/50">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>Creates a new batch with all uploaded customers. Existing NRCs in master will get new tickets in this batch.</AlertDescription>
             </Alert>
           )}
           
           {uploadMode === "existing" && (
-            <Alert className="bg-success/5 border-success/20">
-              <AlertCircle className="h-4 w-4 text-success" />
-              <AlertDescription>
-                <strong>Add New Only:</strong> ONLY customers with NEW NRCs will be added. Any NRC already in the system is completely skipped — no updates, no errors.
-              </AlertDescription>
+            <Alert className="bg-muted/50">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription><strong>Only NEW customers</strong> (by NRC) will be added. Existing NRCs are skipped entirely — no updates, no duplicates.</AlertDescription>
             </Alert>
           )}
           
           {uploadMode === "update" && (
-            <Alert className="bg-warning/5 border-warning/20">
-              <AlertCircle className="h-4 w-4 text-warning" />
-              <AlertDescription>
-                <strong>Update Existing:</strong> Updates only. Customer must already exist in the selected batch. Empty cells and #N/A values are ignored (preserve existing data). Amount Owed = 0 is valid and will auto-resolve tickets.
-              </AlertDescription>
+            <Alert className="bg-muted/50">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription><strong>Updates only.</strong> Customer must already exist in the selected batch. Empty cells won't overwrite existing data. Amount Owed = 0 is valid and will resolve tickets.</AlertDescription>
             </Alert>
           )}
 

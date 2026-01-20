@@ -18,8 +18,6 @@ interface ArrearsMovementSummary {
   maintained: number;
   total_tickets_resolved: number;
   total_change_amount: number;
-  total_previous_arrears: number;
-  total_current_arrears: number;
 }
 
 interface AgentArrearsBreakdown {
@@ -31,19 +29,6 @@ interface AgentArrearsBreakdown {
   maintained: number;
   tickets_resolved: number;
   total_recovered: number;
-  previous_arrears_total: number;
-  current_arrears_total: number;
-  arrears_at_date_a: number;
-  arrears_at_date_b: number;
-}
-
-interface AgentSnapshot {
-  agent_id: string;
-  agent_name: string;
-  arrears_date_a: number;
-  arrears_date_b: number;
-  net_movement: number;
-  movement_classification: string;
 }
 
 interface RecentSync {
@@ -56,7 +41,6 @@ interface RecentSync {
 interface ArrearsMovementAnalytics {
   summary: ArrearsMovementSummary;
   by_agent: AgentArrearsBreakdown[];
-  agent_snapshots: AgentSnapshot[];
   recent_syncs: RecentSync[];
   date_range: {
     start_date: string;
