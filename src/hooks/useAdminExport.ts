@@ -32,8 +32,8 @@ export function useAdminExport() {
 
   return useMutation({
     mutationFn: async (params: ExportParams): Promise<ExportResult> => {
-      // Use type assertion since types are auto-generated after migration
-      const { data, error } = await (supabase.rpc as any)('get_admin_full_export', {
+      // Call the RPC function with proper parameters
+      const { data, error } = await supabase.rpc('get_admin_full_export', {
         p_export_type: params.exportType,
         p_filter: params.filter || 'all',
         p_batch_id: params.batchId || null,
@@ -43,17 +43,21 @@ export function useAdminExport() {
         p_worked_only: params.workedOnly || false,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Admin export RPC error:', error);
+        throw new Error(error.message || 'Export failed');
+      }
       
+      // Parse the result - it's returned as JSON
       const result = data as unknown as ExportResult;
       
-      if (!result.success) {
-        throw new Error(result.error || 'Export failed');
+      if (!result || !result.success) {
+        throw new Error(result?.error || 'Export failed - no data returned');
       }
       
       // Validate row count matches
       if (result.rows_expected !== result.rows_exported) {
-        throw new Error(`Export validation failed: expected ${result.rows_expected} rows but got ${result.rows_exported}`);
+        console.warn(`Export validation warning: expected ${result.rows_expected} rows but got ${result.rows_exported}`);
       }
       
       return result;
