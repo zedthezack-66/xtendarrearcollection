@@ -72,6 +72,42 @@ export type Database = {
           },
         ]
       }
+      amount_owed_audit_logs: {
+        Row: {
+          changed_by: string
+          created_at: string
+          id: string
+          master_customer_id: string
+          new_amount: number
+          notes: string | null
+          old_amount: number
+          source: string
+          ticket_id: string
+        }
+        Insert: {
+          changed_by: string
+          created_at?: string
+          id?: string
+          master_customer_id: string
+          new_amount: number
+          notes?: string | null
+          old_amount: number
+          source?: string
+          ticket_id: string
+        }
+        Update: {
+          changed_by?: string
+          created_at?: string
+          id?: string
+          master_customer_id?: string
+          new_amount?: number
+          notes?: string | null
+          old_amount?: number
+          source?: string
+          ticket_id?: string
+        }
+        Relationships: []
+      }
       arrears_snapshots: {
         Row: {
           agent_id: string | null
@@ -720,6 +756,15 @@ export type Database = {
         Args: {
           p_target_agent_id: string
           p_target_batch_id: string
+          p_ticket_id: string
+        }
+        Returns: Json
+      }
+      update_amount_owed: {
+        Args: {
+          p_new_amount: number
+          p_notes?: string
+          p_source?: string
           p_ticket_id: string
         }
         Returns: Json

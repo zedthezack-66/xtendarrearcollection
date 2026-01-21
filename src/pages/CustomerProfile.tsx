@@ -18,6 +18,7 @@ import { useMasterCustomers, useTickets, usePayments, useBatchCustomers, useBatc
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { TicketStatusDropdowns } from "@/components/TicketStatusDropdowns";
+import { EditableAmountOwed } from "@/components/EditableAmountOwed";
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW', minimumFractionDigits: 0 }).format(amount);
 const formatDate = (date: string) => new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -43,7 +44,7 @@ const getTicketStatusBadge = (status: string) => {
 export default function CustomerProfile() {
   const { id } = useParams();
   const { toast } = useToast();
-  const { isAdmin } = useAuth();
+  const { isAdmin, profile } = useAuth();
   const { data: masterCustomers = [] } = useMasterCustomers();
   const { data: tickets = [] } = useTickets();
   const { data: payments = [] } = usePayments();
@@ -436,7 +437,19 @@ export default function CustomerProfile() {
             <CardHeader><CardTitle className="text-lg">Financial Summary</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between"><span className="text-muted-foreground">Ticket Status</span>{getTicketStatusBadge(ticketStatus)}</div>
-              <div className="flex items-center justify-between"><span className="text-muted-foreground">Amount Owed</span><span className="font-bold text-lg text-destructive">{formatCurrency(amountOwed)}</span></div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Amount Owed</span>
+                {customerTicket ? (
+                  <EditableAmountOwed
+                    ticketId={customerTicket.id}
+                    currentAmount={amountOwed}
+                    canEdit={isAdmin || customerTicket.assigned_agent === profile?.id}
+                    source="customer_profile"
+                  />
+                ) : (
+                  <span className="font-bold text-lg text-destructive">{formatCurrency(amountOwed)}</span>
+                )}
+              </div>
               <div className="flex items-center justify-between"><span className="text-muted-foreground">Total Paid</span><span className="font-bold text-lg text-success">{formatCurrency(totalPaid)}</span></div>
               <div className="flex items-center justify-between border-t pt-4"><span className="text-muted-foreground">Remaining Balance</span><span className={`font-bold text-lg ${remainingBalance > 0 ? 'text-destructive' : 'text-success'}`}>{formatCurrency(remainingBalance)}</span></div>
             </CardContent>
