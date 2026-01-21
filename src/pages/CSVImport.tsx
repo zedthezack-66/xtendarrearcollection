@@ -910,45 +910,67 @@ export default function CSVImport() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Batch Details</CardTitle>
-          <CardDescription>Choose to create a new batch, add new clients, or update existing client data</CardDescription>
+          <CardTitle>Upload Mode</CardTitle>
+          <CardDescription>Choose how this upload should be processed</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <RadioGroup value={uploadMode} onValueChange={(v) => setUploadMode(v as "new" | "existing" | "update")} className="flex flex-wrap gap-4">
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="new" id="new-batch" />
-              <Label htmlFor="new-batch">Create New Batch</Label>
+          <RadioGroup 
+            value={uploadMode} 
+            onValueChange={(v) => setUploadMode(v as "new" | "existing" | "update")} 
+            className="grid gap-3"
+          >
+            {/* New Batch Option */}
+            <div className={`flex items-start space-x-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${uploadMode === "new" ? "border-primary bg-primary/5" : "border-muted hover:bg-muted/50"}`}>
+              <RadioGroupItem value="new" id="new-batch" className="mt-1" />
+              <div className="flex-1">
+                <Label htmlFor="new-batch" className="text-base font-medium cursor-pointer">
+                  🆕 Create New Batch
+                </Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Creates a fresh batch. All uploaded customers will be added. If an NRC already exists in the system, a new ticket will be created for this batch.
+                </p>
+              </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="existing" id="existing-batch" />
-              <Label htmlFor="existing-batch">Add to Existing Batch</Label>
+            
+            {/* Add to Existing Option */}
+            <div className={`flex items-start space-x-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${uploadMode === "existing" ? "border-primary bg-primary/5" : "border-muted hover:bg-muted/50"}`}>
+              <RadioGroupItem value="existing" id="existing-batch" className="mt-1" />
+              <div className="flex-1">
+                <Label htmlFor="existing-batch" className="text-base font-medium cursor-pointer">
+                  ➕ Add to Existing Batch
+                </Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Adds <strong>only NEW customers</strong> (by NRC) to an existing batch. Customers already in the batch are skipped — no duplicates, no overwrites.
+                </p>
+              </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="update" id="update-batch" />
-              <Label htmlFor="update-batch">Update Existing Batch Info</Label>
+            
+            {/* Update Existing Option */}
+            <div className={`flex items-start space-x-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${uploadMode === "update" ? "border-primary bg-primary/5" : "border-muted hover:bg-muted/50"}`}>
+              <RadioGroupItem value="update" id="update-batch" className="mt-1" />
+              <div className="flex-1">
+                <Label htmlFor="update-batch" className="text-base font-medium cursor-pointer">
+                  🔄 Update Existing Batch Info
+                </Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Updates data for customers <strong>already in the batch</strong>. Empty cells or #N/A values won't overwrite existing data. Amount Owed = 0 clears arrears and resolves tickets.
+                </p>
+              </div>
             </div>
           </RadioGroup>
+        </CardContent>
+      </Card>
 
-          {uploadMode === "new" && (
-            <Alert className="bg-muted/50">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>Creates a new batch with all uploaded customers. Existing NRCs in master will get new tickets in this batch.</AlertDescription>
-            </Alert>
-          )}
-          
-          {uploadMode === "existing" && (
-            <Alert className="bg-muted/50">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription><strong>Only NEW customers</strong> (by NRC) will be added. Existing NRCs are skipped entirely — no updates, no duplicates.</AlertDescription>
-            </Alert>
-          )}
-          
-          {uploadMode === "update" && (
-            <Alert className="bg-muted/50">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription><strong>Updates only.</strong> Customer must already exist in the selected batch. Empty cells won't overwrite existing data. Amount Owed = 0 is valid and will resolve tickets.</AlertDescription>
-            </Alert>
-          )}
+      <Card>
+        <CardHeader>
+          <CardTitle>Batch Details</CardTitle>
+          <CardDescription>
+            {uploadMode === "new" 
+              ? "Enter details for your new batch" 
+              : "Select an existing batch to modify"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
 
           {uploadMode === "new" ? (
             <div className="grid gap-4 sm:grid-cols-2">

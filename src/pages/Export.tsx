@@ -41,6 +41,7 @@ export default function Export() {
   
   const [exportFilter, setExportFilter] = useState<ExportFilter>('all');
   const [selectedBatchId, setSelectedBatchId] = useState<string>('all');
+  const [selectedAgentId, setSelectedAgentId] = useState<string>('all'); // Admin agent filter
   const [exportAll, setExportAll] = useState(false);
   
   // Date range state
@@ -111,6 +112,11 @@ export default function Export() {
   const getFilteredMasterCustomers = () => {
     let filtered = masterCustomers;
     
+    // Admin agent filter - admins can filter by specific agent or see all
+    if (isAdmin && selectedAgentId !== 'all') {
+      filtered = filtered.filter(c => c.assigned_agent === selectedAgentId);
+    }
+    
     // Apply date range filter based on created_at
     if (startDate && endDate) {
       filtered = filtered.filter(c => isInDateRange(c.created_at));
@@ -132,6 +138,11 @@ export default function Export() {
 
   const getFilteredBatchCustomers = () => {
     let filtered = batchCustomers;
+    
+    // Admin agent filter - admins can filter by specific agent or see all
+    if (isAdmin && selectedAgentId !== 'all') {
+      filtered = filtered.filter(bc => bc.assigned_agent_id === selectedAgentId);
+    }
     
     // Apply date range filter based on created_at
     if (startDate && endDate) {
@@ -156,13 +167,16 @@ export default function Export() {
     return filtered;
   };
 
-  const downloadStyledExcel = (data: any[][], headers: string[], filename: string, resolvedRows: number[]) => {
+  // Row status map: 'resolved' | 'in_progress' | 'open'
+  type RowStatus = 'resolved' | 'in_progress' | 'open';
+  
+  const downloadStyledExcel = (data: any[][], headers: string[], filename: string, rowStatuses: Map<number, RowStatus>) => {
     // Create workbook and worksheet
     const wb = XLSX.utils.book_new();
     const wsData = [headers, ...data];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
 
-    // Set generous column widths
+    // Set generous column widths - FIXED order, never shifts
     const colWidths = headers.map((header) => {
       const headerLen = header.length;
       // Make financial columns wider
@@ -204,15 +218,30 @@ export default function Export() {
       }
     }
 
-    // Style data rows - highlight resolved/fully paid rows in green
+    // Status color mapping:
+    // 🟢 Resolved = Green (C6EFCE)
+    // 🔵 In Progress = Blue (BDD7EE)
+    // 🔴 Open = Light Red (FFC7CE)
+    const getRowColor = (status: RowStatus | undefined): string => {
+      switch (status) {
+        case 'resolved': return "C6EFCE"; // Green
+        case 'in_progress': return "BDD7EE"; // Blue
+        case 'open': return "FFC7CE"; // Light Red
+        default: return "FFFFFF"; // White (no status)
+      }
+    };
+
+    // Style data rows with status-based coloring
     for (let row = 1; row <= range.e.r; row++) {
-      const isResolved = resolvedRows.includes(row);
+      const status = rowStatuses.get(row);
+      const fillColor = getRowColor(status);
+      
       for (let col = range.s.c; col <= range.e.c; col++) {
         const cellRef = XLSX.utils.encode_cell({ r: row, c: col });
         if (ws[cellRef]) {
           ws[cellRef].s = {
             font: { sz: 10 },
-            fill: isResolved ? { fgColor: { rgb: "C6EFCE" } } : { fgColor: { rgb: "FFFFFF" } },
+            fill: { fgColor: { rgb: fillColor } },
             alignment: { vertical: "center", wrapText: true },
             border: {
               top: { style: "thin", color: { rgb: "D9D9D9" } },
@@ -283,7 +312,7 @@ export default function Export() {
       'Ticket Arrear Status', 'Ticket Payment Status', 'Employer Reason for Arrears'
     ];
     
-    const resolvedRows: number[] = [];
+    const rowStatuses = new Map<number, RowStatus>();
     const rows = filteredCustomers.map((customer: any, index: number) => {
       const ticket = tickets.find((t) => t.master_customer_id === customer.id);
       // Calculate total collected from payments for this customer
@@ -295,10 +324,14 @@ export default function Export() {
       // Get last payment date (computed or stored)
       const lastPaymentDate = getLastPaymentDate(customer.id, customer.last_payment_date);
       
-      // Track resolved/fully paid rows for highlighting
-      const isResolved = customer.payment_status === 'Fully Paid' || ticket?.status === 'Resolved';
-      if (isResolved) {
-        resolvedRows.push(index + 1); // +1 because of header row
+      // Track row status for coloring: 🟢 Resolved, 🔵 In Progress, 🔴 Open
+      const ticketStatus = ticket?.status || 'Open';
+      if (customer.payment_status === 'Fully Paid' || ticketStatus === 'Resolved') {
+        rowStatuses.set(index + 1, 'resolved'); // +1 for header row
+      } else if (ticketStatus === 'In Progress') {
+        rowStatuses.set(index + 1, 'in_progress');
+      } else {
+        rowStatuses.set(index + 1, 'open');
       }
       
       // Calculate outstanding dynamically - never blank
@@ -338,7 +371,7 @@ export default function Export() {
       ];
     });
 
-    downloadStyledExcel(rows, headers, `master-customers-${exportFilter}${exportAll ? '-all' : '-worked'}`, resolvedRows);
+    downloadStyledExcel(rows, headers, `master-customers-${exportFilter}${exportAll ? '-all' : '-worked'}`, rowStatuses);
     toast({ title: "Export Complete", description: `Successfully exported ${filteredCustomers.length} master customers to Excel` });
   };
 
@@ -359,7 +392,7 @@ export default function Export() {
       'Ticket Arrear Status', 'Ticket Payment Status', 'Employer Reason for Arrears'
     ];
     
-    const resolvedRows: number[] = [];
+    const rowStatuses = new Map<number, RowStatus>();
     const rows = filteredCustomers.map((bc: any, index: number) => {
       const master = masterCustomers.find(mc => mc.id === bc.master_customer_id) as any;
       const batch = batches.find(b => b.id === bc.batch_id);
@@ -373,10 +406,14 @@ export default function Export() {
       // Get last payment date - prefer batch_customer, fallback to master, then compute
       const lastPaymentDate = getLastPaymentDate(bc.master_customer_id, bc.last_payment_date || master?.last_payment_date);
       
-      // Track resolved/fully paid rows for highlighting
-      const isResolved = master?.payment_status === 'Fully Paid' || ticket?.status === 'Resolved';
-      if (isResolved) {
-        resolvedRows.push(index + 1); // +1 because of header row
+      // Track row status for coloring: 🟢 Resolved, 🔵 In Progress, 🔴 Open
+      const ticketStatus = ticket?.status || 'Open';
+      if (master?.payment_status === 'Fully Paid' || ticketStatus === 'Resolved') {
+        rowStatuses.set(index + 1, 'resolved'); // +1 for header row
+      } else if (ticketStatus === 'In Progress') {
+        rowStatuses.set(index + 1, 'in_progress');
+      } else {
+        rowStatuses.set(index + 1, 'open');
       }
       
       // Calculate outstanding dynamically - never blank
@@ -418,7 +455,7 @@ export default function Export() {
     });
 
     const batchSuffix = selectedBatchId === 'all' ? 'all-batches' : batches.find(b => b.id === selectedBatchId)?.name || selectedBatchId;
-    downloadStyledExcel(rows, headers, `batch-export-${batchSuffix}-${exportFilter}${exportAll ? '-all' : '-worked'}`, resolvedRows);
+    downloadStyledExcel(rows, headers, `batch-export-${batchSuffix}-${exportFilter}${exportAll ? '-all' : '-worked'}`, rowStatuses);
     toast({ title: "Export Complete", description: `Successfully exported ${filteredCustomers.length} batch customers to Excel` });
   };
 
@@ -702,6 +739,39 @@ export default function Export() {
         <h1 className="text-2xl font-bold text-foreground">Export Data</h1>
         <p className="text-muted-foreground">Download customer and collection data as CSV or PDF</p>
       </div>
+
+      {/* Admin Agent Filter - Full visibility for admins */}
+      {isAdmin && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Users className="h-5 w-5" />
+              Agent Filter (Admin)
+            </CardTitle>
+            <CardDescription>Filter exports by agent or view all system data</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select agent" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Agents (System-Wide)</SelectItem>
+                {profiles.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.display_name || p.full_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedAgentId !== 'all' && (
+              <p className="text-sm text-muted-foreground mt-2">
+                Filtering by: {profiles.find(p => p.id === selectedAgentId)?.display_name || profiles.find(p => p.id === selectedAgentId)?.full_name}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="pt-6 space-y-4">
