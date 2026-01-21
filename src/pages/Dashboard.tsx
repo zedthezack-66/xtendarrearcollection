@@ -1,4 +1,4 @@
-import { Users, AlertTriangle, Ticket, TrendingUp, CheckCircle, Loader2, DollarSign, MessageSquare } from "lucide-react";
+import { Users, AlertTriangle, Ticket, TrendingUp, CheckCircle, Loader2, DollarSign, MessageSquare, Clock } from "lucide-react";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useUIStore } from "@/store/useUIStore";
 import { useBatches, useProfiles } from "@/hooks/useSupabaseData";
 import { useDashboardStats, useCollectionsByAgent, useRecentTickets, useTopDefaulters } from "@/hooks/useDashboardData";
+import { PendingConfirmationsWidget } from "@/components/PendingConfirmationsWidget";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   BarChart,
@@ -57,8 +58,10 @@ function StatsWidget({ batchId }: { batchId: string | null }) {
   // Interactions = In Progress + Resolved tickets
   const totalInteractions = (stats?.in_progress_tickets || 0) + (stats?.resolved_tickets || 0);
 
+  const pendingConfirmation = stats?.pending_confirmation_tickets || 0;
+
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
       <StatCard
         title="Total Customers"
         value={stats?.total_customers || 0}
@@ -95,6 +98,14 @@ function StatsWidget({ batchId }: { batchId: string | null }) {
         icon={CheckCircle}
         variant="success"
       />
+      {pendingConfirmation > 0 && (
+        <StatCard
+          title="Pending Confirm"
+          value={pendingConfirmation}
+          icon={Clock}
+          variant="warning"
+        />
+      )}
       <StatCard
         title="Interactions"
         value={totalInteractions}
@@ -392,6 +403,9 @@ export default function Dashboard() {
            isAdmin ? 'Overview of all loan collections' : 'Your assigned collections'}
         </p>
       </div>
+
+      {/* Pending Confirmations Widget - shows only if there are pending items */}
+      <PendingConfirmationsWidget isAdmin={isAdmin} />
 
       {/* Each widget loads independently - no blocking */}
       <StatsWidget batchId={activeBatchId} />
