@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { Search, MoreHorizontal, Eye, CheckCircle, PlayCircle, Loader2, Phone, Trash2, AlertTriangle, ChevronDown, ChevronUp, MessageSquare, Building, User2, Clock } from "lucide-react";
+import { Search, MoreHorizontal, Eye, CheckCircle, PlayCircle, Loader2, Phone, Trash2, AlertTriangle, ChevronDown, ChevronUp, MessageSquare, Building, User2, Clock, RotateCcw, CheckCheck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -473,8 +473,28 @@ export default function Tickets() {
                               <DropdownMenuContent align="end" className="z-50">
                                 <DropdownMenuItem asChild><Link to={`/customers/${ticket.master_customer_id}`}><Eye className="h-4 w-4 mr-2" />View Customer</Link></DropdownMenuItem>
                                 {ticket.mobile_number && <DropdownMenuItem asChild><a href={`tel:${ticket.mobile_number}`}><Phone className="h-4 w-4 mr-2" />Call {ticket.mobile_number}</a></DropdownMenuItem>}
-                                {ticket.status === 'Open' && <DropdownMenuItem onClick={() => updateTicket.mutate({ id: ticket.id, status: 'In Progress' })}><PlayCircle className="h-4 w-4 mr-2" />Mark In Progress</DropdownMenuItem>}
-                                {ticket.status !== 'Resolved' && (
+                                
+                                {/* Pending Confirmation: Show Confirm Resolution */}
+                                {ticket.status === 'Pending Confirmation' && (
+                                  <DropdownMenuItem 
+                                    onClick={() => confirmResolution.mutate(ticket.id)}
+                                    disabled={confirmResolution.isPending}
+                                    className="text-success focus:text-success"
+                                  >
+                                    <CheckCheck className="h-4 w-4 mr-2" />
+                                    Confirm Resolution
+                                  </DropdownMenuItem>
+                                )}
+                                
+                                {/* Open: Show Mark In Progress */}
+                                {ticket.status === 'Open' && (
+                                  <DropdownMenuItem onClick={() => updateTicket.mutate({ id: ticket.id, status: 'In Progress' })}>
+                                    <PlayCircle className="h-4 w-4 mr-2" />Mark In Progress
+                                  </DropdownMenuItem>
+                                )}
+                                
+                                {/* Not Resolved: Show Mark Resolved */}
+                                {ticket.status !== 'Resolved' && ticket.status !== 'Pending Confirmation' && (
                                   <DropdownMenuItem 
                                     onClick={() => handleResolveTicket(ticket.id)}
                                     disabled={balance > 0}
@@ -484,6 +504,19 @@ export default function Tickets() {
                                     Mark Resolved {balance > 0 && <span className="ml-1 text-xs text-destructive">(Blocked)</span>}
                                   </DropdownMenuItem>
                                 )}
+                                
+                                {/* Resolved: Show Reopen Ticket */}
+                                {ticket.status === 'Resolved' && (
+                                  <DropdownMenuItem 
+                                    onClick={() => reopenTicket.mutate({ ticketId: ticket.id })}
+                                    disabled={reopenTicket.isPending}
+                                    className="text-warning focus:text-warning"
+                                  >
+                                    <RotateCcw className="h-4 w-4 mr-2" />
+                                    Reopen Ticket
+                                  </DropdownMenuItem>
+                                )}
+                                
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem 
                                   className="text-destructive focus:text-destructive"
