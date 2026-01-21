@@ -9,6 +9,7 @@ interface DashboardStats {
   open_tickets: number;
   in_progress_tickets: number;
   resolved_tickets: number;
+  pending_confirmation_tickets: number;
 }
 
 interface ArrearsMovementSummary {

@@ -621,6 +621,10 @@ export type Database = {
         Returns: Json
       }
       clear_all_data: { Args: never; Returns: Json }
+      confirm_ticket_resolution: {
+        Args: { p_ticket_id: string }
+        Returns: Json
+      }
       create_arrears_snapshots: {
         Args: { p_source?: string; p_sync_batch_id: string }
         Returns: Json
@@ -643,14 +647,23 @@ export type Database = {
         }
         Returns: Json
       }
-      get_arrears_movement_analytics: {
-        Args: {
-          p_agent_id?: string
-          p_end_date?: string
-          p_start_date?: string
-        }
-        Returns: Json
-      }
+      get_arrears_movement_analytics:
+        | {
+            Args: {
+              p_agent_id?: string
+              p_end_date?: string
+              p_start_date?: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_agent_id?: string
+              p_end_date?: string
+              p_start_date?: string
+            }
+            Returns: Json
+          }
       get_collections_by_agent: { Args: { p_batch_id?: string }; Returns: Json }
       get_dashboard_stats: {
         Args: { p_agent_id?: string; p_batch_id?: string }
@@ -662,6 +675,10 @@ export type Database = {
           p_end_date?: string
           p_start_date?: string
         }
+        Returns: Json
+      }
+      get_pending_confirmation_tickets: {
+        Args: { p_agent_id?: string }
         Returns: Json
       }
       get_recent_tickets: {
@@ -691,6 +708,10 @@ export type Database = {
         Returns: Json
       }
       process_loan_book_sync: { Args: { p_sync_data: string }; Returns: Json }
+      reopen_ticket: {
+        Args: { p_new_amount_owed?: number; p_ticket_id: string }
+        Returns: Json
+      }
       safe_delete_batch: {
         Args: { p_archive?: boolean; p_batch_id: string; p_chunk_size?: number }
         Returns: Json

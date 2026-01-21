@@ -49,6 +49,7 @@ import { TicketStatusDropdowns, ARREAR_STATUS_OPTIONS, PAYMENT_STATUS_OPTIONS, E
 import { BatchTransferDialog } from "@/components/BatchTransferDialog";
 import { BulkTransferDialog } from "@/components/BulkTransferDialog";
 import { useTickets, useUpdateTicket, useProfiles, useDeleteTicket, usePayments, useCallLogsForTickets, useCreateCallLog, useUpdateCallLog, useMasterCustomers } from "@/hooks/useSupabaseData";
+import { useConfirmTicketResolution, useReopenTicket } from "@/hooks/usePendingConfirmations";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -68,6 +69,7 @@ const getStatusBadge = (status: string, hasNotes?: boolean) => {
     case 'Open': return <Badge className={`bg-warning/10 text-warning border-warning/20 whitespace-nowrap ${baseClasses}`}>Open</Badge>;
     case 'In Progress': return <Badge className={`bg-info/10 text-info border-info/20 whitespace-nowrap ${baseClasses}`}>In Progress</Badge>;
     case 'Resolved': return <Badge className={`bg-success/10 text-success border-success/20 whitespace-nowrap ${baseClasses}`}>Resolved</Badge>;
+    case 'Pending Confirmation': return <Badge className={`bg-amber-500/10 text-amber-600 border-amber-500/20 whitespace-nowrap animate-pulse ${baseClasses}`}>⚠️ Pending Confirmation</Badge>;
     default: return <Badge variant="outline" className={`whitespace-nowrap ${baseClasses}`}>{status}</Badge>;
   }
 };
@@ -91,6 +93,8 @@ export default function Tickets() {
   const deleteTicket = useDeleteTicket();
   const createCallLog = useCreateCallLog();
   const updateCallLog = useUpdateCallLog();
+  const confirmResolution = useConfirmTicketResolution();
+  const reopenTicket = useReopenTicket();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
@@ -287,9 +291,10 @@ export default function Tickets() {
               <Input placeholder="Search by customer, NRC or mobile..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[150px]"><SelectValue placeholder="Status" /></SelectTrigger>
+              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Status" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="Pending Confirmation">⚠️ Pending Confirmation</SelectItem>
                 <SelectItem value="Open">Open</SelectItem>
                 <SelectItem value="In Progress">In Progress</SelectItem>
                 <SelectItem value="Resolved">Resolved</SelectItem>
