@@ -48,6 +48,7 @@ import { InlineNoteInput } from "@/components/InlineNoteInput";
 import { TicketStatusDropdowns, ARREAR_STATUS_OPTIONS, PAYMENT_STATUS_OPTIONS, EMPLOYER_REASON_OPTIONS } from "@/components/TicketStatusDropdowns";
 import { BatchTransferDialog } from "@/components/BatchTransferDialog";
 import { BulkTransferDialog } from "@/components/BulkTransferDialog";
+import { EditableAmountOwed } from "@/components/EditableAmountOwed";
 import { useTickets, useUpdateTicket, useProfiles, useDeleteTicket, usePayments, useCallLogsForTickets, useCreateCallLog, useUpdateCallLog, useMasterCustomers } from "@/hooks/useSupabaseData";
 import { useConfirmTicketResolution, useReopenTicket } from "@/hooks/usePendingConfirmations";
 import { useAuth } from "@/contexts/AuthContext";
@@ -455,7 +456,14 @@ export default function Tickets() {
                             </div>
                           </TableCell>
                           <TableCell className="font-mono text-xs py-2 hidden sm:table-cell truncate">{ticket.nrc_number}</TableCell>
-                          <TableCell className="text-right font-semibold text-destructive py-2 text-sm">{formatCurrency(amountOwed)}</TableCell>
+                          <TableCell className="text-right py-2 text-sm" onClick={(e) => e.stopPropagation()}>
+                            <EditableAmountOwed
+                              ticketId={ticket.id}
+                              currentAmount={amountOwed}
+                              canEdit={isAdmin || ticket.assigned_agent === profile?.id}
+                              source="ticket_list"
+                            />
+                          </TableCell>
                           <TableCell className="text-right font-semibold text-success py-2 text-sm hidden md:table-cell">{formatCurrency(totalPaid)}</TableCell>
                           <TableCell className={`text-right font-semibold py-2 text-sm ${balance > 0 ? 'text-destructive' : 'text-success'}`}>
                             {formatCurrency(balance)}

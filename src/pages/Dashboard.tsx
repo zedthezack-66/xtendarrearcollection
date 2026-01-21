@@ -41,12 +41,12 @@ function StatsWidget({ batchId }: { batchId: string | null }) {
 
   if (isLoading) {
     return (
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-        {[...Array(6)].map((_, i) => (
-          <Card key={i} className="animate-pulse">
-            <CardContent className="p-6">
-              <Skeleton className="h-4 w-20 mb-2" />
-              <Skeleton className="h-8 w-24" />
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-8">
+        {[...Array(8)].map((_, i) => (
+          <Card key={i} className="animate-pulse min-h-[120px]">
+            <CardContent className="p-4">
+              <Skeleton className="h-3 w-16 mb-2" />
+              <Skeleton className="h-6 w-20" />
             </CardContent>
           </Card>
         ))}
@@ -57,61 +57,31 @@ function StatsWidget({ batchId }: { batchId: string | null }) {
   const openAndInProgress = (stats?.open_tickets || 0) + (stats?.in_progress_tickets || 0);
   // Interactions = In Progress + Resolved tickets
   const totalInteractions = (stats?.in_progress_tickets || 0) + (stats?.resolved_tickets || 0);
-
   const pendingConfirmation = stats?.pending_confirmation_tickets || 0;
 
+  // Build cards array - always show same number for layout stability
+  const cards = [
+    { title: "Total Customers", value: stats?.total_customers || 0, icon: Users, variant: "default" as const },
+    { title: "Total Outstanding", value: formatCurrency(stats?.total_outstanding || 0), icon: AlertTriangle, variant: "destructive" as const },
+    { title: "Total Collected", value: formatCurrency(stats?.total_collected || 0), icon: DollarSign, variant: "success" as const },
+    { title: "Collection Rate", value: `${stats?.collection_rate || 0}%`, icon: TrendingUp, variant: "info" as const },
+    { title: "Open Tickets", value: openAndInProgress, icon: Ticket, variant: "warning" as const },
+    { title: "Resolved Tickets", value: stats?.resolved_tickets || 0, icon: CheckCircle, variant: "success" as const },
+    { title: "Pending Confirm", value: pendingConfirmation, icon: Clock, variant: "warning" as const },
+    { title: "Interactions", value: totalInteractions, icon: MessageSquare, variant: "default" as const },
+  ];
+
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-      <StatCard
-        title="Total Customers"
-        value={stats?.total_customers || 0}
-        icon={Users}
-        variant="default"
-      />
-      <StatCard
-        title="Total Outstanding"
-        value={formatCurrency(stats?.total_outstanding || 0)}
-        icon={AlertTriangle}
-        variant="destructive"
-      />
-      <StatCard
-        title="Total Collected"
-        value={formatCurrency(stats?.total_collected || 0)}
-        icon={DollarSign}
-        variant="success"
-      />
-      <StatCard
-        title="Collection Rate"
-        value={`${stats?.collection_rate || 0}%`}
-        icon={TrendingUp}
-        variant="info"
-      />
-      <StatCard
-        title="Open Tickets"
-        value={openAndInProgress}
-        icon={Ticket}
-        variant="warning"
-      />
-      <StatCard
-        title="Resolved Tickets"
-        value={stats?.resolved_tickets || 0}
-        icon={CheckCircle}
-        variant="success"
-      />
-      {pendingConfirmation > 0 && (
+    <div className="grid gap-3 grid-cols-2 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-8">
+      {cards.map((card) => (
         <StatCard
-          title="Pending Confirm"
-          value={pendingConfirmation}
-          icon={Clock}
-          variant="warning"
+          key={card.title}
+          title={card.title}
+          value={card.value}
+          icon={card.icon}
+          variant={card.variant}
         />
-      )}
-      <StatCard
-        title="Interactions"
-        value={totalInteractions}
-        icon={MessageSquare}
-        variant="default"
-      />
+      ))}
     </div>
   );
 }

@@ -24,12 +24,12 @@ export function StatCard({ title, value, icon: Icon, imageSrc, trend, variant = 
   };
 
   return (
-    <Card className="animate-fade-in">
-      <CardContent className="p-6">
-        <div className="flex items-start justify-between">
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <p className="text-2xl font-bold text-foreground">{value}</p>
+    <Card className="animate-fade-in h-full min-h-[120px]">
+      <CardContent className="p-4 h-full flex flex-col justify-between">
+        <div className="flex items-start justify-between gap-2">
+          <div className="space-y-1 flex-1 min-w-0">
+            <p className="text-xs font-medium text-muted-foreground truncate">{title}</p>
+            <p className="text-xl font-bold text-foreground truncate" title={String(value)}>{value}</p>
             {trend && (
               <p className={cn(
                 "text-xs font-medium",
@@ -39,11 +39,11 @@ export function StatCard({ title, value, icon: Icon, imageSrc, trend, variant = 
               </p>
             )}
           </div>
-          <div className={cn("p-3 rounded-lg", variantStyles[variant])}>
+          <div className={cn("p-2 rounded-lg shrink-0", variantStyles[variant])}>
             {imageSrc ? (
-              <img src={imageSrc} alt={title} className="h-5 w-5 object-contain" />
+              <img src={imageSrc} alt={title} className="h-4 w-4 object-contain" />
             ) : Icon ? (
-              <Icon className="h-5 w-5" />
+              <Icon className="h-4 w-4" />
             ) : null}
           </div>
         </div>
