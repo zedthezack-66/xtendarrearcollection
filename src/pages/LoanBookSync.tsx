@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, TrendingUp, TrendingDown, Minus, RotateCcw, Download } from "lucide-react";
+import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, RotateCcw, Download, Users, Clock, TrendingUp, TrendingDown, Minus, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -23,9 +23,17 @@ interface SyncResult {
   sync_batch_id: string;
   processed: number;
   updated: number;
+  skipped: number;
   not_found: number;
-  resolved: number;
+  pending_confirmation: number;
   errors: string[];
+}
+
+interface TemplateCustomer {
+  nrc_number: string;
+  name: string;
+  current_arrears: number;
+  current_last_payment_date: string | null;
 }
 
 const SAMPLE_CSV = `NRC Number,Arrears Amount,Last Payment Date
@@ -70,6 +78,7 @@ export default function LoanBookSync() {
   const [progress, setProgress] = useState(0);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
+  const [systemNrcCount, setSystemNrcCount] = useState<number | null>(null);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -141,8 +150,9 @@ export default function LoanBookSync() {
       const CHUNK_SIZE = 500;
       let totalProcessed = 0;
       let totalUpdated = 0;
+      let totalSkipped = 0;
       let totalNotFound = 0;
-      let totalResolved = 0;
+      let totalPendingConfirmation = 0;
       let allErrors: string[] = [];
       let lastBatchId = '';
 
@@ -158,8 +168,9 @@ export default function LoanBookSync() {
         const result = data as unknown as SyncResult;
         totalProcessed += result.processed;
         totalUpdated += result.updated;
+        totalSkipped += result.skipped || 0;
         totalNotFound += result.not_found;
-        totalResolved += result.resolved;
+        totalPendingConfirmation += result.pending_confirmation || 0;
         allErrors = [...allErrors, ...result.errors];
         lastBatchId = result.sync_batch_id;
         
@@ -173,8 +184,9 @@ export default function LoanBookSync() {
         sync_batch_id: lastBatchId,
         processed: totalProcessed,
         updated: totalUpdated,
+        skipped: totalSkipped,
         not_found: totalNotFound,
-        resolved: totalResolved,
+        pending_confirmation: totalPendingConfirmation,
         errors: allErrors,
       });
 
@@ -182,10 +194,12 @@ export default function LoanBookSync() {
       queryClient.invalidateQueries({ queryKey: ['master_customers'] });
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
+      queryClient.invalidateQueries({ queryKey: ['pending_confirmations'] });
+      queryClient.invalidateQueries({ queryKey: ['agent_notifications'] });
 
       toast({
         title: "Sync completed",
-        description: `${totalUpdated} records updated, ${totalResolved} tickets resolved`,
+        description: `${totalUpdated} records updated, ${totalPendingConfirmation} pending agent confirmation`,
       });
     } catch (error: any) {
       toast({
@@ -216,19 +230,18 @@ export default function LoanBookSync() {
     URL.revokeObjectURL(url);
   };
 
-  // Download pre-populated template with ALL NRCs from the system
+  // Download pre-populated template with ALL NRCs via server-side RPC (no 1000 limit)
   const downloadPrePopulatedTemplate = async () => {
     setIsDownloadingTemplate(true);
     try {
-      // Fetch all NRCs from master_customers
-      const { data: customers, error } = await supabase
-        .from('master_customers')
-        .select('nrc_number, name, loan_book_arrears, outstanding_balance')
-        .order('nrc_number');
+      // Use server-side RPC to get ALL NRCs (bypasses Supabase 1000 limit)
+      const { data, error } = await supabase.rpc('get_loan_book_sync_template');
       
       if (error) throw error;
       
-      if (!customers || customers.length === 0) {
+      const result = data as unknown as { success: boolean; total_count: number; customers: TemplateCustomer[] };
+      
+      if (!result.success || !result.customers || result.customers.length === 0) {
         toast({
           title: "No customers found",
           description: "There are no customers in the system to include in the template.",
@@ -237,9 +250,11 @@ export default function LoanBookSync() {
         return;
       }
       
+      setSystemNrcCount(result.total_count);
+      
       // Build CSV with pre-populated NRCs
       const headers = ['NRC Number', 'Arrears Amount', 'Last Payment Date'];
-      const rows = customers.map(c => [
+      const rows = result.customers.map((c: TemplateCustomer) => [
         c.nrc_number,
         '', // Admin fills this
         ''  // Admin fills this
@@ -260,7 +275,7 @@ export default function LoanBookSync() {
       
       toast({
         title: "Template downloaded",
-        description: `Template includes ${customers.length} customer NRCs. Fill in the arrears and payment dates.`,
+        description: `Template includes ALL ${result.total_count} customer NRCs. Fill in the arrears and payment dates.`,
       });
     } catch (error: any) {
       toast({
@@ -290,8 +305,18 @@ export default function LoanBookSync() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Daily Loan Book Sync</h1>
-        <p className="text-muted-foreground">Upload loan book data to update arrears and auto-resolve cleared accounts</p>
+        <p className="text-muted-foreground">Upload loan book data to update arrears across ALL system NRCs with agent confirmation workflow</p>
       </div>
+
+      {/* System NRC Count Badge */}
+      {systemNrcCount !== null && (
+        <Alert className="border-primary/20 bg-primary/5">
+          <Users className="h-4 w-4" />
+          <AlertDescription>
+            System contains <strong>{systemNrcCount.toLocaleString()}</strong> unique NRCs. Template download includes ALL of them.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Upload Section */}
@@ -302,7 +327,7 @@ export default function LoanBookSync() {
               Upload Loan Book
             </CardTitle>
             <CardDescription>
-              CSV/Excel file with NRC Number, Arrears Amount, and Last Payment Date
+              CSV file with NRC Number, Arrears Amount, and Last Payment Date
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -342,7 +367,7 @@ export default function LoanBookSync() {
                 <p className="text-sm text-muted-foreground">
                   {file ? file.name : 'Click to upload or drag and drop'}
                 </p>
-                <p className="text-xs text-muted-foreground/60 mt-1">CSV or Excel files</p>
+                <p className="text-xs text-muted-foreground/60 mt-1">CSV files only</p>
               </label>
             </div>
 
@@ -359,7 +384,7 @@ export default function LoanBookSync() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Records ready:</span>
-                  <Badge variant="secondary">{parsedData.length}</Badge>
+                  <Badge variant="secondary">{parsedData.length.toLocaleString()}</Badge>
                 </div>
                 
                 <Button 
@@ -395,24 +420,45 @@ export default function LoanBookSync() {
                   <span className="font-medium">Sync completed successfully</span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-3">
                   <div className="p-3 bg-muted/50 rounded-lg">
-                    <p className="text-2xl font-bold">{syncResult.processed}</p>
-                    <p className="text-xs text-muted-foreground">Processed</p>
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-muted-foreground" />
+                      <p className="text-2xl font-bold">{syncResult.processed.toLocaleString()}</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Total Processed</p>
                   </div>
                   <div className="p-3 bg-muted/50 rounded-lg">
-                    <p className="text-2xl font-bold text-success">{syncResult.updated}</p>
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4 text-success" />
+                      <p className="text-2xl font-bold text-success">{syncResult.updated.toLocaleString()}</p>
+                    </div>
                     <p className="text-xs text-muted-foreground">Updated</p>
                   </div>
                   <div className="p-3 bg-muted/50 rounded-lg">
-                    <p className="text-2xl font-bold text-info">{syncResult.resolved}</p>
-                    <p className="text-xs text-muted-foreground">Tickets Resolved</p>
+                    <div className="flex items-center gap-2">
+                      <Minus className="h-4 w-4 text-muted-foreground" />
+                      <p className="text-2xl font-bold">{syncResult.skipped.toLocaleString()}</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">No Change</p>
                   </div>
-                  <div className="p-3 bg-muted/50 rounded-lg">
-                    <p className="text-2xl font-bold text-warning">{syncResult.not_found}</p>
-                    <p className="text-xs text-muted-foreground">Not Found</p>
+                  <div className="p-3 bg-warning/10 rounded-lg border border-warning/20">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-warning" />
+                      <p className="text-2xl font-bold text-warning">{syncResult.pending_confirmation.toLocaleString()}</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Pending Confirmation</p>
                   </div>
                 </div>
+
+                {syncResult.pending_confirmation > 0 && (
+                  <Alert className="border-warning/20 bg-warning/5">
+                    <AlertTriangle className="h-4 w-4 text-warning" />
+                    <AlertDescription>
+                      <strong>{syncResult.pending_confirmation}</strong> tickets have arrears cleared and require agent confirmation before resolution.
+                    </AlertDescription>
+                  </Alert>
+                )}
 
                 {syncResult.errors.length > 0 && (
                   <Alert variant="destructive">
@@ -464,7 +510,7 @@ export default function LoanBookSync() {
                     <TableCell>{record.last_payment_date || <span className="text-muted-foreground">-</span>}</TableCell>
                     <TableCell>
                       {record.arrears_amount === 0 ? (
-                        <Badge className="bg-success/10 text-success">Will Resolve</Badge>
+                        <Badge className="bg-warning/10 text-warning border-warning/20">Pending Confirmation</Badge>
                       ) : record.arrears_amount === null ? (
                         <Badge variant="outline">No Change</Badge>
                       ) : (
@@ -477,7 +523,7 @@ export default function LoanBookSync() {
             </Table>
             {parsedData.length > 10 && (
               <p className="text-xs text-muted-foreground text-center mt-4">
-                + {parsedData.length - 10} more records
+                + {(parsedData.length - 10).toLocaleString()} more records
               </p>
             )}
           </CardContent>
