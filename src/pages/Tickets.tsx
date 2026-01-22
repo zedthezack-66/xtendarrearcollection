@@ -64,13 +64,18 @@ const formatDate = (date: string) => {
   return new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-const getStatusBadge = (status: string, hasNotes?: boolean) => {
+const getStatusBadge = (status: string, isPendingConfirmation?: boolean, hasNotes?: boolean) => {
   const baseClasses = hasNotes ? 'cursor-help' : '';
+  
+  // Show pending confirmation badge based on flag, not status
+  if (isPendingConfirmation) {
+    return <Badge className={`bg-amber-500/10 text-amber-600 border-amber-500/20 whitespace-nowrap animate-pulse ${baseClasses}`}>⚠️ Pending Confirmation</Badge>;
+  }
+  
   switch (status) {
     case 'Open': return <Badge className={`bg-warning/10 text-warning border-warning/20 whitespace-nowrap ${baseClasses}`}>Open</Badge>;
     case 'In Progress': return <Badge className={`bg-info/10 text-info border-info/20 whitespace-nowrap ${baseClasses}`}>In Progress</Badge>;
     case 'Resolved': return <Badge className={`bg-success/10 text-success border-success/20 whitespace-nowrap ${baseClasses}`}>Resolved</Badge>;
-    case 'Pending Confirmation': return <Badge className={`bg-amber-500/10 text-amber-600 border-amber-500/20 whitespace-nowrap animate-pulse ${baseClasses}`}>⚠️ Pending Confirmation</Badge>;
     default: return <Badge variant="outline" className={`whitespace-nowrap ${baseClasses}`}>{status}</Badge>;
   }
 };
@@ -229,12 +234,22 @@ export default function Tickets() {
         ticket.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         ticket.nrc_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
         ticket.mobile_number?.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesStatus = statusFilter === "all" || ticket.status === statusFilter;
+      // Handle "Pending Confirmation" filter using the flag
+      const isPendingConfirmation = (ticket as any).arrears_cleared_pending_confirmation === true;
+      const matchesStatus = statusFilter === "all" || 
+        (statusFilter === "Pending Confirmation" && isPendingConfirmation) ||
+        (statusFilter !== "Pending Confirmation" && ticket.status === statusFilter && !isPendingConfirmation);
       const matchesPriority = priorityFilter === "all" || ticket.priority === priorityFilter;
       const matchesAgent = agentFilter === "all" || ticket.assigned_agent === agentFilter;
       return matchesSearch && matchesStatus && matchesPriority && matchesAgent;
     })
     .sort((a, b) => {
+      // Pending confirmation tickets first
+      const aIsPending = (a as any).arrears_cleared_pending_confirmation === true;
+      const bIsPending = (b as any).arrears_cleared_pending_confirmation === true;
+      if (aIsPending && !bIsPending) return -1;
+      if (!aIsPending && bIsPending) return 1;
+      
       // Primary sort: amount owed if selected
       if (amountSort === "high") {
         return Number(b.amount_owed) - Number(a.amount_owed);
@@ -469,7 +484,7 @@ export default function Tickets() {
                             {formatCurrency(balance)}
                           </TableCell>
                           <TableCell className="py-2 hidden lg:table-cell">{getPriorityBadge(ticket.priority)}</TableCell>
-                          <TableCell className="py-2">{getStatusBadge(ticket.status)}</TableCell>
+                          <TableCell className="py-2">{getStatusBadge(ticket.status, (ticket as any).arrears_cleared_pending_confirmation === true)}</TableCell>
                           <TableCell className="text-muted-foreground py-2 text-sm truncate hidden md:table-cell">{getAgentName(ticket.assigned_agent)}</TableCell>
                           <TableCell className="py-2 text-right" onClick={(e) => e.stopPropagation()}>
                             <DropdownMenu>
@@ -482,8 +497,8 @@ export default function Tickets() {
                                 <DropdownMenuItem asChild><Link to={`/customers/${ticket.master_customer_id}`}><Eye className="h-4 w-4 mr-2" />View Customer</Link></DropdownMenuItem>
                                 {ticket.mobile_number && <DropdownMenuItem asChild><a href={`tel:${ticket.mobile_number}`}><Phone className="h-4 w-4 mr-2" />Call {ticket.mobile_number}</a></DropdownMenuItem>}
                                 
-                                {/* Pending Confirmation: Show Confirm Resolution */}
-                                {ticket.status === 'Pending Confirmation' && (
+                                {/* Pending Confirmation: Show Confirm Resolution (based on flag) */}
+                                {(ticket as any).arrears_cleared_pending_confirmation === true && (
                                   <DropdownMenuItem 
                                     onClick={() => confirmResolution.mutate(ticket.id)}
                                     disabled={confirmResolution.isPending}
@@ -494,15 +509,15 @@ export default function Tickets() {
                                   </DropdownMenuItem>
                                 )}
                                 
-                                {/* Open: Show Mark In Progress */}
-                                {ticket.status === 'Open' && (
+                                {/* Open: Show Mark In Progress (only if not pending confirmation) */}
+                                {ticket.status === 'Open' && !(ticket as any).arrears_cleared_pending_confirmation && (
                                   <DropdownMenuItem onClick={() => updateTicket.mutate({ id: ticket.id, status: 'In Progress' })}>
                                     <PlayCircle className="h-4 w-4 mr-2" />Mark In Progress
                                   </DropdownMenuItem>
                                 )}
                                 
-                                {/* Not Resolved: Show Mark Resolved */}
-                                {ticket.status !== 'Resolved' && ticket.status !== 'Pending Confirmation' && (
+                                {/* Not Resolved: Show Mark Resolved (only if not pending confirmation) */}
+                                {ticket.status !== 'Resolved' && !(ticket as any).arrears_cleared_pending_confirmation && (
                                   <DropdownMenuItem 
                                     onClick={() => handleResolveTicket(ticket.id)}
                                     disabled={balance > 0}
