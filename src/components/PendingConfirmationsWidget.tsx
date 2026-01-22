@@ -87,16 +87,14 @@ export function PendingConfirmationsWidget({ agentId, isAdmin }: PendingConfirma
                 <p className="text-sm text-muted-foreground">{ticket.nrc_number}</p>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-xs text-destructive line-through">
-                    {formatCurrency(ticket.previous_arrears || 0)}
+                    {formatCurrency(ticket.old_amount || 0)}
                   </span>
                   <span className="text-xs">→</span>
-                  <span className="text-xs text-success font-semibold">
-                    {formatCurrency(ticket.amount_owed || 0)}
-                  </span>
+                  <span className="text-xs text-success font-semibold">K0</span>
                 </div>
-                {ticket.updated_at && (
+                {ticket.sync_date && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    Updated: {formatDate(ticket.updated_at)}
+                    Synced: {formatDate(ticket.sync_date)}
                   </p>
                 )}
                 {isAdmin && ticket.agent_name && (
