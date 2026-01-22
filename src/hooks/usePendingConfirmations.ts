@@ -7,13 +7,11 @@ interface PendingConfirmationTicket {
   customer_name: string;
   nrc_number: string;
   amount_owed: number;
-  status: string;
-  arrears_cleared_pending_confirmation: boolean;
+  old_amount: number;
+  new_amount: number;
+  sync_date: string;
   assigned_agent: string | null;
   agent_name: string | null;
-  previous_arrears: number | null;
-  created_at: string;
-  updated_at: string;
 }
 
 // Hook for fetching pending confirmation tickets
