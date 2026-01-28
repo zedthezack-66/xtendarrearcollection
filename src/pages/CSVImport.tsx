@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Papa from "papaparse";
 import XLSX from "xlsx-js-style";
-import { ArrowLeft, Upload, FileText, Check, X, Download, AlertCircle } from "lucide-react";
+import { ArrowLeft, Upload, FileText, Check, X, Download, AlertCircle, RefreshCw, TrendingUp, TrendingDown, Bell, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
@@ -156,8 +156,17 @@ export default function CSVImport() {
   const [importProgress, setImportProgress] = useState(0);
   const [batchName, setBatchName] = useState("");
   const [institutionName, setInstitutionName] = useState("");
-  const [uploadMode, setUploadMode] = useState<"new" | "existing" | "update">("new");
+  const [uploadMode, setUploadMode] = useState<"new" | "existing" | "update" | "daily">("new");
   const [selectedBatchId, setSelectedBatchId] = useState<string>("");
+  const [dailySyncResult, setDailySyncResult] = useState<{
+    processed: number;
+    updated: number;
+    maintained: number;
+    resolved: number;
+    reopened: number;
+    not_found: number;
+    errors: string[];
+  } | null>(null);
 
   const existingNrcNumbers = new Set(masterCustomers.map((c) => c.nrc_number));
   
@@ -381,10 +390,96 @@ export default function CSVImport() {
     if (selectedFile) {
       setFile(selectedFile);
       parseFile(selectedFile);
+      setDailySyncResult(null); // Reset daily sync result when new file selected
+    }
+  };
+
+  // Handle Daily Update (Loan Book Reconciliation) mode
+  const handleDailySync = async () => {
+    // Parse the file for daily update format (NRC, Amount, Days, Date)
+    const dailyData = parsedData
+      .filter(r => r.nrcNumber) // Only rows with NRC
+      .map(r => ({
+        nrc_number: r.nrcNumber,
+        arrears_amount: r.amountOwedIsEmpty ? null : r.amountOwed,
+        days_in_arrears: null as number | null, // Will be parsed from CSV if available
+        last_payment_date: r.lastPaymentDate,
+      }));
+
+    if (dailyData.length === 0) {
+      toast({ title: "No Valid Data", description: "No valid NRC numbers found in file.", variant: "destructive" });
+      return;
+    }
+
+    setIsImporting(true);
+    setImportProgress(10);
+    setDailySyncResult(null);
+
+    try {
+      const CHUNK_SIZE = 500;
+      let totalProcessed = 0;
+      let totalUpdated = 0;
+      let totalMaintained = 0;
+      let totalNotFound = 0;
+      let totalResolved = 0;
+      let totalReopened = 0;
+      let allErrors: string[] = [];
+
+      for (let i = 0; i < dailyData.length; i += CHUNK_SIZE) {
+        const chunk = dailyData.slice(i, i + CHUNK_SIZE);
+        
+        const { data, error } = await supabase.rpc('process_loan_book_sync', {
+          p_sync_data: JSON.stringify(chunk),
+        });
+        
+        if (error) throw error;
+        
+        const result = data as any;
+        totalProcessed += result.processed || 0;
+        totalUpdated += result.updated || 0;
+        totalMaintained += result.maintained || 0;
+        totalNotFound += result.not_found || 0;
+        totalResolved += result.resolved || 0;
+        totalReopened += result.reopened || 0;
+        allErrors = [...allErrors, ...(result.errors || [])];
+        
+        setImportProgress(10 + ((i + chunk.length) / dailyData.length) * 80);
+      }
+
+      setImportProgress(100);
+      
+      setDailySyncResult({
+        processed: totalProcessed,
+        updated: totalUpdated,
+        maintained: totalMaintained,
+        resolved: totalResolved,
+        reopened: totalReopened,
+        not_found: totalNotFound,
+        errors: allErrors,
+      });
+
+      toast({
+        title: "Daily Update Completed",
+        description: `${totalUpdated} updated, ${totalResolved} resolved, ${totalReopened} reopened, ${totalMaintained} maintained`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Sync Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsImporting(false);
     }
   };
 
   const handleImport = async () => {
+    // Daily mode has its own logic - no batch selection needed
+    if (uploadMode === "daily") {
+      await handleDailySync();
+      return;
+    }
+    
     if (uploadMode === "new") {
       if (!batchName.trim()) {
         toast({ title: "Batch Name Required", description: "Please enter a name for this batch", variant: "destructive" });
@@ -829,17 +924,25 @@ export default function CSVImport() {
   };
 
   // Use mode-appropriate validation for counts
-  const validCount = uploadMode === "update" 
-    ? parsedData.filter((r) => r.isValidForUpdate).length
-    : parsedData.filter((r) => r.isValid).length;
-  const invalidCount = uploadMode === "update"
-    ? parsedData.filter((r) => !r.isValidForUpdate).length
-    : parsedData.filter((r) => !r.isValid).length;
-  const existingCount = parsedData.filter((r) => r.existsInMaster && (uploadMode === "update" ? r.isValidForUpdate : r.isValid)).length;
+  // Daily mode only needs valid NRC
+  const validCount = uploadMode === "daily" 
+    ? parsedData.filter((r) => r.nrcNumber && !r.isDuplicateNrc).length
+    : uploadMode === "update" 
+      ? parsedData.filter((r) => r.isValidForUpdate).length
+      : parsedData.filter((r) => r.isValid).length;
+  const invalidCount = uploadMode === "daily"
+    ? parsedData.filter((r) => !r.nrcNumber || r.isDuplicateNrc).length
+    : uploadMode === "update"
+      ? parsedData.filter((r) => !r.isValidForUpdate).length
+      : parsedData.filter((r) => !r.isValid).length;
+  const existingCount = parsedData.filter((r) => r.existsInMaster && (uploadMode === "update" || uploadMode === "daily" ? r.isValidForUpdate : r.isValid)).length;
   const rejectedAgentCount = parsedData.filter((r) => r.errors.some(e => e.includes('not found'))).length;
   const duplicateNrcCount = parsedData.filter((r) => r.isDuplicateNrc).length;
   const duplicateMobileCount = parsedData.filter((r) => r.isDuplicateMobile).length;
-  const hasBlockingErrors = invalidCount > 0;
+  // Daily mode doesn't block on agent/name errors - only duplicate NRCs
+  const hasBlockingErrors = uploadMode === "daily" 
+    ? duplicateNrcCount > 0 
+    : invalidCount > 0;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW', minimumFractionDigits: 0 }).format(amount);
@@ -871,7 +974,12 @@ export default function CSVImport() {
         <AlertCircle className="h-4 w-4" />
         <AlertTitle>CSV Column Requirements</AlertTitle>
         <AlertDescription>
-          {uploadMode === "update" ? (
+          {uploadMode === "daily" ? (
+            <>
+              <strong>Daily Update</strong> requires: <strong>NRC Number</strong> and <strong>Amount Owed</strong>. 
+              Optional: Days in Arrears, Last Payment Date. <strong>Amount = 0</strong> resolves tickets. No names or agent columns needed.
+            </>
+          ) : uploadMode === "update" ? (
             <>
               <strong>NRC Number</strong> is required. All other fields are optional — empty cells or #N/A values will not overwrite existing data.
               <strong> Amount Owed = 0</strong> is valid and will clear arrears.
@@ -885,7 +993,8 @@ export default function CSVImport() {
         </AlertDescription>
       </Alert>
 
-      {profiles.length > 0 && (
+      {/* Hide agents card for daily mode - not needed */}
+      {profiles.length > 0 && uploadMode !== "daily" && (
         <Card>
           <CardHeader>
             <CardTitle>Available Agents</CardTitle>
@@ -916,7 +1025,7 @@ export default function CSVImport() {
         <CardContent className="space-y-4">
           <RadioGroup 
             value={uploadMode} 
-            onValueChange={(v) => setUploadMode(v as "new" | "existing" | "update")} 
+            onValueChange={(v) => setUploadMode(v as "new" | "existing" | "update" | "daily")} 
             className="grid gap-3"
           >
             {/* New Batch Option */}
@@ -957,54 +1066,77 @@ export default function CSVImport() {
                 </p>
               </div>
             </div>
+            
+            {/* Daily Update (Loan Book Reconciliation) - Admin Only */}
+            {isAdmin && (
+              <div className={`flex items-start space-x-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${uploadMode === "daily" ? "border-primary bg-primary/5" : "border-muted hover:bg-muted/50"}`}>
+                <RadioGroupItem value="daily" id="daily-update" className="mt-1" />
+                <div className="flex-1">
+                  <Label htmlFor="daily-update" className="text-base font-medium cursor-pointer">
+                    📊 Daily Update (Loan Book)
+                  </Label>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    <strong>Reconciliation only.</strong> Updates arrears for existing NRCs from loan book data. No new customers or tickets created.
+                    Detects: Cleared, Reduced, Increased, Reopened, Maintained movements. Notifies agents automatically.
+                  </p>
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Required: <Badge variant="outline" className="text-xs">NRC Number</Badge> <Badge variant="outline" className="text-xs">Amount Owed</Badge> 
+                    Optional: <Badge variant="outline" className="text-xs">Days in Arrears</Badge> <Badge variant="outline" className="text-xs">Last Payment Date</Badge>
+                  </div>
+                </div>
+              </div>
+            )}
           </RadioGroup>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Batch Details</CardTitle>
-          <CardDescription>
-            {uploadMode === "new" 
-              ? "Enter details for your new batch" 
-              : "Select an existing batch to modify"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      {/* Batch Details - Hide for Daily mode since it doesn't use batches */}
+      {uploadMode !== "daily" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Batch Details</CardTitle>
+            <CardDescription>
+              {uploadMode === "new" 
+                ? "Enter details for your new batch" 
+                : "Select an existing batch to modify"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
 
-          {uploadMode === "new" ? (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="batchName">Batch Name *</Label>
-                <Input id="batchName" placeholder="e.g., MTN Loans Nov 2025" value={batchName} onChange={(e) => setBatchName(e.target.value)} />
+            {uploadMode === "new" ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="batchName">Batch Name *</Label>
+                  <Input id="batchName" placeholder="e.g., MTN Loans Nov 2025" value={batchName} onChange={(e) => setBatchName(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="institutionName">Institution Name *</Label>
+                  <Input id="institutionName" placeholder="e.g., MTN Mobile Money" value={institutionName} onChange={(e) => setInstitutionName(e.target.value)} />
+                </div>
               </div>
+            ) : (
               <div className="space-y-2">
-                <Label htmlFor="institutionName">Institution Name *</Label>
-                <Input id="institutionName" placeholder="e.g., MTN Mobile Money" value={institutionName} onChange={(e) => setInstitutionName(e.target.value)} />
+                <Label htmlFor="existingBatch">Select Batch *</Label>
+                <Select value={selectedBatchId} onValueChange={setSelectedBatchId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose an existing batch" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {batches.map(b => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name} ({b.customer_count} customers)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {batches.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No existing batches. Create a new batch first.</p>
+                )}
               </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <Label htmlFor="existingBatch">Select Batch *</Label>
-              <Select value={selectedBatchId} onValueChange={setSelectedBatchId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose an existing batch" />
-                </SelectTrigger>
-                <SelectContent>
-                  {batches.map(b => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.name} ({b.customer_count} customers)
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {batches.length === 0 && (
-                <p className="text-sm text-muted-foreground">No existing batches. Create a new batch first.</p>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {!file && (
         <Card>
@@ -1081,6 +1213,87 @@ export default function CSVImport() {
               <AlertTitle className="text-info">Update Mode Active</AlertTitle>
               <AlertDescription>Only customers already in the selected batch will be updated. NRCs not in the batch will be skipped.</AlertDescription>
             </Alert>
+          )}
+
+          {uploadMode === "daily" && !hasBlockingErrors && (
+            <Alert className="border-primary bg-primary/10">
+              <RefreshCw className="h-4 w-4 text-primary" />
+              <AlertTitle className="text-primary">Daily Update Mode (Loan Book)</AlertTitle>
+              <AlertDescription>
+                Reconciliation only. Updates arrears for existing NRCs. Detects: Cleared, Reduced, Increased, Reopened, Maintained movements. Agents will be notified automatically.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Daily Sync Results Display */}
+          {uploadMode === "daily" && dailySyncResult && (
+            <Card className="border-primary">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-primary">
+                  <CheckCircle className="h-5 w-5" />
+                  Daily Update Completed
+                </CardTitle>
+                <CardDescription>Summary of arrears reconciliation from loan book</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                  <div className="p-3 bg-muted/50 rounded-lg text-center">
+                    <p className="text-2xl font-bold">{dailySyncResult.processed}</p>
+                    <p className="text-xs text-muted-foreground">Processed</p>
+                  </div>
+                  <div className="p-3 bg-blue-500/10 rounded-lg text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <TrendingUp className="h-4 w-4 text-blue-500" />
+                      <p className="text-2xl font-bold text-blue-600">{dailySyncResult.updated}</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Updated</p>
+                  </div>
+                  <div className="p-3 bg-green-500/10 rounded-lg text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <p className="text-2xl font-bold text-green-600">{dailySyncResult.resolved}</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Resolved</p>
+                  </div>
+                  <div className="p-3 bg-orange-500/10 rounded-lg text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <RefreshCw className="h-4 w-4 text-orange-500" />
+                      <p className="text-2xl font-bold text-orange-600">{dailySyncResult.reopened}</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Reopened</p>
+                  </div>
+                  <div className="p-3 bg-muted/50 rounded-lg text-center">
+                    <p className="text-2xl font-bold">{dailySyncResult.maintained}</p>
+                    <p className="text-xs text-muted-foreground">Maintained</p>
+                  </div>
+                  <div className="p-3 bg-yellow-500/10 rounded-lg text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <AlertCircle className="h-4 w-4 text-yellow-500" />
+                      <p className="text-2xl font-bold text-yellow-600">{dailySyncResult.not_found}</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Not Found</p>
+                  </div>
+                </div>
+                
+                {/* Agent notification indicator */}
+                <div className="flex items-center gap-2 p-3 mt-4 bg-primary/5 rounded-lg">
+                  <Bell className="h-4 w-4 text-primary" />
+                  <span className="text-sm">
+                    Agents notified of {dailySyncResult.updated + dailySyncResult.resolved + dailySyncResult.reopened} changes
+                  </span>
+                </div>
+
+                {dailySyncResult.errors.length > 0 && (
+                  <Alert variant="destructive" className="mt-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      {dailySyncResult.errors.length} errors: {dailySyncResult.errors.slice(0, 3).join('; ')}
+                      {dailySyncResult.errors.length > 3 && `... and ${dailySyncResult.errors.length - 3} more`}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
           )}
 
           <Card>
