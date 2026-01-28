@@ -713,6 +713,7 @@ export type Database = {
         }
         Returns: Json
       }
+      get_loan_book_sync_template: { Args: never; Returns: Json }
       get_pending_confirmation_tickets: {
         Args: { p_agent_id?: string }
         Returns: Json
