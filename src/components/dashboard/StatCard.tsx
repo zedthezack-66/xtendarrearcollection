@@ -53,7 +53,7 @@ export function StatCard({ title, value, icon: Icon, imageSrc, trend, variant = 
       <CardContent className="p-4 h-full flex flex-col justify-between">
         <div className="flex items-start justify-between gap-2">
           <div className="space-y-1 flex-1 min-w-0">
-            <p className="text-xs font-medium text-muted-foreground truncate">{title}</p>
+            <p className="text-xs font-medium text-muted-foreground leading-tight">{title}</p>
             <div className="relative group">
               <p 
                 className="text-lg md:text-xl font-bold text-foreground leading-tight"
