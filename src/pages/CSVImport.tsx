@@ -157,11 +157,16 @@ export default function CSVImport() {
   const [batchName, setBatchName] = useState("");
   const [institutionName, setInstitutionName] = useState("");
   const [uploadMode, setUploadMode] = useState<"new" | "existing" | "update" | "daily">("new");
+  const [updateSubMode, setUpdateSubMode] = useState<"normal" | "daily_loanbook">("normal");
   const [selectedBatchId, setSelectedBatchId] = useState<string>("");
   const [dailySyncResult, setDailySyncResult] = useState<{
     processed: number;
     updated: number;
     maintained: number;
+    cleared: number;
+    reduced: number;
+    increased: number;
+    blocked: number;
     resolved: number;
     reopened: number;
     not_found: number;
@@ -394,15 +399,14 @@ export default function CSVImport() {
     }
   };
 
-  // Handle Daily Update (Loan Book Reconciliation) mode
+  // Handle Daily Update (Loan Book Reconciliation) mode - global (process_loan_book_sync)
   const handleDailySync = async () => {
-    // Parse the file for daily update format (NRC, Amount, Days, Date)
     const dailyData = parsedData
-      .filter(r => r.nrcNumber) // Only rows with NRC
+      .filter(r => r.nrcNumber)
       .map(r => ({
         nrc_number: r.nrcNumber,
         arrears_amount: r.amountOwedIsEmpty ? null : r.amountOwed,
-        days_in_arrears: null as number | null, // Will be parsed from CSV if available
+        days_in_arrears: null as number | null,
         last_payment_date: r.lastPaymentDate,
       }));
 
@@ -452,6 +456,10 @@ export default function CSVImport() {
         processed: totalProcessed,
         updated: totalUpdated,
         maintained: totalMaintained,
+        cleared: totalResolved,
+        reduced: 0,
+        increased: 0,
+        blocked: 0,
         resolved: totalResolved,
         reopened: totalReopened,
         not_found: totalNotFound,
@@ -473,10 +481,108 @@ export default function CSVImport() {
     }
   };
 
+  // Handle Daily Loan Book Update within a SPECIFIC BATCH (with BLOCKED reopening)
+  const handleDailyLoanBookBatchUpdate = async () => {
+    if (!selectedBatchId) {
+      toast({ title: "Batch Required", description: "Please select an existing batch", variant: "destructive" });
+      return;
+    }
+
+    const dailyData = parsedData
+      .filter(r => r.nrcNumber && !r.isDuplicateNrc)
+      .map(r => ({
+        nrc_number: r.nrcNumber,
+        arrears_amount: r.amountOwedIsEmpty ? null : r.amountOwed,
+        days_in_arrears: null as number | null,
+        last_payment_date: r.lastPaymentDate,
+      }));
+
+    if (dailyData.length === 0) {
+      toast({ title: "No Valid Data", description: "No valid NRC numbers found in file.", variant: "destructive" });
+      return;
+    }
+
+    setIsImporting(true);
+    setImportProgress(10);
+    setDailySyncResult(null);
+
+    try {
+      const CHUNK_SIZE = 500;
+      let totalProcessed = 0;
+      let totalUpdated = 0;
+      let totalMaintained = 0;
+      let totalCleared = 0;
+      let totalReduced = 0;
+      let totalIncreased = 0;
+      let totalBlocked = 0;
+      let totalNotFound = 0;
+      let allErrors: string[] = [];
+
+      for (let i = 0; i < dailyData.length; i += CHUNK_SIZE) {
+        const chunk = dailyData.slice(i, i + CHUNK_SIZE);
+        
+        const { data, error } = await supabase.rpc('process_daily_loan_book_update', {
+          p_batch_id: selectedBatchId,
+          p_sync_data: JSON.stringify(chunk),
+        });
+        
+        if (error) throw error;
+        
+        const result = data as any;
+        totalProcessed += result.processed || 0;
+        totalUpdated += result.updated || 0;
+        totalMaintained += result.maintained || 0;
+        totalCleared += result.cleared || 0;
+        totalReduced += result.reduced || 0;
+        totalIncreased += result.increased || 0;
+        totalBlocked += result.blocked || 0;
+        totalNotFound += result.not_found || 0;
+        allErrors = [...allErrors, ...(result.errors || [])];
+        
+        setImportProgress(10 + ((i + chunk.length) / dailyData.length) * 80);
+      }
+
+      setImportProgress(100);
+      
+      setDailySyncResult({
+        processed: totalProcessed,
+        updated: totalUpdated,
+        maintained: totalMaintained,
+        cleared: totalCleared,
+        reduced: totalReduced,
+        increased: totalIncreased,
+        blocked: totalBlocked,
+        resolved: totalCleared,
+        reopened: 0, // Never reopens in this mode
+        not_found: totalNotFound,
+        errors: allErrors,
+      });
+
+      toast({
+        title: "Daily Loan Book Update Completed",
+        description: `${totalCleared} cleared, ${totalReduced} reduced, ${totalIncreased} increased, ${totalBlocked} blocked, ${totalMaintained} maintained`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Update Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   const handleImport = async () => {
-    // Daily mode has its own logic - no batch selection needed
+    // Daily mode (global) has its own logic - no batch selection needed
     if (uploadMode === "daily") {
       await handleDailySync();
+      return;
+    }
+    
+    // Update mode with Daily Loan Book sub-mode
+    if (uploadMode === "update" && updateSubMode === "daily_loanbook") {
+      await handleDailyLoanBookBatchUpdate();
       return;
     }
     
@@ -1054,7 +1160,7 @@ export default function CSVImport() {
               </div>
             </div>
             
-            {/* Update Existing Option */}
+            {/* Update Existing Option - with sub-mode selector */}
             <div className={`flex items-start space-x-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${uploadMode === "update" ? "border-primary bg-primary/5" : "border-muted hover:bg-muted/50"}`}>
               <RadioGroupItem value="update" id="update-batch" className="mt-1" />
               <div className="flex-1">
@@ -1062,8 +1168,54 @@ export default function CSVImport() {
                   🔄 Update Existing Batch Info
                 </Label>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Updates data for customers <strong>already in the batch</strong>. Empty cells or #N/A values won't overwrite existing data. Amount Owed = 0 clears arrears and resolves tickets.
+                  Updates data for customers <strong>already in the batch</strong>. Empty cells or #N/A values won't overwrite existing data.
                 </p>
+                
+                {/* Sub-mode selector - only visible when Update mode is selected */}
+                {uploadMode === "update" && (
+                  <div className="mt-3 pt-3 border-t border-muted space-y-2">
+                    <Label className="text-sm font-medium">Update Type:</Label>
+                    <RadioGroup 
+                      value={updateSubMode} 
+                      onValueChange={(v) => {
+                        setUpdateSubMode(v as "normal" | "daily_loanbook");
+                        setDailySyncResult(null);
+                      }}
+                      className="grid gap-2"
+                    >
+                      <div className={`flex items-start space-x-2 p-3 rounded-md border cursor-pointer transition-colors ${updateSubMode === "normal" ? "border-primary bg-primary/5" : "border-muted hover:bg-muted/30"}`}>
+                        <RadioGroupItem value="normal" id="normal-update" className="mt-0.5" />
+                        <div className="flex-1">
+                          <Label htmlFor="normal-update" className="text-sm font-medium cursor-pointer">
+                            Normal Update
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            Updates customer data. Amount = 0 resolves tickets.
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {isAdmin && (
+                        <div className={`flex items-start space-x-2 p-3 rounded-md border cursor-pointer transition-colors ${updateSubMode === "daily_loanbook" ? "border-primary bg-primary/5" : "border-muted hover:bg-muted/30"}`}>
+                          <RadioGroupItem value="daily_loanbook" id="daily-loanbook-update" className="mt-0.5" />
+                          <div className="flex-1">
+                            <Label htmlFor="daily-loanbook-update" className="text-sm font-medium cursor-pointer">
+                              📊 Daily Loan Book Update
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                              Movement-aware: Cleared, Reduced, Increased. <strong className="text-destructive">⚠️ Never reopens resolved tickets</strong>. Notifies agents.
+                            </p>
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              <Badge variant="outline" className="text-xs">NRC</Badge>
+                              <Badge variant="outline" className="text-xs">Amount</Badge>
+                              <Badge variant="secondary" className="text-xs">Last Payment Date</Badge>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </RadioGroup>
+                  </div>
+                )}
               </div>
             </div>
             
@@ -1207,7 +1359,7 @@ export default function CSVImport() {
             </Alert>
           )}
 
-          {uploadMode === "update" && !hasBlockingErrors && (
+          {uploadMode === "update" && updateSubMode === "normal" && !hasBlockingErrors && (
             <Alert className="border-info bg-info/10">
               <AlertCircle className="h-4 w-4 text-info" />
               <AlertTitle className="text-info">Update Mode Active</AlertTitle>
@@ -1215,61 +1367,96 @@ export default function CSVImport() {
             </Alert>
           )}
 
-          {uploadMode === "daily" && !hasBlockingErrors && (
+          {uploadMode === "update" && updateSubMode === "daily_loanbook" && !hasBlockingErrors && (
             <Alert className="border-primary bg-primary/10">
               <RefreshCw className="h-4 w-4 text-primary" />
-              <AlertTitle className="text-primary">Daily Update Mode (Loan Book)</AlertTitle>
+              <AlertTitle className="text-primary">Daily Loan Book Update (Movement-Aware)</AlertTitle>
               <AlertDescription>
-                Reconciliation only. Updates arrears for existing NRCs. Detects: Cleared, Reduced, Increased, Reopened, Maintained movements. Agents will be notified automatically.
+                Updates arrears for NRCs in the selected batch. Detects: <strong>Cleared, Reduced, Increased</strong>. 
+                <span className="text-destructive font-medium"> ⚠️ Reopening blocked</span> — resolved tickets (0 arrears) will NOT be reopened. 
+                Agents notified automatically.
               </AlertDescription>
             </Alert>
           )}
 
-          {/* Daily Sync Results Display */}
-          {uploadMode === "daily" && dailySyncResult && (
+          {uploadMode === "daily" && !hasBlockingErrors && (
+            <Alert className="border-primary bg-primary/10">
+              <RefreshCw className="h-4 w-4 text-primary" />
+              <AlertTitle className="text-primary">Daily Update Mode (Loan Book - Global)</AlertTitle>
+              <AlertDescription>
+                Reconciliation only. Updates arrears for existing NRCs across ALL batches. Detects: Cleared, Reduced, Increased, Reopened, Maintained movements. Agents will be notified automatically.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Daily Sync Results Display - for both modes */}
+          {(uploadMode === "daily" || (uploadMode === "update" && updateSubMode === "daily_loanbook")) && dailySyncResult && (
             <Card className="border-primary">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-primary">
                   <CheckCircle className="h-5 w-5" />
-                  Daily Update Completed
+                  {uploadMode === "daily" ? "Daily Update Completed" : "Daily Loan Book Update Completed"}
                 </CardTitle>
-                <CardDescription>Summary of arrears reconciliation from loan book</CardDescription>
+                <CardDescription>
+                  {uploadMode === "daily" 
+                    ? "Summary of arrears reconciliation from loan book (global)"
+                    : "Summary of batch-specific arrears reconciliation"
+                  }
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
                   <div className="p-3 bg-muted/50 rounded-lg text-center">
-                    <p className="text-2xl font-bold">{dailySyncResult.processed}</p>
+                    <p className="text-xl font-bold">{dailySyncResult.processed}</p>
                     <p className="text-xs text-muted-foreground">Processed</p>
                   </div>
-                  <div className="p-3 bg-blue-500/10 rounded-lg text-center">
+                  <div className="p-3 bg-success/10 rounded-lg text-center">
                     <div className="flex items-center justify-center gap-1">
-                      <TrendingUp className="h-4 w-4 text-blue-500" />
-                      <p className="text-2xl font-bold text-blue-600">{dailySyncResult.updated}</p>
+                      <CheckCircle className="h-4 w-4 text-success" />
+                      <p className="text-xl font-bold text-success">{dailySyncResult.cleared}</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">Updated</p>
+                    <p className="text-xs text-muted-foreground">Cleared</p>
                   </div>
-                  <div className="p-3 bg-green-500/10 rounded-lg text-center">
+                  <div className="p-3 bg-info/10 rounded-lg text-center">
                     <div className="flex items-center justify-center gap-1">
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                      <p className="text-2xl font-bold text-green-600">{dailySyncResult.resolved}</p>
+                      <TrendingDown className="h-4 w-4 text-info" />
+                      <p className="text-xl font-bold text-info">{dailySyncResult.reduced}</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">Resolved</p>
+                    <p className="text-xs text-muted-foreground">Reduced</p>
                   </div>
-                  <div className="p-3 bg-orange-500/10 rounded-lg text-center">
+                  <div className="p-3 bg-warning/10 rounded-lg text-center">
                     <div className="flex items-center justify-center gap-1">
-                      <RefreshCw className="h-4 w-4 text-orange-500" />
-                      <p className="text-2xl font-bold text-orange-600">{dailySyncResult.reopened}</p>
+                      <TrendingUp className="h-4 w-4 text-warning" />
+                      <p className="text-xl font-bold text-warning">{dailySyncResult.increased}</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">Reopened</p>
+                    <p className="text-xs text-muted-foreground">Increased</p>
                   </div>
+                  {uploadMode === "update" && updateSubMode === "daily_loanbook" && dailySyncResult.blocked > 0 && (
+                    <div className="p-3 bg-destructive/10 rounded-lg text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <X className="h-4 w-4 text-destructive" />
+                        <p className="text-xl font-bold text-destructive">{dailySyncResult.blocked}</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Blocked</p>
+                    </div>
+                  )}
+                  {uploadMode === "daily" && (
+                    <div className="p-3 bg-warning/10 rounded-lg text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <RefreshCw className="h-4 w-4 text-warning" />
+                        <p className="text-xl font-bold text-warning">{dailySyncResult.reopened}</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Reopened</p>
+                    </div>
+                  )}
                   <div className="p-3 bg-muted/50 rounded-lg text-center">
-                    <p className="text-2xl font-bold">{dailySyncResult.maintained}</p>
+                    <p className="text-xl font-bold">{dailySyncResult.maintained}</p>
                     <p className="text-xs text-muted-foreground">Maintained</p>
                   </div>
-                  <div className="p-3 bg-yellow-500/10 rounded-lg text-center">
+                  <div className="p-3 bg-muted/50 rounded-lg text-center">
                     <div className="flex items-center justify-center gap-1">
-                      <AlertCircle className="h-4 w-4 text-yellow-500" />
-                      <p className="text-2xl font-bold text-yellow-600">{dailySyncResult.not_found}</p>
+                      <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                      <p className="text-xl font-bold">{dailySyncResult.not_found}</p>
                     </div>
                     <p className="text-xs text-muted-foreground">Not Found</p>
                   </div>
@@ -1279,9 +1466,18 @@ export default function CSVImport() {
                 <div className="flex items-center gap-2 p-3 mt-4 bg-primary/5 rounded-lg">
                   <Bell className="h-4 w-4 text-primary" />
                   <span className="text-sm">
-                    Agents notified of {dailySyncResult.updated + dailySyncResult.resolved + dailySyncResult.reopened} changes
+                    Agents notified of {dailySyncResult.cleared + dailySyncResult.reduced + dailySyncResult.increased + (dailySyncResult.reopened || 0)} changes
                   </span>
                 </div>
+
+                {dailySyncResult.blocked > 0 && updateSubMode === "daily_loanbook" && (
+                  <Alert className="mt-4 border-destructive/50 bg-destructive/5">
+                    <AlertCircle className="h-4 w-4 text-destructive" />
+                    <AlertDescription className="text-destructive">
+                      {dailySyncResult.blocked} reopen attempt(s) blocked. Resolved tickets (0 arrears) cannot be reopened via Daily Loan Book Update.
+                    </AlertDescription>
+                  </Alert>
+                )}
 
                 {dailySyncResult.errors.length > 0 && (
                   <Alert variant="destructive" className="mt-4">
@@ -1406,7 +1602,10 @@ export default function CSVImport() {
               {isImporting ? 'Processing...' : hasBlockingErrors ? 'Fix Errors to Import' : 
                 uploadMode === "new" ? `Create Batch (${validCount} customers)` :
                 uploadMode === "existing" ? `Add ${validCount - existingCount} New Customers` :
-                `Update ${validCount} Records`}
+                uploadMode === "daily" ? `Run Daily Update (${validCount} NRCs)` :
+                uploadMode === "update" && updateSubMode === "daily_loanbook" 
+                  ? `Run Loan Book Update (${validCount} NRCs)` 
+                  : `Update ${validCount} Records`}
             </Button>
             {hasBlockingErrors && (
               <span className="text-sm text-destructive">

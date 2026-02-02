@@ -744,6 +744,10 @@ export type Database = {
         Args: { p_batch_id: string; p_updates: Json }
         Returns: Json
       }
+      process_daily_loan_book_update: {
+        Args: { p_batch_id: string; p_sync_data: string }
+        Returns: Json
+      }
       process_loan_book_sync: { Args: { p_sync_data: string }; Returns: Json }
       reopen_ticket: {
         Args: { p_new_amount_owed?: number; p_ticket_id: string }
