@@ -1030,13 +1030,15 @@ export default function CSVImport() {
   };
 
   // Use mode-appropriate validation for counts
-  // Daily mode only needs valid NRC
-  const validCount = uploadMode === "daily" 
+  // Daily mode (both global and batch sub-mode) only needs valid NRC + no duplicates
+  const isDailyLoanBookMode = uploadMode === "daily" || (uploadMode === "update" && updateSubMode === "daily_loanbook");
+  
+  const validCount = isDailyLoanBookMode 
     ? parsedData.filter((r) => r.nrcNumber && !r.isDuplicateNrc).length
     : uploadMode === "update" 
       ? parsedData.filter((r) => r.isValidForUpdate).length
       : parsedData.filter((r) => r.isValid).length;
-  const invalidCount = uploadMode === "daily"
+  const invalidCount = isDailyLoanBookMode
     ? parsedData.filter((r) => !r.nrcNumber || r.isDuplicateNrc).length
     : uploadMode === "update"
       ? parsedData.filter((r) => !r.isValidForUpdate).length
@@ -1045,8 +1047,8 @@ export default function CSVImport() {
   const rejectedAgentCount = parsedData.filter((r) => r.errors.some(e => e.includes('not found'))).length;
   const duplicateNrcCount = parsedData.filter((r) => r.isDuplicateNrc).length;
   const duplicateMobileCount = parsedData.filter((r) => r.isDuplicateMobile).length;
-  // Daily mode doesn't block on agent/name errors - only duplicate NRCs
-  const hasBlockingErrors = uploadMode === "daily" 
+  // Daily loan book modes don't block on agent/name errors - only duplicate NRCs
+  const hasBlockingErrors = isDailyLoanBookMode 
     ? duplicateNrcCount > 0 
     : invalidCount > 0;
 
@@ -1080,10 +1082,10 @@ export default function CSVImport() {
         <AlertCircle className="h-4 w-4" />
         <AlertTitle>CSV Column Requirements</AlertTitle>
         <AlertDescription>
-          {uploadMode === "daily" ? (
+          {isDailyLoanBookMode ? (
             <>
-              <strong>Daily Update</strong> requires: <strong>NRC Number</strong> and <strong>Amount Owed</strong>. 
-              Optional: Days in Arrears, Last Payment Date. <strong>Amount = 0</strong> resolves tickets. No names or agent columns needed.
+              <strong>Daily Loan Book Update</strong> requires: <strong>NRC Number</strong> and <strong>Amount Owed</strong> (0 allowed). 
+              Optional: Days in Arrears, Last Payment Date - Loan Book. <strong>Amount = 0</strong> resolves tickets. No names or agent columns needed.
             </>
           ) : uploadMode === "update" ? (
             <>
@@ -1099,8 +1101,8 @@ export default function CSVImport() {
         </AlertDescription>
       </Alert>
 
-      {/* Hide agents card for daily mode - not needed */}
-      {profiles.length > 0 && uploadMode !== "daily" && (
+      {/* Hide agents card for daily loan book modes - not needed */}
+      {profiles.length > 0 && !isDailyLoanBookMode && (
         <Card>
           <CardHeader>
             <CardTitle>Available Agents</CardTitle>
@@ -1206,8 +1208,9 @@ export default function CSVImport() {
                               Movement-aware: Cleared, Reduced, Increased. <strong className="text-destructive">⚠️ Never reopens resolved tickets</strong>. Notifies agents.
                             </p>
                             <div className="mt-1.5 flex flex-wrap gap-1">
-                              <Badge variant="outline" className="text-xs">NRC</Badge>
-                              <Badge variant="outline" className="text-xs">Amount</Badge>
+                              <Badge variant="outline" className="text-xs">NRC Number</Badge>
+                              <Badge variant="outline" className="text-xs">Amount Owed</Badge>
+                              <Badge variant="secondary" className="text-xs">Days in Arrears</Badge>
                               <Badge variant="secondary" className="text-xs">Last Payment Date</Badge>
                             </div>
                           </div>
@@ -1267,22 +1270,70 @@ export default function CSVImport() {
                 </div>
               </div>
             ) : (
-              <div className="space-y-2">
-                <Label htmlFor="existingBatch">Select Batch *</Label>
-                <Select value={selectedBatchId} onValueChange={setSelectedBatchId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choose an existing batch" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {batches.map(b => (
-                      <SelectItem key={b.id} value={b.id}>
-                        {b.name} ({b.customer_count} customers)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {batches.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No existing batches. Create a new batch first.</p>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="existingBatch">Select Batch *</Label>
+                  <Select value={selectedBatchId} onValueChange={setSelectedBatchId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose an existing batch" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {batches.map(b => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.name} ({b.customer_count} customers)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {batches.length === 0 && (
+                    <p className="text-sm text-muted-foreground">No existing batches. Create a new batch first.</p>
+                  )}
+                </div>
+                
+                {/* Download template button for Daily Loan Book Update mode */}
+                {updateSubMode === "daily_loanbook" && selectedBatchId && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        // Fetch NRCs from the selected batch
+                        const { data: batchCustomers, error } = await supabase
+                          .from('tickets')
+                          .select('nrc_number, amount_owed')
+                          .eq('batch_id', selectedBatchId);
+                        
+                        if (error) throw error;
+                        
+                        if (!batchCustomers || batchCustomers.length === 0) {
+                          toast({ title: "No Data", description: "No customers found in this batch", variant: "destructive" });
+                          return;
+                        }
+                        
+                        // Create CSV with required columns
+                        const csvContent = [
+                          "NRC Number,Amount Owed,Days in Arrears,Last Payment Date - Loan Book",
+                          ...batchCustomers.map(c => `${c.nrc_number},${c.amount_owed},,`)
+                        ].join('\n');
+                        
+                        const blob = new Blob([csvContent], { type: 'text/csv' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        const batchInfo = batches.find(b => b.id === selectedBatchId);
+                        a.download = `loan_book_template_${batchInfo?.name.replace(/\s+/g, '_') || 'batch'}.csv`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                        
+                        toast({ title: "Template Downloaded", description: `${batchCustomers.length} NRCs exported` });
+                      } catch (err: any) {
+                        toast({ title: "Download Failed", description: err.message, variant: "destructive" });
+                      }
+                    }}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download Pre-populated Template ({batches.find(b => b.id === selectedBatchId)?.customer_count || 0} NRCs)
+                  </Button>
                 )}
               </div>
             )}
@@ -1513,11 +1564,17 @@ export default function CSVImport() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {parsedData.map((row, index) => (
-                      <TableRow key={index} className={!row.isValid ? 'bg-destructive/5' : row.existsInMaster ? 'bg-info/5' : ''}>
+                    {parsedData.map((row, index) => {
+                      // For daily loan book mode, use simpler validation (NRC only, no duplicates)
+                      const isValidForMode = isDailyLoanBookMode 
+                        ? (row.nrcNumber && !row.isDuplicateNrc)
+                        : row.isValid;
+                      
+                      return (
+                      <TableRow key={index} className={!isValidForMode ? 'bg-destructive/5' : row.existsInMaster ? 'bg-info/5' : ''}>
                         <TableCell className="font-mono text-sm text-muted-foreground">{row.rowNumber}</TableCell>
                         <TableCell>
-                          {row.isValid ? (
+                          {isValidForMode ? (
                             row.existsInMaster ? (
                               <Badge variant="outline" className="bg-info/10 text-info whitespace-nowrap">Exists</Badge>
                             ) : (
@@ -1547,18 +1604,26 @@ export default function CSVImport() {
                           )}
                         </TableCell>
                         <TableCell className="text-sm text-destructive max-w-[200px]">
-                          {row.errors.length > 0 && (
+                          {/* For daily loan book mode, only show NRC/duplicate errors */}
+                          {isDailyLoanBookMode ? (
+                            row.isDuplicateNrc ? (
+                              <span className="truncate block">Duplicate NRC</span>
+                            ) : !row.nrcNumber ? (
+                              <span className="truncate block">NRC Number required</span>
+                            ) : null
+                          ) : row.errors.length > 0 ? (
                             <span className="truncate block" title={row.errors.join('; ')}>
                               {row.errors[0]}{row.errors.length > 1 && ` (+${row.errors.length - 1} more)`}
                             </span>
-                          )}
+                          ) : null}
                         </TableCell>
                       </TableRow>
-                    ))}
+                    )})}
                   </TableBody>
                 </Table>
               </div>
-              {parsedData.some(r => !r.isValid) && (
+              {/* Only show detailed errors for non-daily-loan-book modes, or if there are actual blocking errors */}
+              {!isDailyLoanBookMode && parsedData.some(r => !r.isValid) && (
                 <div className="mt-4 p-4 bg-destructive/5 rounded-lg border border-destructive/20">
                   <h4 className="font-medium text-destructive mb-2">Detailed Errors by Row:</h4>
                   <ul className="text-sm space-y-1 max-h-48 overflow-auto">
@@ -1571,6 +1636,12 @@ export default function CSVImport() {
                       <li className="text-muted-foreground font-medium">...and {parsedData.filter(r => !r.isValid).length - 20} more rows with errors</li>
                     )}
                   </ul>
+                </div>
+              )}
+              {isDailyLoanBookMode && duplicateNrcCount > 0 && (
+                <div className="mt-4 p-4 bg-destructive/5 rounded-lg border border-destructive/20">
+                  <h4 className="font-medium text-destructive mb-2">Blocking Errors:</h4>
+                  <p className="text-sm text-muted-foreground">{duplicateNrcCount} duplicate NRC number(s) found in file. Please remove duplicates before uploading.</p>
                 </div>
               )}
             </CardContent>
