@@ -1,4 +1,4 @@
-import { Users, AlertTriangle, Ticket, TrendingUp, CheckCircle, Loader2, DollarSign, MessageSquare, Clock } from "lucide-react";
+import { Users, AlertTriangle, Ticket, TrendingUp, CheckCircle, Loader2, DollarSign, MessageSquare } from "lucide-react";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,7 +6,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useUIStore } from "@/store/useUIStore";
 import { useBatches, useProfiles } from "@/hooks/useSupabaseData";
 import { useDashboardStats, useCollectionsByAgent, useRecentTickets, useTopDefaulters } from "@/hooks/useDashboardData";
-import { PendingConfirmationsWidget } from "@/components/PendingConfirmationsWidget";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   BarChart,
@@ -57,7 +56,6 @@ function StatsWidget({ batchId }: { batchId: string | null }) {
   const openAndInProgress = (stats?.open_tickets || 0) + (stats?.in_progress_tickets || 0);
   // Interactions = In Progress + Resolved tickets
   const totalInteractions = (stats?.in_progress_tickets || 0) + (stats?.resolved_tickets || 0);
-  const pendingConfirmation = stats?.pending_confirmation_tickets || 0;
 
   // Build cards array - always show same number for layout stability
   const cards = [
@@ -67,7 +65,6 @@ function StatsWidget({ batchId }: { batchId: string | null }) {
     { title: "Collection Rate", value: `${stats?.collection_rate || 0}%`, icon: TrendingUp, variant: "info" as const },
     { title: "Open Tickets", value: openAndInProgress, icon: Ticket, variant: "warning" as const },
     { title: "Resolved Tickets", value: stats?.resolved_tickets || 0, icon: CheckCircle, variant: "success" as const },
-    { title: "Pending Confirm", value: pendingConfirmation, icon: Clock, variant: "warning" as const },
     { title: "Interactions", value: totalInteractions, icon: MessageSquare, variant: "default" as const },
   ];
 
@@ -373,9 +370,6 @@ export default function Dashboard() {
            isAdmin ? 'Overview of all loan collections' : 'Your assigned collections'}
         </p>
       </div>
-
-      {/* Pending Confirmations Widget - shows only if there are pending items */}
-      <PendingConfirmationsWidget isAdmin={isAdmin} />
 
       {/* Each widget loads independently - no blocking */}
       <StatsWidget batchId={activeBatchId} />

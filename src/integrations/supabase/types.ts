@@ -108,69 +108,6 @@ export type Database = {
         }
         Relationships: []
       }
-      arrears_snapshots: {
-        Row: {
-          agent_id: string | null
-          agent_ticket_count: number
-          agent_total_arrears: number
-          batch_id: string | null
-          batch_ticket_count: number
-          batch_total_arrears: number
-          created_at: string
-          id: string
-          snapshot_date: string
-          source: string
-          sync_batch_id: string | null
-          system_total_arrears: number | null
-          system_total_tickets: number | null
-        }
-        Insert: {
-          agent_id?: string | null
-          agent_ticket_count?: number
-          agent_total_arrears?: number
-          batch_id?: string | null
-          batch_ticket_count?: number
-          batch_total_arrears?: number
-          created_at?: string
-          id?: string
-          snapshot_date?: string
-          source: string
-          sync_batch_id?: string | null
-          system_total_arrears?: number | null
-          system_total_tickets?: number | null
-        }
-        Update: {
-          agent_id?: string | null
-          agent_ticket_count?: number
-          agent_total_arrears?: number
-          batch_id?: string | null
-          batch_ticket_count?: number
-          batch_total_arrears?: number
-          created_at?: string
-          id?: string
-          snapshot_date?: string
-          source?: string
-          sync_batch_id?: string | null
-          system_total_arrears?: number | null
-          system_total_tickets?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "arrears_snapshots_agent_id_fkey"
-            columns: ["agent_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "arrears_snapshots_batch_id_fkey"
-            columns: ["batch_id"]
-            isOneToOne: false
-            referencedRelation: "batches"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       arrears_sync_logs: {
         Row: {
           admin_user_id: string
@@ -657,10 +594,6 @@ export type Database = {
         Returns: Json
       }
       clear_all_data: { Args: never; Returns: Json }
-      confirm_ticket_resolution: {
-        Args: { p_ticket_id: string }
-        Returns: Json
-      }
       create_arrears_snapshots: {
         Args: { p_source?: string; p_sync_batch_id: string }
         Returns: Json
@@ -714,10 +647,6 @@ export type Database = {
         Returns: Json
       }
       get_loan_book_sync_template: { Args: never; Returns: Json }
-      get_pending_confirmation_tickets: {
-        Args: { p_agent_id?: string }
-        Returns: Json
-      }
       get_recent_tickets: {
         Args: {
           p_batch_id?: string
@@ -749,10 +678,6 @@ export type Database = {
         Returns: Json
       }
       process_loan_book_sync: { Args: { p_sync_data: string }; Returns: Json }
-      reopen_ticket: {
-        Args: { p_new_amount_owed?: number; p_ticket_id: string }
-        Returns: Json
-      }
       safe_delete_batch: {
         Args: { p_archive?: boolean; p_batch_id: string; p_chunk_size?: number }
         Returns: Json

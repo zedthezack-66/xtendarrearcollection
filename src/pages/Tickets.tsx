@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { Search, MoreHorizontal, Eye, CheckCircle, PlayCircle, Loader2, Phone, Trash2, AlertTriangle, ChevronDown, ChevronUp, MessageSquare, Building, User2, Clock, RotateCcw, CheckCheck } from "lucide-react";
+import { Search, MoreHorizontal, Eye, CheckCircle, PlayCircle, Loader2, Phone, Trash2, AlertTriangle, ChevronDown, ChevronUp, MessageSquare, Building, User2, Clock, RotateCcw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -50,7 +50,6 @@ import { BatchTransferDialog } from "@/components/BatchTransferDialog";
 import { BulkTransferDialog } from "@/components/BulkTransferDialog";
 import { EditableAmountOwed } from "@/components/EditableAmountOwed";
 import { useTickets, useUpdateTicket, useProfiles, useDeleteTicket, usePayments, useCallLogsForTickets, useCreateCallLog, useUpdateCallLog, useMasterCustomers } from "@/hooks/useSupabaseData";
-import { useConfirmTicketResolution, useReopenTicket } from "@/hooks/usePendingConfirmations";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -94,8 +93,6 @@ export default function Tickets() {
   const deleteTicket = useDeleteTicket();
   const createCallLog = useCreateCallLog();
   const updateCallLog = useUpdateCallLog();
-  const confirmResolution = useConfirmTicketResolution();
-  const reopenTicket = useReopenTicket();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
@@ -482,18 +479,6 @@ export default function Tickets() {
                                 <DropdownMenuItem asChild><Link to={`/customers/${ticket.master_customer_id}`}><Eye className="h-4 w-4 mr-2" />View Customer</Link></DropdownMenuItem>
                                 {ticket.mobile_number && <DropdownMenuItem asChild><a href={`tel:${ticket.mobile_number}`}><Phone className="h-4 w-4 mr-2" />Call {ticket.mobile_number}</a></DropdownMenuItem>}
                                 
-                                {/* Pending Confirmation: Show Confirm Resolution */}
-                                {ticket.status === 'Pending Confirmation' && (
-                                  <DropdownMenuItem 
-                                    onClick={() => confirmResolution.mutate(ticket.id)}
-                                    disabled={confirmResolution.isPending}
-                                    className="text-success focus:text-success"
-                                  >
-                                    <CheckCheck className="h-4 w-4 mr-2" />
-                                    Confirm Resolution
-                                  </DropdownMenuItem>
-                                )}
-                                
                                 {/* Open: Show Mark In Progress */}
                                 {ticket.status === 'Open' && (
                                   <DropdownMenuItem onClick={() => updateTicket.mutate({ id: ticket.id, status: 'In Progress' })}>
@@ -502,7 +487,7 @@ export default function Tickets() {
                                 )}
                                 
                                 {/* Not Resolved: Show Mark Resolved */}
-                                {ticket.status !== 'Resolved' && ticket.status !== 'Pending Confirmation' && (
+                                {ticket.status !== 'Resolved' && (
                                   <DropdownMenuItem 
                                     onClick={() => handleResolveTicket(ticket.id)}
                                     disabled={balance > 0}
@@ -516,8 +501,7 @@ export default function Tickets() {
                                 {/* Resolved: Show Reopen Ticket */}
                                 {ticket.status === 'Resolved' && (
                                   <DropdownMenuItem 
-                                    onClick={() => reopenTicket.mutate({ ticketId: ticket.id })}
-                                    disabled={reopenTicket.isPending}
+                                    onClick={() => updateTicket.mutate({ id: ticket.id, status: 'Open' })}
                                     className="text-warning focus:text-warning"
                                   >
                                     <RotateCcw className="h-4 w-4 mr-2" />
