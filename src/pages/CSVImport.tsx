@@ -1482,12 +1482,20 @@ export default function CSVImport() {
                     </div>
                     <p className="text-xs text-muted-foreground">Increased</p>
                   </div>
-                  {/* Reopened count - shown for both daily modes */}
-                  {(dailySyncResult.reopened || 0) > 0 && (
-                    <div className="p-3 bg-primary/10 rounded-lg text-center">
+                  {uploadMode === "update" && updateSubMode === "daily_loanbook" && dailySyncResult.blocked > 0 && (
+                    <div className="p-3 bg-destructive/10 rounded-lg text-center">
                       <div className="flex items-center justify-center gap-1">
-                        <RefreshCw className="h-4 w-4 text-primary" />
-                        <p className="text-xl font-bold text-primary">{dailySyncResult.reopened}</p>
+                        <X className="h-4 w-4 text-destructive" />
+                        <p className="text-xl font-bold text-destructive">{dailySyncResult.blocked}</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Blocked</p>
+                    </div>
+                  )}
+                  {uploadMode === "daily" && (
+                    <div className="p-3 bg-warning/10 rounded-lg text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <RefreshCw className="h-4 w-4 text-warning" />
+                        <p className="text-xl font-bold text-warning">{dailySyncResult.reopened}</p>
                       </div>
                       <p className="text-xs text-muted-foreground">Reopened</p>
                     </div>
@@ -1512,6 +1520,15 @@ export default function CSVImport() {
                     Agents notified of {dailySyncResult.cleared + dailySyncResult.reduced + dailySyncResult.increased + (dailySyncResult.reopened || 0)} changes
                   </span>
                 </div>
+
+                {dailySyncResult.blocked > 0 && updateSubMode === "daily_loanbook" && (
+                  <Alert className="mt-4 border-destructive/50 bg-destructive/5">
+                    <AlertCircle className="h-4 w-4 text-destructive" />
+                    <AlertDescription className="text-destructive">
+                      {dailySyncResult.blocked} reopen attempt(s) blocked. Resolved tickets (0 arrears) cannot be reopened via Daily Loan Book Update.
+                    </AlertDescription>
+                  </Alert>
+                )}
 
                 {dailySyncResult.errors.length > 0 && (
                   <Alert variant="destructive" className="mt-4">
