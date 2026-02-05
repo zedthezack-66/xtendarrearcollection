@@ -170,6 +170,8 @@ export default function CSVImport() {
     resolved: number;
     reopened: number;
     not_found: number;
+    payments_created: number;
+    total_amount_collected: number;
     errors: string[];
   } | null>(null);
 
@@ -463,6 +465,8 @@ export default function CSVImport() {
         resolved: totalResolved,
         reopened: totalReopened,
         not_found: totalNotFound,
+        payments_created: 0,
+        total_amount_collected: 0,
         errors: allErrors,
       });
 
@@ -516,6 +520,8 @@ export default function CSVImport() {
       let totalIncreased = 0;
       let totalBlocked = 0;
       let totalNotFound = 0;
+      let totalPaymentsCreated = 0;
+      let totalAmountCollected = 0;
       let allErrors: string[] = [];
 
       for (let i = 0; i < dailyData.length; i += CHUNK_SIZE) {
@@ -537,6 +543,8 @@ export default function CSVImport() {
         totalIncreased += result.increased || 0;
         totalBlocked += result.blocked || 0;
         totalNotFound += result.not_found || 0;
+        totalPaymentsCreated += result.payments_created || 0;
+        totalAmountCollected += result.total_amount_collected || 0;
         allErrors = [...allErrors, ...(result.errors || [])];
         
         setImportProgress(10 + ((i + chunk.length) / dailyData.length) * 80);
@@ -555,12 +563,17 @@ export default function CSVImport() {
         resolved: totalCleared,
         reopened: 0, // Never reopens in this mode
         not_found: totalNotFound,
+        payments_created: totalPaymentsCreated,
+        total_amount_collected: totalAmountCollected,
         errors: allErrors,
       });
 
+      const collectedText = totalAmountCollected > 0 
+        ? `, K${totalAmountCollected.toLocaleString()} collected`
+        : '';
       toast({
         title: "Daily Loan Book Update Completed",
-        description: `${totalCleared} cleared, ${totalReduced} reduced, ${totalIncreased} increased, ${totalBlocked} blocked, ${totalMaintained} maintained`,
+        description: `${totalCleared} cleared, ${totalReduced} reduced${collectedText}`,
       });
     } catch (error: any) {
       toast({

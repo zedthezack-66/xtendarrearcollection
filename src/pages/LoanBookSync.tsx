@@ -28,16 +28,18 @@ interface SyncResult {
   not_found: number;
   resolved: number;
   reopened: number;
+  payments_created: number;
+  total_amount_collected: number;
   errors: string[];
 }
 
-// Template columns - STRICT (no names, no agent fields, no batch fields)
-const TEMPLATE_HEADERS = ['NRC Number', 'Amount Owed', 'Days in Arrears', 'Last Payment Date - Loan Book'];
+// Template columns - New format with Old Arrears pre-filled
+const TEMPLATE_HEADERS = ['NRC Number', 'Old Arrears Amount', 'New Arrears Amount', 'Days in Arrears', 'Last Payment Date - Loan Book'];
 
-const SAMPLE_CSV = `NRC Number,Amount Owed,Days in Arrears,Last Payment Date - Loan Book
-123456/78/9,5000,30,2026-01-10
-987654/32/1,0,,2026-01-15
-456789/01/2,2500,15,`;
+const SAMPLE_CSV = `NRC Number,Old Arrears Amount,New Arrears Amount,Days in Arrears,Last Payment Date - Loan Book
+123456/78/9,5000,0,30,2026-01-10
+987654/32/1,15000,5000,,2026-01-15
+456789/01/2,0,2500,15,`;
 
 // Helper to check empty/N/A values
 const isEmptyValue = (value: string | undefined | null): boolean => {
@@ -104,7 +106,8 @@ export default function LoanBookSync() {
         results.data.forEach((row: any, index: number) => {
           // Support both exact column names and variations
           const nrc = (row['NRC Number'] || row['nrc_number'] || row['NRC'])?.toString().trim();
-          const arrearsStr = row['Amount Owed'] || row['Arrears Amount'] || row['arrears_amount'];
+          // New format: prefer "New Arrears Amount" column, fallback to legacy "Amount Owed"
+          const arrearsStr = row['New Arrears Amount'] || row['Amount Owed'] || row['Arrears Amount'] || row['arrears_amount'];
           const daysStr = row['Days in Arrears'] || row['days_in_arrears'];
           const paymentDate = row['Last Payment Date - Loan Book'] || row['Last Payment Date'] || row['last_payment_date'];
           
@@ -163,6 +166,8 @@ export default function LoanBookSync() {
       let totalNotFound = 0;
       let totalResolved = 0;
       let totalReopened = 0;
+      let totalPaymentsCreated = 0;
+      let totalAmountCollected = 0;
       let allErrors: string[] = [];
       let lastBatchId = '';
 
@@ -182,6 +187,8 @@ export default function LoanBookSync() {
         totalNotFound += result.not_found;
         totalResolved += result.resolved;
         totalReopened += result.reopened || 0;
+        totalPaymentsCreated += result.payments_created || 0;
+        totalAmountCollected += result.total_amount_collected || 0;
         allErrors = [...allErrors, ...result.errors];
         lastBatchId = result.sync_batch_id;
         
@@ -199,18 +206,24 @@ export default function LoanBookSync() {
         not_found: totalNotFound,
         resolved: totalResolved,
         reopened: totalReopened,
+        payments_created: totalPaymentsCreated,
+        total_amount_collected: totalAmountCollected,
         errors: allErrors,
       });
 
-      // Invalidate queries to refresh data
+      // Invalidate queries to refresh data including payments
       queryClient.invalidateQueries({ queryKey: ['master_customers'] });
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
       queryClient.invalidateQueries({ queryKey: ['agent_notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
 
+      const collectedText = totalAmountCollected > 0 
+        ? `, K${totalAmountCollected.toLocaleString()} collected`
+        : '';
       toast({
         title: "Daily update completed",
-        description: `${totalUpdated} updated, ${totalResolved} resolved, ${totalReopened} reopened, ${totalMaintained} maintained`,
+        description: `${totalUpdated} updated, ${totalResolved} resolved${collectedText}`,
       });
     } catch (error: any) {
       toast({
@@ -261,17 +274,18 @@ export default function LoanBookSync() {
         return;
       }
       
-      // Build CSV with ALL NRCs - strict columns only
+      // Build CSV with ALL NRCs - Old Arrears pre-filled, New Arrears empty for admin
       const rows = customers.map((c: any) => [
         c.nrc_number,
-        '', // Amount Owed - admin fills
+        c.old_arrears_amount ?? 0, // Old Arrears - pre-filled from system
+        '', // New Arrears Amount - admin fills from external loan book
         '', // Days in Arrears - admin fills
         ''  // Last Payment Date - admin fills
       ]);
       
       const csvContent = [
         TEMPLATE_HEADERS.join(','),
-        ...rows.map((row: string[]) => row.join(','))
+        ...rows.map((row: (string | number)[]) => row.join(','))
       ].join('\n');
       
       const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -284,7 +298,7 @@ export default function LoanBookSync() {
       
       toast({
         title: "Template downloaded",
-        description: `Template includes ${customers.length} customer NRCs. Fill in the amounts and dates.`,
+        description: `Template includes ${customers.length} NRCs with Old Arrears pre-filled. Fill in the "New Arrears Amount" column from your loan book.`,
       });
     } catch (error: any) {
       toast({
@@ -348,7 +362,7 @@ export default function LoanBookSync() {
               Upload Loan Book Data
             </CardTitle>
             <CardDescription>
-              CSV with: NRC Number, Amount Owed, Days in Arrears, Last Payment Date
+              CSV with: NRC Number, Old Arrears (pre-filled), New Arrears Amount (from loan book)
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -482,6 +496,19 @@ export default function LoanBookSync() {
                     <p className="text-xs text-muted-foreground">Not Found</p>
                   </div>
                 </div>
+
+                {/* Amount Collected from Loan Book */}
+                {syncResult.total_amount_collected > 0 && (
+                  <div className="flex items-center justify-between p-3 bg-success/10 rounded-lg border border-success/20">
+                    <div className="flex items-center gap-2">
+                      <TrendingDown className="h-5 w-5 text-success" />
+                      <span className="font-medium text-success">Collections from Loan Book</span>
+                    </div>
+                    <span className="text-lg font-bold text-success">
+                      K{syncResult.total_amount_collected.toLocaleString()}
+                    </span>
+                  </div>
+                )}
 
                 {/* Agent notification indicator */}
                 <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg">
