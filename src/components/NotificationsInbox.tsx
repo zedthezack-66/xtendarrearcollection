@@ -70,7 +70,7 @@ function NotificationItem({
   return (
     <div
       className={`p-3 border-b last:border-b-0 cursor-pointer transition-colors hover:bg-muted/50 ${
-        !notification.is_read ? 'bg-primary/5' : ''
+        !notification.is_read ? 'bg-primary/5 border-l-2 border-l-primary' : ''
       }`}
       onClick={handleClick}
     >
@@ -82,10 +82,11 @@ function NotificationItem({
           <div className="flex items-center gap-2 mb-1">
             <NotificationBadge type={notification.type} />
             {!notification.is_read && (
-              <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
+              <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0 animate-pulse" />
             )}
           </div>
-          <p className="font-medium text-sm text-foreground truncate">
+          {/* Unread notifications have bold title */}
+          <p className={`text-sm text-foreground truncate ${!notification.is_read ? 'font-bold' : 'font-medium'}`}>
             {notification.title}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
@@ -114,7 +115,8 @@ export function NotificationsInbox() {
   const handleNavigate = (ticketId: string | null) => {
     setOpen(false);
     if (ticketId) {
-      navigate(`/tickets?highlight=${ticketId}`);
+      // Navigate directly to ticket detail page
+      navigate(`/tickets/${ticketId}`);
     }
   };
 

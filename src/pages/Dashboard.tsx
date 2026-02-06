@@ -3,6 +3,7 @@ import { StatCard } from "@/components/dashboard/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LastSyncIndicator } from "@/components/LastSyncIndicator";
 import { useUIStore } from "@/store/useUIStore";
 import { useBatches, useProfiles } from "@/hooks/useSupabaseData";
 import { useDashboardStats, useCollectionsByAgent, useRecentTickets, useTopDefaulters } from "@/hooks/useDashboardData";
@@ -360,15 +361,18 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">
-          {isAdmin ? 'Collections Dashboard' : `${displayName}'s Collection Dashboard`}
-          {isAdmin && <Badge className="ml-2 align-middle">Admin</Badge>}
-        </h1>
-        <p className="text-muted-foreground">
-          {activeBatch ? `Viewing batch: ${activeBatch.name}` : 
-           isAdmin ? 'Overview of all loan collections' : 'Your assigned collections'}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">
+            {isAdmin ? 'Collections Dashboard' : `${displayName}'s Collection Dashboard`}
+            {isAdmin && <Badge className="ml-2 align-middle">Admin</Badge>}
+          </h1>
+          <p className="text-muted-foreground">
+            {activeBatch ? `Viewing batch: ${activeBatch.name}` : 
+             isAdmin ? 'Overview of all loan collections' : 'Your assigned collections'}
+          </p>
+        </div>
+        <LastSyncIndicator />
       </div>
 
       {/* Each widget loads independently - no blocking */}

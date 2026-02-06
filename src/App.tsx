@@ -11,6 +11,7 @@ import Customers from "./pages/Customers";
 import CustomerProfile from "./pages/CustomerProfile";
 import CSVImport from "./pages/CSVImport";
 import Tickets from "./pages/Tickets";
+import TicketDetail from "./pages/TicketDetail";
 import Payments from "./pages/Payments";
 import RecordPayment from "./pages/RecordPayment";
 import Settings from "./pages/Settings";
@@ -44,6 +45,7 @@ const App = () => (
                       <Route path="/customers/:id" element={<CustomerProfile />} />
                       <Route path="/batch/new" element={<CSVImport />} />
                       <Route path="/tickets" element={<Tickets />} />
+                      <Route path="/tickets/:id" element={<TicketDetail />} />
                       <Route path="/payments" element={<Payments />} />
                       <Route path="/payments/new" element={<RecordPayment />} />
                       <Route path="/settings" element={<Settings />} />

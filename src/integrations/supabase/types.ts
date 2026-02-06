@@ -420,6 +420,7 @@ export type Database = {
           payment_date: string
           payment_method: string
           recorded_by: string | null
+          source: string
           ticket_id: string | null
         }
         Insert: {
@@ -432,6 +433,7 @@ export type Database = {
           payment_date?: string
           payment_method: string
           recorded_by?: string | null
+          source?: string
           ticket_id?: string | null
         }
         Update: {
@@ -444,6 +446,7 @@ export type Database = {
           payment_date?: string
           payment_method?: string
           recorded_by?: string | null
+          source?: string
           ticket_id?: string | null
         }
         Relationships: [
