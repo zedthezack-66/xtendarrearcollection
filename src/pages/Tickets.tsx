@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { LastSyncIndicator } from "@/components/LastSyncIndicator";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -268,18 +269,21 @@ export default function Tickets() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">{displayName}'s Tickets</h1>
           <p className="text-muted-foreground">Manage collections workflow</p>
         </div>
-        {isAdmin && (
-          <BulkTransferDialog 
-            selectedTicketIds={Array.from(selectedTickets)} 
-            onTransferComplete={() => setSelectedTickets(new Set())}
-            disabled={selectedTickets.size === 0}
-          />
-        )}
+        <div className="flex flex-col items-end gap-2">
+          <LastSyncIndicator />
+          {isAdmin && (
+            <BulkTransferDialog 
+              selectedTicketIds={Array.from(selectedTickets)} 
+              onTransferComplete={() => setSelectedTickets(new Set())}
+              disabled={selectedTickets.size === 0}
+            />
+          )}
+        </div>
       </div>
       <Card>
         <CardHeader className="pb-4">
