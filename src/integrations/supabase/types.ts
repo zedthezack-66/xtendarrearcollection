@@ -641,14 +641,23 @@ export type Database = {
         Args: { p_agent_id?: string; p_batch_id?: string }
         Returns: Json
       }
-      get_interaction_analytics: {
-        Args: {
-          p_agent_id?: string
-          p_end_date?: string
-          p_start_date?: string
-        }
-        Returns: Json
-      }
+      get_interaction_analytics:
+        | {
+            Args: {
+              p_agent_id?: string
+              p_end_date?: string
+              p_start_date?: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_agent_id?: string
+              p_end_date?: string
+              p_start_date?: string
+            }
+            Returns: Json
+          }
       get_loan_book_sync_template: { Args: never; Returns: Json }
       get_recent_tickets: {
         Args: {

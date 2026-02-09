@@ -305,7 +305,7 @@ export default function Reports() {
           </Card>
 
           <Card>
-            <CardHeader><CardTitle className="text-base">Collections & Interactions by Agent</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">{isAdmin ? 'Collections & Interactions by Agent' : 'My Collections & Interactions'}</CardTitle></CardHeader>
             <CardContent>
               {agentData.length > 0 ? (
                 <div className="h-[200px]">
