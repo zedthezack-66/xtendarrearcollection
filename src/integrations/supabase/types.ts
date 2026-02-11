@@ -636,6 +636,10 @@ export type Database = {
             }
             Returns: Json
           }
+      get_batch_loan_book_sync_template: {
+        Args: { p_batch_id: string }
+        Returns: Json
+      }
       get_collections_by_agent: { Args: { p_batch_id?: string }; Returns: Json }
       get_dashboard_stats: {
         Args: { p_agent_id?: string; p_batch_id?: string }
