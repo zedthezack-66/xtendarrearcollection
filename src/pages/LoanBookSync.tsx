@@ -1,15 +1,18 @@
 import { useState, useCallback } from "react";
-import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, TrendingUp, TrendingDown, Minus, RotateCcw, Download, RefreshCw, Bell } from "lucide-react";
+import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, TrendingUp, TrendingDown, Minus, RotateCcw, Download, RefreshCw, Bell, Layers } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { useBatches } from "@/hooks/useSupabaseData";
+import XLSX from "xlsx-js-style";
 import Papa from "papaparse";
 
 interface SyncRecord {
@@ -78,6 +81,7 @@ export default function LoanBookSync() {
   const { isAdmin } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { data: batches = [] } = useBatches();
   
   const [file, setFile] = useState<File | null>(null);
   const [parsedData, setParsedData] = useState<SyncRecord[]>([]);
@@ -86,6 +90,7 @@ export default function LoanBookSync() {
   const [progress, setProgress] = useState(0);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
+  const [selectedBatchId, setSelectedBatchId] = useState<string>("");
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -254,58 +259,104 @@ export default function LoanBookSync() {
     URL.revokeObjectURL(url);
   };
 
-  // Download pre-populated template with ALL NRCs (no 1000 row limit)
-  const downloadPrePopulatedTemplate = async () => {
+  const downloadBatchTemplate = async () => {
+    if (!selectedBatchId) {
+      toast({ title: "Select a batch", description: "Please select a batch first.", variant: "destructive" });
+      return;
+    }
     setIsDownloadingTemplate(true);
     try {
-      // Use RPC to get all NRCs without limit
-      const { data, error } = await supabase.rpc('get_loan_book_sync_template');
-      
+      const { data, error } = await supabase.rpc('get_batch_loan_book_sync_template', {
+        p_batch_id: selectedBatchId,
+      });
       if (error) throw error;
-      
-      const customers = (data as any)?.customers || [];
-      
-      if (!customers || customers.length === 0) {
-        toast({
-          title: "No customers found",
-          description: "There are no customers in the system to include in the template.",
-          variant: "destructive",
-        });
+
+      const result = data as any;
+      const customers = result?.customers || [];
+      const batchName = result?.batch_name || 'Unknown';
+      const batchId = result?.batch_id || selectedBatchId;
+      const totalNrcs = result?.total_nrcs || customers.length;
+      const totalOldArrears = result?.total_old_arrears || 0;
+      const exportDate = new Date().toLocaleString('en-GB');
+
+      if (customers.length === 0) {
+        toast({ title: "No customers found", description: "No customers in the selected batch.", variant: "destructive" });
         return;
       }
-      
-      // Build CSV with ALL NRCs - Old Arrears pre-filled, New Arrears empty for admin
-      const rows = customers.map((c: any) => [
+
+      // Build Excel workbook with metadata header
+      const wb = XLSX.utils.book_new();
+
+      // Metadata rows
+      const metaRows = [
+        ['Loan Book Sync Template'],
+        ['Batch Name:', batchName],
+        ['Batch ID:', batchId],
+        ['Total NRCs in Batch:', totalNrcs],
+        ['Total Old Arrears (Batch):', totalOldArrears],
+        ['Total New Arrears (Batch):', ''],
+        ['Export Date & Time:', exportDate],
+        [], // blank separator
+      ];
+
+      // Data header
+      const dataHeaders = ['Batch ID', 'NRC Number', 'Old Arrears Amount', 'New Arrears Amount', 'Days in Arrears', 'Last Payment Date - Loan Book'];
+
+      // Data rows
+      const dataRows = customers.map((c: any) => [
+        batchId,
         c.nrc_number,
-        c.old_arrears_amount ?? 0, // Old Arrears - pre-filled from system
-        '', // New Arrears Amount - admin fills from external loan book
+        c.old_arrears_amount ?? 0,
+        '', // New Arrears - admin fills
         '', // Days in Arrears - admin fills
-        ''  // Last Payment Date - admin fills
+        '', // Last Payment Date - admin fills
       ]);
-      
-      const csvContent = [
-        TEMPLATE_HEADERS.join(','),
-        ...rows.map((row: (string | number)[]) => row.join(','))
-      ].join('\n');
-      
-      const blob = new Blob([csvContent], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `daily_update_${new Date().toISOString().split('T')[0]}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-      
+
+      const allRows = [...metaRows, dataHeaders, ...dataRows];
+      const ws = XLSX.utils.aoa_to_sheet(allRows);
+
+      // Style metadata rows
+      const metaStyle = { font: { bold: true, color: { rgb: '1a365d' } } };
+      for (let r = 0; r < metaRows.length - 1; r++) {
+        const cellA = XLSX.utils.encode_cell({ r, c: 0 });
+        if (ws[cellA]) ws[cellA].s = metaStyle;
+      }
+      // Title row
+      const titleCell = XLSX.utils.encode_cell({ r: 0, c: 0 });
+      if (ws[titleCell]) ws[titleCell].s = { font: { bold: true, sz: 14, color: { rgb: '1a365d' } } };
+
+      // Style data header row
+      const headerRowIdx = metaRows.length;
+      for (let c = 0; c < dataHeaders.length; c++) {
+        const cell = XLSX.utils.encode_cell({ r: headerRowIdx, c });
+        if (ws[cell]) {
+          ws[cell].s = {
+            font: { bold: true, color: { rgb: 'FFFFFF' } },
+            fill: { fgColor: { rgb: '2B6CB0' } },
+          };
+        }
+      }
+
+      // Column widths
+      ws['!cols'] = [
+        { wch: 38 }, // Batch ID
+        { wch: 18 }, // NRC
+        { wch: 20 }, // Old Arrears
+        { wch: 20 }, // New Arrears
+        { wch: 16 }, // Days
+        { wch: 28 }, // Last Payment Date
+      ];
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Loan Book Sync');
+      const dateStr = new Date().toISOString().split('T')[0];
+      XLSX.writeFile(wb, `Loan_Book_Sync_${batchId.slice(0, 8)}_${dateStr}.xlsx`);
+
       toast({
         title: "Template downloaded",
-        description: `Template includes ${customers.length} NRCs with Old Arrears pre-filled. Fill in the "New Arrears Amount" column from your loan book.`,
+        description: `${customers.length} NRCs from batch "${batchName}". Fill in "New Arrears Amount" from your loan book.`,
       });
     } catch (error: any) {
-      toast({
-        title: "Download failed",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Download failed", description: error.message, variant: "destructive" });
     } finally {
       setIsDownloadingTemplate(false);
     }
@@ -366,6 +417,27 @@ export default function LoanBookSync() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Batch Selector */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Select Batch</label>
+              <Select value={selectedBatchId} onValueChange={setSelectedBatchId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a batch..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {batches.map((batch) => (
+                    <SelectItem key={batch.id} value={batch.id}>
+                      <div className="flex items-center gap-2">
+                        <Layers className="h-3 w-3" />
+                        <span>{batch.name}</span>
+                        <Badge variant="secondary" className="text-xs ml-1">{batch.customer_count}</Badge>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" onClick={downloadEmptyTemplate}>
                 <Download className="h-4 w-4 mr-1" />
@@ -374,11 +446,11 @@ export default function LoanBookSync() {
               <Button 
                 variant="default" 
                 size="sm" 
-                onClick={downloadPrePopulatedTemplate}
-                disabled={isDownloadingTemplate}
+                onClick={downloadBatchTemplate}
+                disabled={isDownloadingTemplate || !selectedBatchId}
               >
                 <Download className="h-4 w-4 mr-1" />
-                {isDownloadingTemplate ? 'Loading...' : 'All NRCs Template'}
+                {isDownloadingTemplate ? 'Loading...' : 'Batch Template'}
               </Button>
               {file && (
                 <Button variant="ghost" size="sm" onClick={handleReset}>
