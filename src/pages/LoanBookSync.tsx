@@ -1,17 +1,15 @@
 import { useState, useCallback } from "react";
-import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, TrendingUp, TrendingDown, Minus, RotateCcw, Download, RefreshCw, Bell, Layers } from "lucide-react";
+import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, TrendingUp, TrendingDown, Minus, RotateCcw, Download, RefreshCw, Bell } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
-import { useBatches } from "@/hooks/useSupabaseData";
 import Papa from "papaparse";
 
 interface SyncRecord {
@@ -80,9 +78,7 @@ export default function LoanBookSync() {
   const { isAdmin } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: batches, isLoading: batchesLoading } = useBatches();
   
-  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [parsedData, setParsedData] = useState<SyncRecord[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -90,8 +86,6 @@ export default function LoanBookSync() {
   const [progress, setProgress] = useState(0);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
-
-  const selectedBatch = batches?.find(b => b.id === selectedBatchId);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -262,81 +256,49 @@ export default function LoanBookSync() {
 
   // Download pre-populated template with ALL NRCs (no 1000 row limit)
   const downloadPrePopulatedTemplate = async () => {
-    if (!selectedBatchId) {
-      toast({
-        title: "No batch selected",
-        description: "Please select a batch before downloading the template.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setIsDownloadingTemplate(true);
     try {
-      const { data, error } = await supabase.rpc('get_batch_loan_book_sync_template', {
-        p_batch_id: selectedBatchId,
-      });
+      // Use RPC to get all NRCs without limit
+      const { data, error } = await supabase.rpc('get_loan_book_sync_template');
       
       if (error) throw error;
       
-      const result = data as any;
-      const customers = result?.customers || [];
+      const customers = (data as any)?.customers || [];
       
       if (!customers || customers.length === 0) {
         toast({
           title: "No customers found",
-          description: "There are no customers in this batch.",
+          description: "There are no customers in the system to include in the template.",
           variant: "destructive",
         });
         return;
       }
-
-      const batchName = result.batch_name || 'Unknown';
-      const batchId = result.batch_id || selectedBatchId;
-      const totalNrcs = result.total_nrcs || customers.length;
-      const totalOldArrears = result.total_old_arrears || 0;
-      const exportDate = new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
-
-      // Build CSV with metadata header rows
-      const metadataRows = [
-        `# Batch Name:,${batchName}`,
-        `# Batch ID:,${batchId}`,
-        `# Institution:,${result.institution_name || ''}`,
-        `# Total NRCs:,${totalNrcs}`,
-        `# Total Old Arrears:,${totalOldArrears}`,
-        `# Export Date:,${exportDate}`,
-        `#`,
-      ];
-
-      const dataHeaders = ['Batch ID', 'NRC Number', 'Old Arrears Amount', 'New Arrears Amount', 'Days in Arrears', 'Last Payment Date - Loan Book'];
       
+      // Build CSV with ALL NRCs - Old Arrears pre-filled, New Arrears empty for admin
       const rows = customers.map((c: any) => [
-        batchId,
         c.nrc_number,
-        c.old_arrears_amount ?? 0,
-        '', // New Arrears Amount - admin fills
+        c.old_arrears_amount ?? 0, // Old Arrears - pre-filled from system
+        '', // New Arrears Amount - admin fills from external loan book
         '', // Days in Arrears - admin fills
         ''  // Last Payment Date - admin fills
       ]);
       
       const csvContent = [
-        ...metadataRows,
-        dataHeaders.join(','),
+        TEMPLATE_HEADERS.join(','),
         ...rows.map((row: (string | number)[]) => row.join(','))
       ].join('\n');
       
-      const dateStr = new Date().toISOString().split('T')[0];
       const blob = new Blob([csvContent], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Loan_Book_Sync_${batchId.slice(0, 8)}_${dateStr}.csv`;
+      a.download = `daily_update_${new Date().toISOString().split('T')[0]}.csv`;
       a.click();
       URL.revokeObjectURL(url);
       
       toast({
         title: "Template downloaded",
-        description: `${customers.length} NRCs from "${batchName}". Fill in "New Arrears Amount" from your loan book.`,
+        description: `Template includes ${customers.length} NRCs with Old Arrears pre-filled. Fill in the "New Arrears Amount" column from your loan book.`,
       });
     } catch (error: any) {
       toast({
@@ -400,43 +362,10 @@ export default function LoanBookSync() {
               Upload Loan Book Data
             </CardTitle>
             <CardDescription>
-              Select a batch, download the template, then upload with updated arrears.
+              CSV with: NRC Number, Old Arrears (pre-filled), New Arrears Amount (from loan book)
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Batch Selector */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Select Batch</label>
-              <Select
-                value={selectedBatchId || ""}
-                onValueChange={(value) => setSelectedBatchId(value || null)}
-                disabled={isProcessing}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder={batchesLoading ? "Loading batches..." : "Choose a batch..."}>
-                    {selectedBatch ? (
-                      <span className="flex items-center gap-2">
-                        <Layers className="h-4 w-4" />
-                        {selectedBatch.name} ({selectedBatch.customer_count} NRCs)
-                      </span>
-                    ) : null}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {batches?.map((batch) => (
-                    <SelectItem key={batch.id} value={batch.id}>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{batch.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {batch.customer_count} NRCs • {batch.institution_name}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" onClick={downloadEmptyTemplate}>
                 <Download className="h-4 w-4 mr-1" />
@@ -446,11 +375,10 @@ export default function LoanBookSync() {
                 variant="default" 
                 size="sm" 
                 onClick={downloadPrePopulatedTemplate}
-                disabled={isDownloadingTemplate || !selectedBatchId}
-                title={!selectedBatchId ? "Select a batch first" : undefined}
+                disabled={isDownloadingTemplate}
               >
                 <Download className="h-4 w-4 mr-1" />
-                {isDownloadingTemplate ? 'Loading...' : `Batch Template${selectedBatch ? ` (${selectedBatch.customer_count})` : ''}`}
+                {isDownloadingTemplate ? 'Loading...' : 'All NRCs Template'}
               </Button>
               {file && (
                 <Button variant="ghost" size="sm" onClick={handleReset}>

@@ -636,32 +636,19 @@ export type Database = {
             }
             Returns: Json
           }
-      get_batch_loan_book_sync_template: {
-        Args: { p_batch_id: string }
-        Returns: Json
-      }
       get_collections_by_agent: { Args: { p_batch_id?: string }; Returns: Json }
       get_dashboard_stats: {
         Args: { p_agent_id?: string; p_batch_id?: string }
         Returns: Json
       }
-      get_interaction_analytics:
-        | {
-            Args: {
-              p_agent_id?: string
-              p_end_date?: string
-              p_start_date?: string
-            }
-            Returns: Json
-          }
-        | {
-            Args: {
-              p_agent_id?: string
-              p_end_date?: string
-              p_start_date?: string
-            }
-            Returns: Json
-          }
+      get_interaction_analytics: {
+        Args: {
+          p_agent_id?: string
+          p_end_date?: string
+          p_start_date?: string
+        }
+        Returns: Json
+      }
       get_loan_book_sync_template: { Args: never; Returns: Json }
       get_recent_tickets: {
         Args: {

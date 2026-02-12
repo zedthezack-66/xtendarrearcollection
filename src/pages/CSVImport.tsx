@@ -787,10 +787,8 @@ export default function CSVImport() {
       }
 
       // =====================================================
-      // MODULE A: NEW BATCH / ADD TO EXISTING BATCH
-      // - New NRCs → create customer + ticket
-      // - Existing NRCs → reuse customer, create or update ticket
-      // - NEVER skip a row because of existing NRC
+      // MODULE A: ADD TO EXISTING BATCH / CREATE NEW BATCH
+      // Only creates NEW customers - skips existing NRCs entirely
       // =====================================================
 
       // Fetch existing batch_customers for this batch to check for duplicates
@@ -799,24 +797,35 @@ export default function CSVImport() {
         .select('nrc_number, master_customer_id')
         .eq('batch_id', batch.id);
       
-      const existingNrcsInBatch = new Map(
-        existingBatchCustomers?.map(bc => [bc.nrc_number, bc.master_customer_id]) || []
-      );
+      const existingNrcsInBatch = new Set(existingBatchCustomers?.map(bc => bc.nrc_number) || []);
 
-      // Split rows into truly new vs existing in master
-      const brandNewRows = validRows.filter(r => !r.existsInMaster);
-      const existingMasterRows = validRows.filter(r => r.existsInMaster);
+      // For "existing" mode: ONLY add new customers, skip ALL existing NRCs
+      // For "new" mode: process normally (existing in master creates new ticket in batch)
+      let newCustomerRows: ParsedRow[];
+      let skippedExistingRows: ParsedRow[];
+      
+      if (uploadMode === "existing") {
+        // MODULE A: Skip ANY row where NRC already exists in master (strict rule)
+        newCustomerRows = validRows.filter(r => !r.existsInMaster);
+        skippedExistingRows = validRows.filter(r => r.existsInMaster);
+      } else {
+        // New batch mode: process all - new to master gets created, existing to master gets ticket
+        newCustomerRows = validRows.filter(r => !r.existsInMaster);
+        skippedExistingRows = [];
+      }
+      
+      // For new batch mode, also handle existing master customers getting new tickets
+      const existingInMasterRows = uploadMode === "new" 
+        ? validRows.filter(r => r.existsInMaster && !existingNrcsInBatch.has(r.nrcNumber))
+        : [];
 
-      let newCustomersCreated = 0;
-      let existingCustomersReused = 0;
-      let newTicketsCreated = 0;
-      let existingTicketsUpdated = 0;
-      let failedRows: { row: number; reason: string }[] = [];
+      let newlyAddedCount = 0;
+      let skippedCount = skippedExistingRows.length;
 
-      // --- STEP 1: Create brand new customers + tickets ---
-      if (brandNewRows.length > 0) {
-        for (let i = 0; i < brandNewRows.length; i += CHUNK_SIZE) {
-          const chunk = brandNewRows.slice(i, i + CHUNK_SIZE);
+      // Process new customers in chunks
+      if (newCustomerRows.length > 0) {
+        for (let i = 0; i < newCustomerRows.length; i += CHUNK_SIZE) {
+          const chunk = newCustomerRows.slice(i, i + CHUNK_SIZE);
           
           const newMasterCustomers = chunk.map((row) => ({
             nrc_number: row.nrcNumber,
@@ -848,7 +857,7 @@ export default function CSVImport() {
           if (customersError) throw customersError;
 
           if (insertedCustomers && insertedCustomers.length > 0) {
-            newCustomersCreated += insertedCustomers.length;
+            newlyAddedCount += insertedCustomers.length;
 
             // Create tickets for new customers
             const newTickets = insertedCustomers.map(mc => {
@@ -868,9 +877,11 @@ export default function CSVImport() {
               };
             });
 
-            const { error: ticketsError } = await supabase.from('tickets').insert(newTickets);
+            const { error: ticketsError } = await supabase
+              .from('tickets')
+              .insert(newTickets);
+
             if (ticketsError) throw ticketsError;
-            newTicketsCreated += newTickets.length;
 
             // Create batch_customers entries
             const newBatchCustomers = insertedCustomers.map(mc => {
@@ -888,175 +899,131 @@ export default function CSVImport() {
               };
             });
 
-            const { error: batchCustError } = await supabase.from('batch_customers').insert(newBatchCustomers);
+            const { error: batchCustError } = await supabase
+              .from('batch_customers')
+              .insert(newBatchCustomers);
+
             if (batchCustError) throw batchCustError;
           }
 
-          setImportProgress(10 + (i / brandNewRows.length) * 35);
+          setImportProgress(10 + (i / newCustomerRows.length) * 40);
         }
       }
 
-      setImportProgress(45);
+      setImportProgress(50);
 
-      // --- STEP 2: Reuse existing master customers → create or update tickets ---
-      if (existingMasterRows.length > 0) {
-        for (let i = 0; i < existingMasterRows.length; i += CHUNK_SIZE) {
-          const chunk = existingMasterRows.slice(i, i + CHUNK_SIZE);
+      // Handle existing master customers for NEW BATCH mode only
+      if (existingInMasterRows.length > 0) {
+        for (let i = 0; i < existingInMasterRows.length; i += CHUNK_SIZE) {
+          const chunk = existingInMasterRows.slice(i, i + CHUNK_SIZE);
+          const batchCustomersForExisting = [];
 
           for (const row of chunk) {
-            try {
-              const existingMaster = masterCustomers.find(mc => mc.nrc_number === row.nrcNumber);
-              if (!existingMaster) {
-                failedRows.push({ row: row.rowNumber, reason: `Master customer not found for NRC ${row.nrcNumber}` });
-                continue;
-              }
-
-              existingCustomersReused++;
-
-              // Update master_customers - only populate NULL/empty static fields
+            const existingMaster = masterCustomers.find(mc => mc.nrc_number === row.nrcNumber);
+            if (existingMaster) {
+              // Only populate NULL/empty static fields
               const masterUpdate: Record<string, any> = {};
-              if (!existingMaster.mobile_number && row.mobileNumber) masterUpdate.mobile_number = row.mobileNumber;
-              if (!existingMaster.branch_name && row.branchName) masterUpdate.branch_name = row.branchName;
-              if (!existingMaster.employer_name && row.employerName) masterUpdate.employer_name = row.employerName;
-              if (!existingMaster.employer_subdivision && row.employerSubdivision) masterUpdate.employer_subdivision = row.employerSubdivision;
-              if (!existingMaster.loan_consultant && row.loanConsultant) masterUpdate.loan_consultant = row.loanConsultant;
-              if (!existingMaster.tenure && row.tenure) masterUpdate.tenure = row.tenure;
-              if (!(existingMaster as any).next_of_kin_name && row.nextOfKinName) masterUpdate.next_of_kin_name = row.nextOfKinName;
-              if (!(existingMaster as any).next_of_kin_contact && row.nextOfKinContact) masterUpdate.next_of_kin_contact = row.nextOfKinContact;
-              if (!(existingMaster as any).workplace_contact && row.workplaceContact) masterUpdate.workplace_contact = row.workplaceContact;
-              if (!(existingMaster as any).workplace_destination && row.workplaceDestination) masterUpdate.workplace_destination = row.workplaceDestination;
-
+              if (!existingMaster.mobile_number && row.mobileNumber) {
+                masterUpdate.mobile_number = row.mobileNumber;
+              }
+              if (!existingMaster.branch_name && row.branchName) {
+                masterUpdate.branch_name = row.branchName;
+              }
+              if (!existingMaster.employer_name && row.employerName) {
+                masterUpdate.employer_name = row.employerName;
+              }
+              if (!existingMaster.employer_subdivision && row.employerSubdivision) {
+                masterUpdate.employer_subdivision = row.employerSubdivision;
+              }
+              if (!existingMaster.loan_consultant && row.loanConsultant) {
+                masterUpdate.loan_consultant = row.loanConsultant;
+              }
+              if (!existingMaster.tenure && row.tenure) {
+                masterUpdate.tenure = row.tenure;
+              }
+              if (!(existingMaster as any).next_of_kin_name && row.nextOfKinName) {
+                masterUpdate.next_of_kin_name = row.nextOfKinName;
+              }
+              if (!(existingMaster as any).next_of_kin_contact && row.nextOfKinContact) {
+                masterUpdate.next_of_kin_contact = row.nextOfKinContact;
+              }
+              if (!(existingMaster as any).workplace_contact && row.workplaceContact) {
+                masterUpdate.workplace_contact = row.workplaceContact;
+              }
+              if (!(existingMaster as any).workplace_destination && row.workplaceDestination) {
+                masterUpdate.workplace_destination = row.workplaceDestination;
+              }
+              
               if (Object.keys(masterUpdate).length > 0) {
                 await supabase.from('master_customers').update(masterUpdate).eq('id', existingMaster.id);
               }
 
-              const alreadyInBatch = existingNrcsInBatch.has(row.nrcNumber);
+              batchCustomersForExisting.push({
+                batch_id: batch.id,
+                master_customer_id: existingMaster.id,
+                nrc_number: row.nrcNumber,
+                name: row.name,
+                mobile_number: row.mobileNumber || null,
+                amount_owed: row.amountOwed,
+                assigned_agent_id: row.assignedAgentId,
+                arrear_status: row.arrearStatus || null,
+                last_payment_date: validateAndParseDate(row.lastPaymentDate),
+              });
 
-              if (alreadyInBatch) {
-                // UPDATE existing ticket & batch_customer
-                const ticketUpdate: Record<string, any> = {
-                  amount_owed: row.amountOwed,
-                  customer_name: row.name || existingMaster.name,
-                  priority: row.amountOwed === 0 ? 'Low' : 'High',
-                };
-                if (row.mobileNumber) ticketUpdate.mobile_number = row.mobileNumber;
-                if (row.assignedAgentId) ticketUpdate.assigned_agent = row.assignedAgentId;
-                if (row.amountOwed === 0) {
-                  ticketUpdate.status = 'Resolved';
-                  ticketUpdate.resolved_date = new Date().toISOString();
-                }
+              newlyAddedCount++;
 
-                await supabase.from('tickets').update(ticketUpdate)
-                  .eq('batch_id', batch.id)
-                  .eq('nrc_number', row.nrcNumber);
-
-                // Update batch_customer record
-                const batchCustUpdate: Record<string, any> = {
-                  amount_owed: row.amountOwed,
-                  name: row.name || existingMaster.name,
-                };
-                if (row.mobileNumber) batchCustUpdate.mobile_number = row.mobileNumber;
-                if (row.assignedAgentId) batchCustUpdate.assigned_agent_id = row.assignedAgentId;
-                if (row.arrearStatus) batchCustUpdate.arrear_status = row.arrearStatus;
-
-                await supabase.from('batch_customers').update(batchCustUpdate)
-                  .eq('batch_id', batch.id)
-                  .eq('nrc_number', row.nrcNumber);
-
-                existingTicketsUpdated++;
-              } else {
-                // CREATE new ticket + batch_customer for this batch
-                const ticketStatus = row.amountOwed === 0 ? 'Resolved' : 'Open';
-                const ticketPriority = row.amountOwed === 0 ? 'Low' : 'High';
-                
-                await supabase.from('tickets').insert({
-                  master_customer_id: existingMaster.id,
-                  batch_id: batch.id,
-                  customer_name: row.name || existingMaster.name,
-                  nrc_number: row.nrcNumber,
-                  mobile_number: row.mobileNumber || existingMaster.mobile_number || null,
-                  amount_owed: row.amountOwed,
-                  assigned_agent: row.assignedAgentId,
-                  priority: ticketPriority,
-                  status: ticketStatus,
-                  resolved_date: row.amountOwed === 0 ? new Date().toISOString() : null,
-                });
-
-                await supabase.from('batch_customers').insert({
-                  batch_id: batch.id,
-                  master_customer_id: existingMaster.id,
-                  nrc_number: row.nrcNumber,
-                  name: row.name || existingMaster.name,
-                  mobile_number: row.mobileNumber || existingMaster.mobile_number || null,
-                  amount_owed: row.amountOwed,
-                  assigned_agent_id: row.assignedAgentId,
-                  arrear_status: row.arrearStatus || null,
-                  last_payment_date: validateAndParseDate(row.lastPaymentDate),
-                });
-
-                newTicketsCreated++;
-              }
-            } catch (rowError: any) {
-              failedRows.push({ row: row.rowNumber, reason: rowError.message });
+              // Create ticket for this batch
+              const ticketStatus = row.amountOwed === 0 ? 'Resolved' : 'Open';
+              const ticketPriority = row.amountOwed === 0 ? 'Low' : 'High';
+              await supabase.from('tickets').insert({
+                master_customer_id: existingMaster.id,
+                batch_id: batch.id,
+                customer_name: row.name,
+                nrc_number: row.nrcNumber,
+                mobile_number: row.mobileNumber || null,
+                amount_owed: row.amountOwed,
+                assigned_agent: row.assignedAgentId,
+                priority: ticketPriority,
+                status: ticketStatus,
+                resolved_date: row.amountOwed === 0 ? new Date().toISOString() : null,
+              });
             }
           }
 
-          setImportProgress(45 + (i / existingMasterRows.length) * 40);
+          if (batchCustomersForExisting.length > 0) {
+            const { error: existingBatchError } = await supabase
+              .from('batch_customers')
+              .insert(batchCustomersForExisting);
+
+            if (existingBatchError) throw existingBatchError;
+          }
+
+          setImportProgress(50 + (i / existingInMasterRows.length) * 30);
         }
       }
 
       setImportProgress(90);
 
-      // Update batch totals
-      const totalProcessed = newCustomersCreated + existingCustomersReused;
-      const totalAmount = validRows.reduce((sum, r) => sum + r.amountOwed, 0);
-      
-      if (uploadMode === "new") {
-        // Batch was just created with initial counts, but we may need to adjust
-        // since some rows may have failed
+      // Update batch totals for "existing" mode
+      if (uploadMode === "existing" && newlyAddedCount > 0) {
+        const addedAmount = newCustomerRows.reduce((sum, r) => sum + r.amountOwed, 0);
         await supabase.from('batches').update({
-          customer_count: totalProcessed,
-          total_amount: totalAmount,
+          customer_count: batch.customer_count + newlyAddedCount,
+          total_amount: batch.total_amount + addedAmount,
         }).eq('id', batch.id);
-      } else if (uploadMode === "existing") {
-        // Add to existing batch totals (only count newly added, not updated)
-        const newlyAdded = newCustomersCreated + newTicketsCreated;
-        const addedAmount = validRows
-          .filter(r => !existingNrcsInBatch.has(r.nrcNumber))
-          .reduce((sum, r) => sum + r.amountOwed, 0);
-        
-        if (newlyAdded > 0) {
-          await supabase.from('batches').update({
-            customer_count: batch.customer_count + newCustomersCreated + (newTicketsCreated - newCustomersCreated > 0 ? newTicketsCreated - newCustomersCreated : 0),
-            total_amount: batch.total_amount + addedAmount,
-          }).eq('id', batch.id);
-        }
       }
 
       setImportProgress(100);
       
-      // Build detailed summary
-      const summaryParts: string[] = [];
-      if (newCustomersCreated > 0) summaryParts.push(`${newCustomersCreated} new customers`);
-      if (existingCustomersReused > 0) summaryParts.push(`${existingCustomersReused} existing reused`);
-      if (newTicketsCreated > 0) summaryParts.push(`${newTicketsCreated} tickets created`);
-      if (existingTicketsUpdated > 0) summaryParts.push(`${existingTicketsUpdated} tickets updated`);
-      if (failedRows.length > 0) summaryParts.push(`${failedRows.length} failed`);
-      
-      const batchLabel = uploadMode === "new" ? batchName : batch.name;
-      const message = summaryParts.length > 0 
-        ? `Batch "${batchLabel}": ${summaryParts.join(', ')}`
-        : `No rows processed for batch "${batchLabel}"`;
-
-      if (failedRows.length > 0) {
-        toast({ 
-          title: "Import Complete with Issues", 
-          description: `${message}. Failed rows: ${failedRows.map(f => `Row ${f.row}: ${f.reason}`).join('; ')}`,
-          variant: "destructive",
-        });
+      let message: string;
+      if (uploadMode === "new") {
+        message = `Successfully created batch "${batchName}" with ${newlyAddedCount} customers`;
       } else {
-        toast({ title: "Import Complete", description: message });
+        const parts = [`Added ${newlyAddedCount} new customers`];
+        if (skippedCount > 0) parts.push(`skipped ${skippedCount} existing NRCs`);
+        message = `${parts.join(', ')} to batch "${batch.name}"`;
       }
+      toast({ title: "Import Complete", description: message });
       navigate('/customers');
     } catch (error: any) {
       toast({ title: "Import Failed", description: error.message, variant: "destructive" });
