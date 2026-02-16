@@ -276,13 +276,11 @@ export default function Tickets() {
         </div>
         <div className="flex flex-col items-end gap-2">
           <LastSyncIndicator />
-          {isAdmin && (
-            <BulkTransferDialog 
-              selectedTicketIds={Array.from(selectedTickets)} 
-              onTransferComplete={() => setSelectedTickets(new Set())}
-              disabled={selectedTickets.size === 0}
-            />
-          )}
+          <BulkTransferDialog 
+            selectedTicketIds={Array.from(selectedTickets)} 
+            onTransferComplete={() => setSelectedTickets(new Set())}
+            disabled={selectedTickets.size === 0}
+          />
         </div>
       </div>
       <Card>
@@ -333,22 +331,20 @@ export default function Tickets() {
             <Table className="w-full table-fixed">
               <TableHeader>
                 <TableRow>
-                  {isAdmin && (
-                    <TableHead className="w-10">
-                      <input 
-                        type="checkbox" 
-                        checked={selectedTickets.size === filteredTickets.length && filteredTickets.length > 0}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedTickets(new Set(filteredTickets.map(t => t.id)));
-                          } else {
-                            setSelectedTickets(new Set());
-                          }
-                        }}
-                        className="h-4 w-4 rounded border-muted"
-                      />
-                    </TableHead>
-                  )}
+                  <TableHead className="w-10">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedTickets.size === filteredTickets.length && filteredTickets.length > 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedTickets(new Set(filteredTickets.map(t => t.id)));
+                        } else {
+                          setSelectedTickets(new Set());
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-muted"
+                    />
+                  </TableHead>
                   <TableHead className="w-[15%]">Customer</TableHead>
                   <TableHead className="w-[12%] hidden sm:table-cell">NRC</TableHead>
                   <TableHead className="text-right w-[10%]">Owed</TableHead>
@@ -362,7 +358,7 @@ export default function Tickets() {
               </TableHeader>
               <TableBody>
                 {filteredTickets.length === 0 ? (
-                  <TableRow><TableCell colSpan={isAdmin ? 11 : 10} className="text-center py-8 text-muted-foreground">No tickets found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">No tickets found</TableCell></TableRow>
                 ) : (
                   filteredTickets.map((ticket) => {
                     const totalPaid = paymentsByTicket[ticket.id] || 0;
@@ -383,24 +379,22 @@ export default function Tickets() {
                           className={`${hasCallLogs ? 'cursor-pointer hover:bg-muted/50 border-b-0' : ''} ${ticket.status === 'Resolved' ? 'bg-success/5' : ''}`} 
                           onClick={hasCallLogs ? () => toggleNotes(ticket.id) : undefined}
                         >
-                          {isAdmin && (
-                            <TableCell onClick={(e) => e.stopPropagation()} className="py-2">
-                              <input 
-                                type="checkbox" 
-                                checked={selectedTickets.has(ticket.id)}
-                                onChange={(e) => {
-                                  const newSelected = new Set(selectedTickets);
-                                  if (e.target.checked) {
-                                    newSelected.add(ticket.id);
-                                  } else {
-                                    newSelected.delete(ticket.id);
-                                  }
-                                  setSelectedTickets(newSelected);
-                                }}
-                                className="h-4 w-4 rounded border-muted"
-                              />
-                            </TableCell>
-                          )}
+                          <TableCell onClick={(e) => e.stopPropagation()} className="py-2">
+                            <input 
+                              type="checkbox" 
+                              checked={selectedTickets.has(ticket.id)}
+                              onChange={(e) => {
+                                const newSelected = new Set(selectedTickets);
+                                if (e.target.checked) {
+                                  newSelected.add(ticket.id);
+                                } else {
+                                  newSelected.delete(ticket.id);
+                                }
+                                setSelectedTickets(newSelected);
+                              }}
+                              className="h-4 w-4 rounded border-muted"
+                            />
+                          </TableCell>
                           <TableCell className="py-2" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center gap-1">
                               {hasCallLogs && (
@@ -527,7 +521,7 @@ export default function Tickets() {
                         
                         {/* Call Notes Inline Edit Row (always visible) */}
                         <TableRow className={`${ticket.status === 'Resolved' ? 'bg-success/5' : ''}`}>
-                          <TableCell colSpan={isAdmin ? 11 : 10} className="pt-0 pb-3 border-b">
+                          <TableCell colSpan={11} className="pt-0 pb-3 border-b">
                             <div className="flex flex-wrap items-center justify-center gap-2 py-2">
                               <div className="flex-1 min-w-[180px] max-w-sm">
                                 <InlineNoteInput
@@ -547,9 +541,7 @@ export default function Tickets() {
                                 {expandedStatuses[ticket.id] ? <ChevronUp className="h-3 w-3 mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
                                 Status
                               </Button>
-                              {isAdmin && (
-                                <BatchTransferDialog ticketId={ticket.id} currentBatchId={ticket.batch_id} currentAgentId={ticket.assigned_agent} customerName={ticket.customer_name} />
-                              )}
+                              <BatchTransferDialog ticketId={ticket.id} currentBatchId={ticket.batch_id} currentAgentId={ticket.assigned_agent} customerName={ticket.customer_name} />
                               {hasCallLogs && (
                                 <Button variant="ghost" size="sm" className="h-8 px-2 text-info hover:text-info hover:bg-info/10 flex-shrink-0" onClick={(e) => { e.stopPropagation(); toggleNotes(ticket.id); }}>
                                   {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -575,7 +567,7 @@ export default function Tickets() {
                         </TableRow>
                         {hasCallLogs && isExpanded && (
                           <TableRow className="bg-info/5 hover:bg-info/5">
-                            <TableCell colSpan={isAdmin ? 11 : 10} className="p-0">
+                            <TableCell colSpan={11} className="p-0">
                               <div className="p-4 space-y-3">
                                 <div className="flex items-center gap-2 text-sm font-medium text-info">
                                   <MessageSquare className="h-4 w-4" />
