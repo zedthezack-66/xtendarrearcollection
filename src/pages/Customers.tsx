@@ -306,7 +306,7 @@ export default function Customers() {
       customer.mobile_number?.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesStatus = statusFilter === "all" || customer.payment_status === statusFilter;
-    const matchesAgent = agentFilter === "all" || customer.assigned_agent === agentFilter;
+    const matchesAgent = isAdmin ? (agentFilter === "all" || customer.assigned_agent === agentFilter) : true;
     
     return matchesSearch && matchesStatus && matchesAgent;
   });

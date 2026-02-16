@@ -229,7 +229,7 @@ export default function Tickets() {
         ticket.mobile_number?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === "all" || ticket.status === statusFilter;
       const matchesPriority = priorityFilter === "all" || ticket.priority === priorityFilter;
-      const matchesAgent = agentFilter === "all" || ticket.assigned_agent === agentFilter;
+      const matchesAgent = isAdmin ? (agentFilter === "all" || ticket.assigned_agent === agentFilter) : true;
       return matchesSearch && matchesStatus && matchesPriority && matchesAgent;
     })
     .sort((a, b) => {
