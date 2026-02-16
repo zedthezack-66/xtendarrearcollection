@@ -506,6 +506,7 @@ export type Database = {
           master_customer_id: string
           mobile_number: string | null
           nrc_number: string
+          original_amount: number | null
           priority: string
           resolved_date: string | null
           status: string
@@ -525,6 +526,7 @@ export type Database = {
           master_customer_id: string
           mobile_number?: string | null
           nrc_number: string
+          original_amount?: number | null
           priority?: string
           resolved_date?: string | null
           status?: string
@@ -544,6 +546,7 @@ export type Database = {
           master_customer_id?: string
           mobile_number?: string | null
           nrc_number?: string
+          original_amount?: number | null
           priority?: string
           resolved_date?: string | null
           status?: string
