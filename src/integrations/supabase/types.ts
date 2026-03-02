@@ -114,6 +114,7 @@ export type Database = {
           created_at: string
           id: string
           loan_book_payment_date: string | null
+          loan_id: string | null
           master_customer_id: string | null
           movement_type: string
           new_arrears: number
@@ -128,6 +129,7 @@ export type Database = {
           created_at?: string
           id?: string
           loan_book_payment_date?: string | null
+          loan_id?: string | null
           master_customer_id?: string | null
           movement_type: string
           new_arrears?: number
@@ -142,6 +144,7 @@ export type Database = {
           created_at?: string
           id?: string
           loan_book_payment_date?: string | null
+          loan_id?: string | null
           master_customer_id?: string | null
           movement_type?: string
           new_arrears?: number
@@ -166,6 +169,7 @@ export type Database = {
           id: string
           last_payment_date: string | null
           loan_consultant: string | null
+          loan_id: string | null
           master_customer_id: string
           mobile_number: string | null
           name: string
@@ -185,6 +189,7 @@ export type Database = {
           id?: string
           last_payment_date?: string | null
           loan_consultant?: string | null
+          loan_id?: string | null
           master_customer_id: string
           mobile_number?: string | null
           name: string
@@ -204,6 +209,7 @@ export type Database = {
           id?: string
           last_payment_date?: string | null
           loan_consultant?: string | null
+          loan_id?: string | null
           master_customer_id?: string
           mobile_number?: string | null
           name?: string
@@ -503,6 +509,7 @@ export type Database = {
           customer_name: string
           employer_reason_for_arrears: string | null
           id: string
+          loan_id: string
           master_customer_id: string
           mobile_number: string | null
           nrc_number: string
@@ -523,6 +530,7 @@ export type Database = {
           customer_name: string
           employer_reason_for_arrears?: string | null
           id?: string
+          loan_id: string
           master_customer_id: string
           mobile_number?: string | null
           nrc_number: string
@@ -543,6 +551,7 @@ export type Database = {
           customer_name?: string
           employer_reason_for_arrears?: string | null
           id?: string
+          loan_id?: string
           master_customer_id?: string
           mobile_number?: string | null
           nrc_number?: string
