@@ -304,7 +304,7 @@ export default function Export() {
     }
 
     const headers = [
-      'Customer Name', 'NRC Number', 'Mobile Number', 'Total Amount Owed', 'Total Amount Paid', 
+      'Loan ID', 'Customer Name', 'NRC Number', 'Mobile Number', 'Total Amount Owed', 'Total Amount Paid', 
       'Outstanding Balance', 'Payment Status', 'Assigned Agent', 'Call Notes', 'Ticket Status', 'Total Collected',
       'Branch Name', 'Arrear Status', 'Employer Name', 'Employer Subdivision', 
       'Loan Consultant', 'Tenure', 'Last Payment Date',
@@ -340,6 +340,7 @@ export default function Export() {
       const outstandingBalance = Math.max(totalOwed - totalPaid, 0);
       
       return [
+        ticket?.loan_id || '',
         customer.name || '',
         customer.nrc_number || '',
         customer.mobile_number || '',
@@ -383,7 +384,7 @@ export default function Export() {
     }
 
     const headers = [
-      'Batch Name', 'Customer Name', 'NRC Number', 'Mobile Number', 'Batch Amount Owed', 
+      'Loan ID', 'Batch Name', 'Customer Name', 'NRC Number', 'Mobile Number', 'Batch Amount Owed', 
       'Total Paid (Global)', 'Outstanding Balance (Global)', 'Payment Status', 'Assigned Agent', 
       'Call Notes', 'Ticket Status', 'Total Collected',
       'Branch Name', 'Arrear Status', 'Employer Name', 'Employer Subdivision', 
@@ -422,6 +423,7 @@ export default function Export() {
       const outstandingBalance = Math.max(batchAmountOwed - totalPaid, 0);
       
       return [
+        ticket?.loan_id || '',
         batch?.name || 'Unknown',
         bc.name || '',
         bc.nrc_number || '',
@@ -521,7 +523,7 @@ export default function Export() {
         yPos += 5;
 
         doc.setFont("helvetica", "normal");
-        doc.text(`NRC: ${customer.nrc_number}  |  Mobile: ${customer.mobile_number || 'N/A'}  |  Agent: ${agentName}`, margin + 4, yPos);
+        doc.text(`Loan ID: ${ticket?.loan_id || 'N/A'}  |  NRC: ${customer.nrc_number}  |  Mobile: ${customer.mobile_number || 'N/A'}  |  Agent: ${agentName}`, margin + 4, yPos);
         yPos += 5;
         
         // Loan book fields - Branch, Employer, Arrear Status
