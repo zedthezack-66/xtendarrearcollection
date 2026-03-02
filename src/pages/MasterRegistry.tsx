@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Link } from "react-router-dom";
-import { useMasterCustomers, useBatchCustomers } from "@/hooks/useSupabaseData";
+import { useMasterCustomers, useBatchCustomers, useTickets } from "@/hooks/useSupabaseData";
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW', minimumFractionDigits: 0 }).format(amount);
 
@@ -14,9 +14,14 @@ export default function MasterRegistry() {
   const { data: batchCustomers = [] } = useBatchCustomers();
   const [searchQuery, setSearchQuery] = useState("");
 
-  const filteredCustomers = masterCustomers.filter(c => 
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.nrc_number.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const { data: tickets = [] } = useTickets();
+
+  const filteredCustomers = masterCustomers.filter(c => {
+    const q = searchQuery.toLowerCase();
+    const ticket = tickets.find(t => t.master_customer_id === c.id);
+    const loanId = ticket?.loan_id?.toLowerCase() || '';
+    return c.name.toLowerCase().includes(q) || c.nrc_number.toLowerCase().includes(q) || loanId.includes(q);
+  });
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-64"><p className="text-muted-foreground">Loading...</p></div>;
@@ -32,7 +37,7 @@ export default function MasterRegistry() {
         <CardHeader className="pb-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search by name or NRC..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
+            <Input placeholder="Search by name, NRC, or Loan ID..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
           </div>
         </CardHeader>
         <CardContent>
@@ -40,6 +45,7 @@ export default function MasterRegistry() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Loan ID</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>NRC</TableHead>
                   <TableHead className="text-right">Total Owed</TableHead>
@@ -50,10 +56,12 @@ export default function MasterRegistry() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredCustomers.map(c => {
+              {filteredCustomers.map(c => {
                   const customerBatchCount = batchCustomers.filter(bc => bc.master_customer_id === c.id).length;
+                  const ticket = tickets.find(t => t.master_customer_id === c.id);
                   return (
                     <TableRow key={c.id}>
+                      <TableCell className="font-mono text-sm text-primary">{ticket?.loan_id || '-'}</TableCell>
                       <TableCell><Link to={`/customers/${c.id}`} className="font-medium hover:underline">{c.name}</Link></TableCell>
                       <TableCell className="font-mono text-sm">{c.nrc_number}</TableCell>
                       <TableCell className="text-right text-destructive">{formatCurrency(Number(c.total_owed))}</TableCell>

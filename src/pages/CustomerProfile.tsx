@@ -186,6 +186,9 @@ export default function CustomerProfile() {
           <Card>
             <CardHeader><CardTitle className="text-lg">Customer Information</CardTitle></CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
+              {customerTicket?.loan_id && (
+                <div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-primary/10"><Ticket className="h-4 w-4 text-primary" /></div><div><p className="text-sm text-muted-foreground">Loan ID</p><p className="font-medium font-mono text-primary">{customerTicket.loan_id}</p></div></div>
+              )}
               <div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-muted"><User className="h-4 w-4 text-muted-foreground" /></div><div><p className="text-sm text-muted-foreground">NRC Number</p><p className="font-medium font-mono">{customer.nrc_number}</p></div></div>
               <div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-muted"><Phone className="h-4 w-4 text-muted-foreground" /></div><div><p className="text-sm text-muted-foreground">Mobile Number</p><p className="font-medium font-mono">{customer.mobile_number || '-'}</p></div></div>
               <div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-muted"><User className="h-4 w-4 text-muted-foreground" /></div><div><p className="text-sm text-muted-foreground">Assigned Agent</p><p className="font-medium">{getAgentName(customer.assigned_agent)}</p></div></div>

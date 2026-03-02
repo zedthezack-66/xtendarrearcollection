@@ -150,7 +150,10 @@ export default function Payments() {
   const filteredPayments = displayPayments.filter((payment) => {
     const customer = masterCustomers.find(c => c.id === payment.master_customer_id);
     const customerName = customer?.name || payment.customer_name || '';
-    return customerName.toLowerCase().includes(searchQuery.toLowerCase()) || payment.id.toLowerCase().includes(searchQuery.toLowerCase());
+    const ticket = tickets.find(t => t.id === payment.ticket_id);
+    const loanId = ticket?.loan_id?.toLowerCase() || '';
+    const q = searchQuery.toLowerCase();
+    return customerName.toLowerCase().includes(q) || payment.id.toLowerCase().includes(q) || loanId.includes(q);
   });
 
   const totalPayments = filteredPayments.reduce((sum, p) => sum + Number(p.amount), 0);
@@ -169,7 +172,7 @@ export default function Payments() {
         <CardHeader className="pb-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search by customer name..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
+            <Input placeholder="Search by customer name or Loan ID..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
           </div>
         </CardHeader>
         <CardContent>
@@ -177,6 +180,7 @@ export default function Payments() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Loan ID</TableHead>
                   <TableHead>Payment ID</TableHead>
                   <TableHead>Customer</TableHead>
                   <TableHead>Date</TableHead>
@@ -191,7 +195,7 @@ export default function Payments() {
               </TableHeader>
               <TableBody>
                 {filteredPayments.length === 0 ? (
-                  <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">{payments.length === 0 ? "No payments recorded yet" : "No payments found"}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">{payments.length === 0 ? "No payments recorded yet" : "No payments found"}</TableCell></TableRow>
                 ) : (
                   filteredPayments.map((payment) => {
                     const customer = masterCustomers.find(c => c.id === payment.master_customer_id);
@@ -202,6 +206,7 @@ export default function Payments() {
                     
                     return (
                       <TableRow key={payment.id}>
+                        <TableCell className="font-mono text-sm text-primary">{ticket?.loan_id || '-'}</TableCell>
                         <TableCell className="font-mono text-sm font-medium">#{payment.id.slice(0, 8)}</TableCell>
                         <TableCell><Link to={`/customers/${payment.master_customer_id}`} className="hover:underline">{customer?.name || payment.customer_name}</Link></TableCell>
                         <TableCell>{formatDate(payment.payment_date)}</TableCell>
