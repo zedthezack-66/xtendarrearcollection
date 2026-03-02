@@ -37,12 +37,12 @@ interface SyncResult {
 }
 
 // Template columns - New format with Old Arrears pre-filled
-const TEMPLATE_HEADERS = ['NRC Number', 'Old Arrears Amount', 'New Arrears Amount', 'Days in Arrears', 'Last Payment Date - Loan Book'];
+const TEMPLATE_HEADERS = ['Loan ID', 'NRC Number', 'Old Arrears Amount', 'New Arrears Amount', 'Days in Arrears', 'Last Payment Date - Loan Book'];
 
-const SAMPLE_CSV = `NRC Number,Old Arrears Amount,New Arrears Amount,Days in Arrears,Last Payment Date - Loan Book
-123456/78/9,5000,0,30,2026-01-10
-987654/32/1,15000,5000,,2026-01-15
-456789/01/2,0,2500,15,`;
+const SAMPLE_CSV = `Loan ID,NRC Number,Old Arrears Amount,New Arrears Amount,Days in Arrears,Last Payment Date - Loan Book
+LN20260302A1B2C3D4,123456/78/9,5000,0,30,2026-01-10
+LN20260302E5F6A7B8,987654/32/1,15000,5000,,2026-01-15
+LN20260302C9D0E1F2,456789/01/2,0,2500,15,`;
 
 // Helper to check empty/N/A values
 const isEmptyValue = (value: string | undefined | null): boolean => {

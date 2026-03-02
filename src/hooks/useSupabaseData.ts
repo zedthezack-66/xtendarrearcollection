@@ -33,6 +33,7 @@ export interface TicketInsert {
   amount_owed?: number;
   priority?: string;
   assigned_agent?: string;
+  loan_id?: string;
 }
 
 export interface PaymentInsert {
@@ -224,9 +225,11 @@ export function useCreateTicket() {
 
   return useMutation({
     mutationFn: async (ticket: TicketInsert) => {
+      const { generateLoanId } = await import('@/lib/generateLoanId');
+      const ticketWithLoanId = { ...ticket, loan_id: ticket.loan_id || generateLoanId() };
       const { data, error } = await supabase
         .from('tickets')
-        .insert(ticket)
+        .insert(ticketWithLoanId)
         .select()
         .single();
       

@@ -226,7 +226,8 @@ export default function Tickets() {
       const matchesSearch = 
         ticket.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         ticket.nrc_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ticket.mobile_number?.toLowerCase().includes(searchQuery.toLowerCase());
+        ticket.mobile_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (ticket as any).loan_id?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === "all" || ticket.status === statusFilter;
       const matchesPriority = priorityFilter === "all" || ticket.priority === priorityFilter;
       const matchesAgent = isAdmin ? (agentFilter === "all" || ticket.assigned_agent === agentFilter) : true;
@@ -288,7 +289,7 @@ export default function Tickets() {
           <div className="flex flex-col sm:flex-row gap-4 flex-wrap">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search by customer, NRC or mobile..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
+              <Input placeholder="Search by customer, NRC, mobile or Loan ID..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-[180px]"><SelectValue placeholder="Status" /></SelectTrigger>
@@ -346,7 +347,8 @@ export default function Tickets() {
                     />
                   </TableHead>
                   <TableHead className="w-[15%]">Customer</TableHead>
-                  <TableHead className="w-[12%] hidden sm:table-cell">NRC</TableHead>
+                  <TableHead className="w-[10%] hidden lg:table-cell">Loan ID</TableHead>
+                  <TableHead className="w-[10%] hidden sm:table-cell">NRC</TableHead>
                   <TableHead className="text-right w-[10%]">Owed</TableHead>
                   <TableHead className="text-right w-[10%] hidden md:table-cell">Paid</TableHead>
                   <TableHead className="text-right w-[10%]">Balance</TableHead>
@@ -358,7 +360,7 @@ export default function Tickets() {
               </TableHeader>
               <TableBody>
                 {filteredTickets.length === 0 ? (
-                  <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">No tickets found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={12} className="text-center py-8 text-muted-foreground">No tickets found</TableCell></TableRow>
                 ) : (
                   filteredTickets.map((ticket) => {
                     const totalPaid = paymentsByTicket[ticket.id] || 0;
@@ -450,6 +452,7 @@ export default function Tickets() {
                               )}
                             </div>
                           </TableCell>
+                          <TableCell className="font-mono text-xs py-2 hidden lg:table-cell truncate text-muted-foreground">{(ticket as any).loan_id || '-'}</TableCell>
                           <TableCell className="font-mono text-xs py-2 hidden sm:table-cell truncate">{ticket.nrc_number}</TableCell>
                           <TableCell className="text-right py-2 text-sm" onClick={(e) => e.stopPropagation()}>
                             <EditableAmountOwed
@@ -521,7 +524,7 @@ export default function Tickets() {
                         
                         {/* Call Notes Inline Edit Row (always visible) */}
                         <TableRow className={`${ticket.status === 'Resolved' ? 'bg-success/5' : ''}`}>
-                          <TableCell colSpan={11} className="pt-0 pb-3 border-b">
+                          <TableCell colSpan={12} className="pt-0 pb-3 border-b">
                             <div className="flex flex-wrap items-center justify-center gap-2 py-2">
                               <div className="flex-1 min-w-[180px] max-w-sm">
                                 <InlineNoteInput
@@ -567,7 +570,7 @@ export default function Tickets() {
                         </TableRow>
                         {hasCallLogs && isExpanded && (
                           <TableRow className="bg-info/5 hover:bg-info/5">
-                            <TableCell colSpan={11} className="p-0">
+                            <TableCell colSpan={12} className="p-0">
                               <div className="p-4 space-y-3">
                                 <div className="flex items-center gap-2 text-sm font-medium text-info">
                                   <MessageSquare className="h-4 w-4" />

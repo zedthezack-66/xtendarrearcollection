@@ -111,7 +111,10 @@ export default function TicketDetail() {
             <h1 className="text-2xl font-bold">{ticket.customer_name}</h1>
             {getStatusBadge(ticket.status)}
           </div>
-          <p className="text-muted-foreground">NRC: {ticket.nrc_number}</p>
+          <p className="text-muted-foreground">
+            Loan ID: <span className="font-mono">{(ticket as any).loan_id || '-'}</span>
+            {' · '}NRC: {ticket.nrc_number}
+          </p>
         </div>
       </div>
 

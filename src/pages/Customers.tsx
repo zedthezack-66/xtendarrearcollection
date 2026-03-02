@@ -206,6 +206,7 @@ export default function Customers() {
       });
 
       // Create ticket with batch_id
+      const { generateLoanId } = await import('@/lib/generateLoanId');
       await supabase.from('tickets').insert({
         master_customer_id: customer.id,
         batch_id: targetBatchId,
@@ -215,6 +216,7 @@ export default function Customers() {
         amount_owed: amount,
         assigned_agent: newCustomerAgent || null,
         priority: 'High',
+        loan_id: generateLoanId(),
       });
 
       // Update batch totals
@@ -428,7 +430,7 @@ export default function Customers() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name, NRC or mobile..."
+                placeholder="Search by name, NRC, mobile or Loan ID..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
