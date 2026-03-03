@@ -66,12 +66,11 @@ interface ParsedRow {
   assignedAgent: string;
   assignedAgentId: string | null;
   isValid: boolean;
-  isValidForUpdate: boolean; // Tolerant validation for update mode (only NRC required)
+  isValidForUpdate: boolean; // Tolerant validation for update mode (only NRC/Loan ID required)
   errors: string[];
   updateModeErrors: string[]; // Errors specific to update mode (only critical ones)
   existsInMaster: boolean;
-  isDuplicateNrc: boolean;
-  isDuplicateMobile: boolean;
+  isDuplicateLoanId: boolean;
   // New loan book fields (all nullable)
   branchName: string | null;
   arrearStatus: string | null;
@@ -188,33 +187,21 @@ export default function CSVImport() {
   );
 
   const processRows = (data: CSVRow[]) => {
-    // First pass: collect all NRCs and mobile numbers to detect duplicates
-    const nrcOccurrences = new Map<string, number[]>();
-    const mobileOccurrences = new Map<string, number[]>();
+    // First pass: collect all Loan IDs to detect duplicates (NRC and mobile duplicates are ALLOWED)
+    const loanIdOccurrences = new Map<string, number[]>();
     
     data.forEach((row, index) => {
-      const nrc = row['NRC Number']?.toString().trim() || '';
-      const mobile = row['Mobile Number']?.toString().trim() || '';
-      
-      if (nrc) {
-        if (!nrcOccurrences.has(nrc)) nrcOccurrences.set(nrc, []);
-        nrcOccurrences.get(nrc)!.push(index + 1);
-      }
-      if (mobile) {
-        if (!mobileOccurrences.has(mobile)) mobileOccurrences.set(mobile, []);
-        mobileOccurrences.get(mobile)!.push(index + 1);
+      const loanId = cleanString(row['Loan ID']);
+      if (loanId) {
+        if (!loanIdOccurrences.has(loanId)) loanIdOccurrences.set(loanId, []);
+        loanIdOccurrences.get(loanId)!.push(index + 1);
       }
     });
     
-    // Find duplicates
-    const duplicateNrcs = new Set<string>();
-    const duplicateMobiles = new Set<string>();
-    
-    nrcOccurrences.forEach((rows, nrc) => {
-      if (rows.length > 1) duplicateNrcs.add(nrc);
-    });
-    mobileOccurrences.forEach((rows, mobile) => {
-      if (rows.length > 1) duplicateMobiles.add(mobile);
+    // Find duplicate Loan IDs (ONLY Loan ID duplicates are blocked)
+    const duplicateLoanIds = new Set<string>();
+    loanIdOccurrences.forEach((rows, id) => {
+      if (rows.length > 1) duplicateLoanIds.add(id);
     });
     
     // Second pass: build parsed rows with validation
@@ -249,19 +236,17 @@ export default function CSVImport() {
       const errors: string[] = [];
       const updateModeErrors: string[] = [];
       
-      // CRITICAL: NRC is always required
+      // NRC is required for identity
       if (!nrcNumber) {
         errors.push('NRC Number is required');
         updateModeErrors.push('NRC Number is required');
       }
       
-      // Duplicate detection (critical for all modes)
-      const isDuplicateNrc = duplicateNrcs.has(nrcNumber);
-      const isDuplicateMobile = mobileNumber && duplicateMobiles.has(mobileNumber);
-      
-      if (isDuplicateNrc) {
-        const otherRows = nrcOccurrences.get(nrcNumber)!.filter(r => r !== rowNumber);
-        const msg = `Duplicate NRC in file (also in row${otherRows.length > 1 ? 's' : ''} ${otherRows.join(', ')})`;
+      // Duplicate Loan ID detection (BLOCKING - Loan ID must be unique)
+      const isDuplicateLoanId = loanId ? duplicateLoanIds.has(loanId) : false;
+      if (isDuplicateLoanId && loanId) {
+        const otherRows = loanIdOccurrences.get(loanId)!.filter(r => r !== rowNumber);
+        const msg = `Duplicate Loan ID in file (also in row${otherRows.length > 1 ? 's' : ''} ${otherRows.join(', ')})`;
         errors.push(msg);
         updateModeErrors.push(msg);
       }
@@ -280,13 +265,6 @@ export default function CSVImport() {
       const assignedAgentId = assignedAgent ? agentDisplayNameMap.get(assignedAgent.toLowerCase()) || null : null;
       if (assignedAgent && !assignedAgentId) {
         errors.push(`Agent "${assignedAgent}" not found in system`);
-        // For update mode, unknown agent is non-critical - just won't update agent
-      }
-      
-      // Duplicate mobile is a warning, not blocking
-      if (isDuplicateMobile) {
-        const otherRows = mobileOccurrences.get(mobileNumber)!.filter(r => r !== rowNumber);
-        errors.push(`Duplicate mobile in file (also in row${otherRows.length > 1 ? 's' : ''} ${otherRows.join(', ')})`);
       }
       
       const existsInMaster = existingNrcNumbers.has(nrcNumber);
@@ -306,8 +284,7 @@ export default function CSVImport() {
         errors,
         updateModeErrors,
         existsInMaster,
-        isDuplicateNrc,
-        isDuplicateMobile: !!isDuplicateMobile,
+        isDuplicateLoanId,
         // Loan book fields (nullable)
         branchName,
         arrearStatus,
@@ -409,8 +386,9 @@ export default function CSVImport() {
   // Handle Daily Update (Loan Book Reconciliation) mode - global (process_loan_book_sync)
   const handleDailySync = async () => {
     const dailyData = parsedData
-      .filter(r => r.nrcNumber)
+      .filter(r => r.loanId || r.nrcNumber)
       .map(r => ({
+        loan_id: r.loanId || '',
         nrc_number: r.nrcNumber,
         arrears_amount: r.amountOwedIsEmpty ? null : r.amountOwed,
         days_in_arrears: null as number | null,
@@ -498,8 +476,9 @@ export default function CSVImport() {
     }
 
     const dailyData = parsedData
-      .filter(r => r.nrcNumber && !r.isDuplicateNrc)
+      .filter(r => (r.loanId || r.nrcNumber) && !r.isDuplicateLoanId)
       .map(r => ({
+        loan_id: r.loanId || '',
         nrc_number: r.nrcNumber,
         arrears_amount: r.amountOwedIsEmpty ? null : r.amountOwed,
         days_in_arrears: null as number | null,
@@ -797,15 +776,16 @@ export default function CSVImport() {
       // =====================================================
 
       // Fetch existing batch_customers for this batch to check for duplicates
-      const { data: existingBatchCustomers } = await supabase
-        .from('batch_customers')
-        .select('nrc_number, master_customer_id')
+      // Fetch existing Loan IDs in this batch to check for duplicates
+      const { data: existingBatchTickets } = await supabase
+        .from('tickets')
+        .select('loan_id')
         .eq('batch_id', batch.id);
       
-      const existingNrcsInBatch = new Set(existingBatchCustomers?.map(bc => bc.nrc_number) || []);
+      const existingLoanIdsInBatch = new Set(existingBatchTickets?.map(t => t.loan_id).filter(Boolean) || []);
 
       // For "existing" mode: ONLY add new customers, skip ALL existing NRCs
-      // For "new" mode: process normally (existing in master creates new ticket in batch)
+      // For "new" mode: process all - new to master gets created, existing to master gets ticket
       let newCustomerRows: ParsedRow[];
       let skippedExistingRows: ParsedRow[];
       
@@ -820,8 +800,9 @@ export default function CSVImport() {
       }
       
       // For new batch mode, also handle existing master customers getting new tickets
+      // Use Loan ID to check if already in batch (not NRC)
       const existingInMasterRows = uploadMode === "new" 
-        ? validRows.filter(r => r.existsInMaster && !existingNrcsInBatch.has(r.nrcNumber))
+        ? validRows.filter(r => r.existsInMaster && !(r.loanId && existingLoanIdsInBatch.has(r.loanId)))
         : [];
 
       let newlyAddedCount = 0;
@@ -1050,26 +1031,25 @@ export default function CSVImport() {
   };
 
   // Use mode-appropriate validation for counts
-  // Daily mode (both global and batch sub-mode) only needs valid NRC + no duplicates
+  // Daily mode (both global and batch sub-mode) only needs valid Loan ID + no duplicates
   const isDailyLoanBookMode = uploadMode === "daily" || (uploadMode === "update" && updateSubMode === "daily_loanbook");
   
   const validCount = isDailyLoanBookMode 
-    ? parsedData.filter((r) => r.nrcNumber && !r.isDuplicateNrc).length
+    ? parsedData.filter((r) => (r.loanId || r.nrcNumber) && !r.isDuplicateLoanId).length
     : uploadMode === "update" 
       ? parsedData.filter((r) => r.isValidForUpdate).length
       : parsedData.filter((r) => r.isValid).length;
   const invalidCount = isDailyLoanBookMode
-    ? parsedData.filter((r) => !r.nrcNumber || r.isDuplicateNrc).length
+    ? parsedData.filter((r) => (!r.loanId && !r.nrcNumber) || r.isDuplicateLoanId).length
     : uploadMode === "update"
       ? parsedData.filter((r) => !r.isValidForUpdate).length
       : parsedData.filter((r) => !r.isValid).length;
   const existingCount = parsedData.filter((r) => r.existsInMaster && (uploadMode === "update" || uploadMode === "daily" ? r.isValidForUpdate : r.isValid)).length;
   const rejectedAgentCount = parsedData.filter((r) => r.errors.some(e => e.includes('not found'))).length;
-  const duplicateNrcCount = parsedData.filter((r) => r.isDuplicateNrc).length;
-  const duplicateMobileCount = parsedData.filter((r) => r.isDuplicateMobile).length;
-  // Daily loan book modes don't block on agent/name errors - only duplicate NRCs
+  const duplicateLoanIdCount = parsedData.filter((r) => r.isDuplicateLoanId).length;
+  // Duplicate Loan IDs are blocking; duplicate NRC/mobile are ALLOWED
   const hasBlockingErrors = isDailyLoanBookMode 
-    ? duplicateNrcCount > 0 
+    ? duplicateLoanIdCount > 0 
     : invalidCount > 0;
 
   const formatCurrency = (amount: number) => {
@@ -1395,8 +1375,7 @@ export default function CSVImport() {
               <AlertDescription>
                 <p className="mb-2">Fix the following issues before importing:</p>
                 <ul className="list-disc pl-4 space-y-1">
-                  {duplicateNrcCount > 0 && <li><strong>{duplicateNrcCount}</strong> duplicate NRC number(s) in file</li>}
-                  {duplicateMobileCount > 0 && <li><strong>{duplicateMobileCount}</strong> duplicate mobile number(s) in file</li>}
+                  {duplicateLoanIdCount > 0 && <li><strong>{duplicateLoanIdCount}</strong> duplicate Loan ID(s) in file</li>}
                   {rejectedAgentCount > 0 && <li><strong>{rejectedAgentCount}</strong> row(s) with invalid agent names</li>}
                   {parsedData.filter(r => r.errors.some(e => e.includes('required'))).length > 0 && 
                     <li><strong>{parsedData.filter(r => r.errors.some(e => e.includes('required'))).length}</strong> row(s) with missing required fields</li>}
@@ -1409,8 +1388,8 @@ export default function CSVImport() {
             <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-muted"><FileText className="h-5 w-5 text-muted-foreground" /></div><div><p className="text-sm text-muted-foreground">File</p><p className="font-medium truncate max-w-[100px]">{file.name}</p></div></div></CardContent></Card>
             <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-success/10"><Check className="h-5 w-5 text-success" /></div><div><p className="text-sm text-muted-foreground">Valid Rows</p><p className="font-medium text-success">{validCount}</p></div></div></CardContent></Card>
             <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-destructive/10"><X className="h-5 w-5 text-destructive" /></div><div><p className="text-sm text-muted-foreground">Invalid Rows</p><p className="font-medium text-destructive">{invalidCount}</p></div></div></CardContent></Card>
-            <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-warning/10"><AlertCircle className="h-5 w-5 text-warning" /></div><div><p className="text-sm text-muted-foreground">Duplicate NRC</p><p className="font-medium text-warning">{duplicateNrcCount}</p></div></div></CardContent></Card>
-            <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-warning/10"><AlertCircle className="h-5 w-5 text-warning" /></div><div><p className="text-sm text-muted-foreground">Duplicate Mobile</p><p className="font-medium text-warning">{duplicateMobileCount}</p></div></div></CardContent></Card>
+            <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-warning/10"><AlertCircle className="h-5 w-5 text-warning" /></div><div><p className="text-sm text-muted-foreground">Duplicate Loan ID</p><p className="font-medium text-warning">{duplicateLoanIdCount}</p></div></div></CardContent></Card>
+            <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-info/10"><AlertCircle className="h-5 w-5 text-info" /></div><div><p className="text-sm text-muted-foreground">Existing NRCs</p><p className="font-medium text-info">{existingCount}</p></div></div></CardContent></Card>
             <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-lg bg-info/10"><AlertCircle className="h-5 w-5 text-info" /></div><div><p className="text-sm text-muted-foreground">Existing NRCs</p><p className="font-medium text-info">{existingCount}</p></div></div></CardContent></Card>
           </div>
 
@@ -1585,9 +1564,9 @@ export default function CSVImport() {
                   </TableHeader>
                   <TableBody>
                     {parsedData.map((row, index) => {
-                      // For daily loan book mode, use simpler validation (NRC only, no duplicates)
+                      // For daily loan book mode, use simpler validation (Loan ID, no duplicates)
                       const isValidForMode = isDailyLoanBookMode 
-                        ? (row.nrcNumber && !row.isDuplicateNrc)
+                        ? ((row.loanId || row.nrcNumber) && !row.isDuplicateLoanId)
                         : row.isValid;
                       
                       return (
@@ -1605,13 +1584,11 @@ export default function CSVImport() {
                           )}
                         </TableCell>
                         <TableCell className="font-medium">{row.name || '-'}</TableCell>
-                        <TableCell className={`font-mono text-sm ${row.isDuplicateNrc ? 'text-destructive font-bold' : ''}`}>
+                        <TableCell className="font-mono text-sm">
                           {row.nrcNumber || '-'}
-                          {row.isDuplicateNrc && <span className="ml-1 text-xs">(dup)</span>}
                         </TableCell>
-                        <TableCell className={`font-mono text-sm ${row.isDuplicateMobile ? 'text-destructive font-bold' : ''}`}>
+                        <TableCell className="font-mono text-sm">
                           {row.mobileNumber || '-'}
-                          {row.isDuplicateMobile && <span className="ml-1 text-xs">(dup)</span>}
                         </TableCell>
                         <TableCell className="text-right">{formatCurrency(row.amountOwed)}</TableCell>
                         <TableCell>
@@ -1624,12 +1601,12 @@ export default function CSVImport() {
                           )}
                         </TableCell>
                         <TableCell className="text-sm text-destructive max-w-[200px]">
-                          {/* For daily loan book mode, only show NRC/duplicate errors */}
+                          {/* For daily loan book mode, only show Loan ID/duplicate errors */}
                           {isDailyLoanBookMode ? (
-                            row.isDuplicateNrc ? (
-                              <span className="truncate block">Duplicate NRC</span>
-                            ) : !row.nrcNumber ? (
-                              <span className="truncate block">NRC Number required</span>
+                            row.isDuplicateLoanId ? (
+                              <span className="truncate block">Duplicate Loan ID</span>
+                            ) : (!row.loanId && !row.nrcNumber) ? (
+                              <span className="truncate block">Loan ID required</span>
                             ) : null
                           ) : row.errors.length > 0 ? (
                             <span className="truncate block" title={row.errors.join('; ')}>
@@ -1658,10 +1635,10 @@ export default function CSVImport() {
                   </ul>
                 </div>
               )}
-              {isDailyLoanBookMode && duplicateNrcCount > 0 && (
+              {isDailyLoanBookMode && duplicateLoanIdCount > 0 && (
                 <div className="mt-4 p-4 bg-destructive/5 rounded-lg border border-destructive/20">
                   <h4 className="font-medium text-destructive mb-2">Blocking Errors:</h4>
-                  <p className="text-sm text-muted-foreground">{duplicateNrcCount} duplicate NRC number(s) found in file. Please remove duplicates before uploading.</p>
+                  <p className="text-sm text-muted-foreground">{duplicateLoanIdCount} duplicate Loan ID(s) found in file. Each Loan ID must be unique.</p>
                 </div>
               )}
             </CardContent>

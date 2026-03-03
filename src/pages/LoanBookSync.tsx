@@ -16,6 +16,7 @@ import XLSX from "xlsx-js-style";
 import Papa from "papaparse";
 
 interface SyncRecord {
+  loan_id: string;
   nrc_number: string;
   arrears_amount: number | null;
   days_in_arrears: number | null;
@@ -109,15 +110,16 @@ export default function LoanBookSync() {
         const records: SyncRecord[] = [];
         
         results.data.forEach((row: any, index: number) => {
-          // Support both exact column names and variations
+          // Loan ID is the PRIMARY matching key
+          const loanId = (row['Loan ID'] || row['loan_id'])?.toString().trim();
           const nrc = (row['NRC Number'] || row['nrc_number'] || row['NRC'])?.toString().trim();
           // New format: prefer "New Arrears Amount" column, fallback to legacy "Amount Owed"
           const arrearsStr = row['New Arrears Amount'] || row['Amount Owed'] || row['Arrears Amount'] || row['arrears_amount'];
           const daysStr = row['Days in Arrears'] || row['days_in_arrears'];
           const paymentDate = row['Last Payment Date - Loan Book'] || row['Last Payment Date'] || row['last_payment_date'];
           
-          if (!nrc || isEmptyValue(nrc)) {
-            errors.push(`Row ${index + 2}: Missing NRC Number`);
+          if (!loanId) {
+            errors.push(`Row ${index + 2}: Missing Loan ID`);
             return;
           }
           
@@ -126,7 +128,8 @@ export default function LoanBookSync() {
           const date = parseSyncDate(paymentDate);
           
           records.push({
-            nrc_number: nrc,
+            loan_id: loanId,
+            nrc_number: nrc || '',
             arrears_amount: arrears,
             days_in_arrears: days,
             last_payment_date: date,
@@ -299,13 +302,15 @@ export default function LoanBookSync() {
         [], // blank separator
       ];
 
-      // Data header
-      const dataHeaders = ['Batch ID', 'NRC Number', 'Old Arrears Amount', 'New Arrears Amount', 'Days in Arrears', 'Last Payment Date - Loan Book'];
+      // Data header - Loan ID is first column
+      const dataHeaders = ['Batch ID', 'Loan ID', 'NRC Number', 'Customer Name', 'Old Arrears Amount', 'New Arrears Amount', 'Days in Arrears', 'Last Payment Date - Loan Book'];
 
       // Data rows
       const dataRows = customers.map((c: any) => [
         batchId,
+        c.loan_id || '',
         c.nrc_number,
+        c.customer_name || '',
         c.old_arrears_amount ?? 0,
         '', // New Arrears - admin fills
         '', // Days in Arrears - admin fills
@@ -340,7 +345,9 @@ export default function LoanBookSync() {
       // Column widths
       ws['!cols'] = [
         { wch: 38 }, // Batch ID
+        { wch: 24 }, // Loan ID
         { wch: 18 }, // NRC
+        { wch: 24 }, // Customer Name
         { wch: 20 }, // Old Arrears
         { wch: 20 }, // New Arrears
         { wch: 16 }, // Days
