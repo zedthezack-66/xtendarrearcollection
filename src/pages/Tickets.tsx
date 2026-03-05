@@ -50,8 +50,9 @@ import { TicketStatusDropdowns, ARREAR_STATUS_OPTIONS, PAYMENT_STATUS_OPTIONS, E
 import { BatchTransferDialog } from "@/components/BatchTransferDialog";
 import { BulkTransferDialog } from "@/components/BulkTransferDialog";
 import { EditableAmountOwed } from "@/components/EditableAmountOwed";
-import { useTickets, useUpdateTicket, useProfiles, useDeleteTicket, usePayments, useCallLogsForTickets, useCreateCallLog, useUpdateCallLog, useMasterCustomers } from "@/hooks/useSupabaseData";
+import { useTickets, useUpdateTicket, useProfiles, useDeleteTicket, usePayments, useCallLogsForTickets, useCreateCallLog, useUpdateCallLog, useMasterCustomers, useBatches } from "@/hooks/useSupabaseData";
 import { useAuth } from "@/contexts/AuthContext";
+import { useUIStore } from "@/store/useUIStore";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -85,11 +86,21 @@ const getPriorityBadge = (priority: string) => {
 };
 
 export default function Tickets() {
-  const { data: tickets, isLoading } = useTickets();
+  const { data: allTickets, isLoading } = useTickets();
   const { data: profiles } = useProfiles();
   const { data: payments = [] } = usePayments();
   const { data: masterCustomers = [] } = useMasterCustomers();
   const { profile, user, isAdmin } = useAuth();
+  const { activeBatchId } = useUIStore();
+
+  // Filter tickets by selected batch
+  const tickets = useMemo(() => {
+    if (!allTickets) return [];
+    if (!activeBatchId) return allTickets;
+    return allTickets.filter(t => t.batch_id === activeBatchId);
+  }, [allTickets, activeBatchId]);
+  const { data: batches } = useBatches();
+  const activeBatch = batches?.find(b => b.id === activeBatchId);
   const updateTicket = useUpdateTicket();
   const deleteTicket = useDeleteTicket();
   const createCallLog = useCreateCallLog();
@@ -273,7 +284,9 @@ export default function Tickets() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">{displayName}'s Tickets</h1>
-          <p className="text-muted-foreground">Manage collections workflow</p>
+          <p className="text-muted-foreground">
+            {activeBatch ? `Batch: ${activeBatch.name} • ${filteredTickets.length} tickets` : `All batches • ${filteredTickets.length} tickets`}
+          </p>
         </div>
         <div className="flex flex-col items-end gap-2">
           <LastSyncIndicator />
