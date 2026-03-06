@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { Layers, Calendar, Building2, Loader2, Check, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 
 const formatDate = (date: string) => {
   return new Date(date).toLocaleDateString('en-GB', {
@@ -81,56 +81,54 @@ export function BatchSelector() {
       </div>
 
       {/* Batch list */}
-      <ScrollArea className="max-h-[240px]">
-        <div className="space-y-0.5">
-          {batches.map((batch) => {
-            const isSelected = activeBatchId === batch.id;
-            return (
-              <button
-                key={batch.id}
-                onClick={() => setActiveBatch(batch.id)}
-                className={cn(
-                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-150",
-                  "hover:bg-sidebar-accent/80",
-                  isSelected
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-                    : "text-sidebar-foreground/80"
-                )}
-              >
+      <div className="max-h-[260px] overflow-y-auto space-y-0.5 pr-1 scrollbar-thin scrollbar-thumb-sidebar-border scrollbar-track-transparent">
+        {batches.map((batch) => {
+          const isSelected = activeBatchId === batch.id;
+          return (
+            <button
+              key={batch.id}
+              onClick={() => setActiveBatch(batch.id)}
+              className={cn(
+                "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-150",
+                "hover:bg-sidebar-accent/80",
+                isSelected
+                  ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+                  : "text-sidebar-foreground/80"
+              )}
+            >
+              <div className={cn(
+                "flex-shrink-0 h-7 w-7 rounded-md flex items-center justify-center transition-colors",
+                isSelected ? "bg-sidebar-primary-foreground/20" : "bg-primary/10"
+              )}>
+                <Building2 className="h-3.5 w-3.5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium truncate">{batch.name}</span>
+                  <Badge
+                    variant="secondary"
+                    className={cn(
+                      "text-[10px] px-1.5 py-0 h-4 flex-shrink-0",
+                      isSelected && "bg-sidebar-primary-foreground/20 text-sidebar-primary-foreground border-0"
+                    )}
+                  >
+                    {batch.customer_count}
+                  </Badge>
+                </div>
                 <div className={cn(
-                  "flex-shrink-0 h-7 w-7 rounded-md flex items-center justify-center transition-colors",
-                  isSelected ? "bg-sidebar-primary-foreground/20" : "bg-primary/10"
+                  "flex items-center gap-1.5 text-xs truncate",
+                  isSelected ? "text-sidebar-primary-foreground/70" : "text-muted-foreground"
                 )}>
-                  <Building2 className="h-3.5 w-3.5" />
+                  <span>{formatDate(batch.upload_date)}</span>
+                  <span>•</span>
+                  <span>{formatCurrency(Number(batch.total_amount))}</span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium truncate">{batch.name}</span>
-                    <Badge
-                      variant="secondary"
-                      className={cn(
-                        "text-[10px] px-1.5 py-0 h-4 flex-shrink-0",
-                        isSelected && "bg-sidebar-primary-foreground/20 text-sidebar-primary-foreground border-0"
-                      )}
-                    >
-                      {batch.customer_count}
-                    </Badge>
-                  </div>
-                  <div className={cn(
-                    "flex items-center gap-1.5 text-xs truncate",
-                    isSelected ? "text-sidebar-primary-foreground/70" : "text-muted-foreground"
-                  )}>
-                    <span>{formatDate(batch.upload_date)}</span>
-                    <span>•</span>
-                    <span>{formatCurrency(Number(batch.total_amount))}</span>
-                  </div>
-                </div>
-                {isSelected && <Check className="h-4 w-4 flex-shrink-0 opacity-80" />}
-              </button>
-            );
-          })}
-        </div>
-      </ScrollArea>
+              </div>
+              {isSelected && <Check className="h-4 w-4 flex-shrink-0 opacity-80" />}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
