@@ -103,8 +103,8 @@ export function BatchSelector() {
                 <Building2 className="h-3.5 w-3.5" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium truncate">{batch.name}</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-medium break-words">{batch.name}</span>
                   <Badge
                     variant="secondary"
                     className={cn(
