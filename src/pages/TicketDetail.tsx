@@ -116,14 +116,6 @@ export default function TicketDetail() {
             {' · '}NRC: {ticket.nrc_number}
           </p>
         </div>
-        {masterCustomer && (
-          <Button variant="outline" size="sm" asChild>
-            <Link to={`/customers/${ticket.master_customer_id}`}>
-              <User className="h-4 w-4 mr-2" />
-              View Customer Profile
-            </Link>
-          </Button>
-        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
