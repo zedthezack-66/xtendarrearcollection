@@ -1,0 +1,1 @@
+ALTER TABLE public.tickets ADD COLUMN days_in_arrears integer DEFAULT NULL;

@@ -861,6 +861,7 @@ export default function CSVImport() {
                 status: amountOwed === 0 ? 'Resolved' : 'Open',
                 resolved_date: amountOwed === 0 ? new Date().toISOString() : null,
                 loan_id: row?.loanId || generateLoanId(),
+                ticket_arrear_status: row?.arrearStatus || null,
               };
             });
 
@@ -974,6 +975,7 @@ export default function CSVImport() {
                 status: ticketStatus,
                 resolved_date: row.amountOwed === 0 ? new Date().toISOString() : null,
                 loan_id: row.loanId || generateLoanId(),
+                ticket_arrear_status: row.arrearStatus || null,
               });
             }
           }

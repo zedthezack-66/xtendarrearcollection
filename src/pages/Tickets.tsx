@@ -376,6 +376,7 @@ export default function Tickets() {
                   <TableHead className="text-right w-[10%]">Balance</TableHead>
                   <TableHead className="w-[8%] hidden lg:table-cell">Priority</TableHead>
                   <TableHead className="w-[10%]">Status</TableHead>
+                  <TableHead className="w-[8%] hidden lg:table-cell">Days in Arrears</TableHead>
                   <TableHead className="w-[10%] hidden md:table-cell">Agent</TableHead>
                   <TableHead className="w-12 text-right">Actions</TableHead>
                 </TableRow>
@@ -490,6 +491,13 @@ export default function Tickets() {
                           </TableCell>
                           <TableCell className="py-2 hidden lg:table-cell">{getPriorityBadge(ticket.priority)}</TableCell>
                           <TableCell className="py-2">{getStatusBadge(ticket.status)}</TableCell>
+                          <TableCell className="py-2 text-sm text-center hidden lg:table-cell">
+                            {(ticket as any).days_in_arrears != null ? (
+                              <Badge variant={(ticket as any).days_in_arrears > 90 ? "destructive" : (ticket as any).days_in_arrears > 30 ? "secondary" : "outline"} className="text-xs">
+                                {(ticket as any).days_in_arrears}d
+                              </Badge>
+                            ) : <span className="text-muted-foreground">-</span>}
+                          </TableCell>
                           <TableCell className="text-muted-foreground py-2 text-sm truncate hidden md:table-cell">{getAgentName(ticket.assigned_agent)}</TableCell>
                           <TableCell className="py-2 text-right" onClick={(e) => e.stopPropagation()}>
                             <DropdownMenu>
@@ -499,7 +507,7 @@ export default function Tickets() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="z-50">
-                                <DropdownMenuItem asChild><Link to={`/customers/${ticket.master_customer_id}`}><Eye className="h-4 w-4 mr-2" />View Customer</Link></DropdownMenuItem>
+                                <DropdownMenuItem asChild><Link to={`/tickets/${ticket.id}`}><Eye className="h-4 w-4 mr-2" />View Details</Link></DropdownMenuItem>
                                 {ticket.mobile_number && <DropdownMenuItem asChild><a href={`tel:${ticket.mobile_number}`}><Phone className="h-4 w-4 mr-2" />Call {ticket.mobile_number}</a></DropdownMenuItem>}
                                 
                                 {/* Open: Show Mark In Progress */}
