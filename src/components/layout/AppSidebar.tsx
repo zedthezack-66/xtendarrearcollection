@@ -7,7 +7,7 @@ import {
   Settings,
   Download,
   FileText,
-  Database,
+  
   LogOut,
   Shield,
   RefreshCw,
@@ -45,7 +45,7 @@ const toolsNavItems = [
   { title: "New Batch Import", url: "/batch/new", icon: Upload },
   { title: "Export Data", url: "/export", icon: Download },
   { title: "Weekly Report", url: "/reports", icon: FileText },
-  { title: "Master Registry", url: "/master-registry", icon: Database },
+  
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
