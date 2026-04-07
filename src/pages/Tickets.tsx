@@ -376,6 +376,7 @@ export default function Tickets() {
                   <TableHead className="text-right w-[10%]">Balance</TableHead>
                   <TableHead className="w-[8%] hidden lg:table-cell">Priority</TableHead>
                   <TableHead className="w-[10%]">Status</TableHead>
+                  <TableHead className="w-[8%] hidden lg:table-cell">Days in Arrears</TableHead>
                   <TableHead className="w-[10%] hidden md:table-cell">Agent</TableHead>
                   <TableHead className="w-12 text-right">Actions</TableHead>
                 </TableRow>
