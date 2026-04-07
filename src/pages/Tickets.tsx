@@ -499,7 +499,7 @@ export default function Tickets() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="z-50">
-                                <DropdownMenuItem asChild><Link to={`/tickets/${ticket.id}`}><Eye className="h-4 w-4 mr-2" />View Details</Link></DropdownMenuItem>
+                                <DropdownMenuItem asChild><Link to={`/customers/${ticket.master_customer_id}`}><Eye className="h-4 w-4 mr-2" />View Customer</Link></DropdownMenuItem>
                                 {ticket.mobile_number && <DropdownMenuItem asChild><a href={`tel:${ticket.mobile_number}`}><Phone className="h-4 w-4 mr-2" />Call {ticket.mobile_number}</a></DropdownMenuItem>}
                                 
                                 {/* Open: Show Mark In Progress */}
