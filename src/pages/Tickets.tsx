@@ -107,11 +107,20 @@ export default function Tickets() {
   const updateCallLog = useUpdateCallLog();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [priorityFilter, setPriorityFilter] = useState<string>("all");
-  const [agentFilter, setAgentFilter] = useState<string>("all");
-  const [amountSort, setAmountSort] = useState<string>("none");
+  const [searchQuery, setSearchQuery] = useState(() => localStorage.getItem('tickets_search') || "");
+  const [statusFilter, setStatusFilter] = useState<string>(() => localStorage.getItem('tickets_status') || "all");
+  const [priorityFilter, setPriorityFilter] = useState<string>(() => localStorage.getItem('tickets_priority') || "all");
+  const [agentFilter, setAgentFilter] = useState<string>(() => localStorage.getItem('tickets_agent') || "all");
+  const [amountSort, setAmountSort] = useState<string>(() => localStorage.getItem('tickets_sort') || "none");
+
+  // Persist filters to localStorage
+  useEffect(() => {
+    localStorage.setItem('tickets_search', searchQuery);
+    localStorage.setItem('tickets_status', statusFilter);
+    localStorage.setItem('tickets_priority', priorityFilter);
+    localStorage.setItem('tickets_agent', agentFilter);
+    localStorage.setItem('tickets_sort', amountSort);
+  }, [searchQuery, statusFilter, priorityFilter, agentFilter, amountSort]);
   const [ticketToDelete, setTicketToDelete] = useState<string | null>(null);
   const [blockedResolveModal, setBlockedResolveModal] = useState<{ ticketId: string; balance: number } | null>(null);
   const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
