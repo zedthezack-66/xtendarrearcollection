@@ -16,7 +16,7 @@ import Payments from "./pages/Payments";
 import RecordPayment from "./pages/RecordPayment";
 import Settings from "./pages/Settings";
 import Export from "./pages/Export";
-import MasterRegistry from "./pages/MasterRegistry";
+
 import Reports from "./pages/Reports";
 import LoanBookSync from "./pages/LoanBookSync";
 import ArrearsAnalytics from "./pages/ArrearsAnalytics";
