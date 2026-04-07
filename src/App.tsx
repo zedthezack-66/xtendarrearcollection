@@ -16,7 +16,7 @@ import Payments from "./pages/Payments";
 import RecordPayment from "./pages/RecordPayment";
 import Settings from "./pages/Settings";
 import Export from "./pages/Export";
-import MasterRegistry from "./pages/MasterRegistry";
+
 import Reports from "./pages/Reports";
 import LoanBookSync from "./pages/LoanBookSync";
 import ArrearsAnalytics from "./pages/ArrearsAnalytics";
@@ -50,7 +50,7 @@ const App = () => (
                       <Route path="/payments/new" element={<RecordPayment />} />
                       <Route path="/settings" element={<Settings />} />
                       <Route path="/export" element={<Export />} />
-                      <Route path="/master-registry" element={<MasterRegistry />} />
+                      
                       <Route path="/reports" element={<Reports />} />
                       <Route path="/loan-book-sync" element={<LoanBookSync />} />
                       <Route path="/arrears-analytics" element={<ArrearsAnalytics />} />
