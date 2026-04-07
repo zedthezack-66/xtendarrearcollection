@@ -50,7 +50,7 @@ const App = () => (
                       <Route path="/payments/new" element={<RecordPayment />} />
                       <Route path="/settings" element={<Settings />} />
                       <Route path="/export" element={<Export />} />
-                      <Route path="/master-registry" element={<MasterRegistry />} />
+                      
                       <Route path="/reports" element={<Reports />} />
                       <Route path="/loan-book-sync" element={<LoanBookSync />} />
                       <Route path="/arrears-analytics" element={<ArrearsAnalytics />} />

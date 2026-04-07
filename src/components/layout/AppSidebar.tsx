@@ -7,7 +7,7 @@ import {
   Settings,
   Download,
   FileText,
-  Database,
+  
   LogOut,
   Shield,
   RefreshCw,
