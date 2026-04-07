@@ -491,6 +491,13 @@ export default function Tickets() {
                           </TableCell>
                           <TableCell className="py-2 hidden lg:table-cell">{getPriorityBadge(ticket.priority)}</TableCell>
                           <TableCell className="py-2">{getStatusBadge(ticket.status)}</TableCell>
+                          <TableCell className="py-2 text-sm text-center hidden lg:table-cell">
+                            {(ticket as any).days_in_arrears != null ? (
+                              <Badge variant={(ticket as any).days_in_arrears > 90 ? "destructive" : (ticket as any).days_in_arrears > 30 ? "secondary" : "outline"} className="text-xs">
+                                {(ticket as any).days_in_arrears}d
+                              </Badge>
+                            ) : <span className="text-muted-foreground">-</span>}
+                          </TableCell>
                           <TableCell className="text-muted-foreground py-2 text-sm truncate hidden md:table-cell">{getAgentName(ticket.assigned_agent)}</TableCell>
                           <TableCell className="py-2 text-right" onClick={(e) => e.stopPropagation()}>
                             <DropdownMenu>
