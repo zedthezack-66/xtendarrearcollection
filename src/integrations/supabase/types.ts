@@ -507,6 +507,7 @@ export type Database = {
           call_notes: string | null
           created_at: string
           customer_name: string
+          days_in_arrears: number | null
           employer_reason_for_arrears: string | null
           id: string
           loan_id: string
@@ -528,6 +529,7 @@ export type Database = {
           call_notes?: string | null
           created_at?: string
           customer_name: string
+          days_in_arrears?: number | null
           employer_reason_for_arrears?: string | null
           id?: string
           loan_id: string
@@ -549,6 +551,7 @@ export type Database = {
           call_notes?: string | null
           created_at?: string
           customer_name?: string
+          days_in_arrears?: number | null
           employer_reason_for_arrears?: string | null
           id?: string
           loan_id?: string
