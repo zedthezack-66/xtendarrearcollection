@@ -27,6 +27,7 @@ export const EMPLOYER_REASON_OPTIONS = [
   "Salary Locked",
   "Settled",
   "FID",
+  "Death",
 ] as const;
 
 interface TicketStatusDropdownsProps {
