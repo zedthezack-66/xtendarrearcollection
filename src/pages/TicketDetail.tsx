@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useTickets, usePayments, useCallLogs, useProfiles, useMasterCustomers } from '@/hooks/useSupabaseData';
 import { useAuth } from '@/contexts/AuthContext';
+import { getDaysInArrearsBadgeClass } from '@/lib/daysInArrears';
 import { useEffect } from 'react';
 
 const formatCurrency = (amount: number) => {
@@ -143,6 +144,20 @@ export default function TicketDetail() {
                 <Badge variant={ticket.priority === 'High' ? 'destructive' : 'secondary'}>
                   {ticket.priority}
                 </Badge>
+              </div>
+              <div className="col-span-2">
+                <p className="text-sm text-muted-foreground">Days In Arrears</p>
+                {(() => {
+                  const days = (ticket as any).days_in_arrears as number | null | undefined;
+                  if (days === null || days === undefined) {
+                    return <p className="text-lg font-bold text-muted-foreground">—</p>;
+                  }
+                  return (
+                    <Badge variant="outline" className={`text-base px-3 py-1 mt-0.5 ${getDaysInArrearsBadgeClass(days)}`}>
+                      {days} days
+                    </Badge>
+                  );
+                })()}
               </div>
             </div>
             

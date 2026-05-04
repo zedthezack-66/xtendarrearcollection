@@ -23,6 +23,7 @@ import { useMasterCustomers, useCreateBatch, useProfiles, useBatches } from "@/h
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { generateLoanId } from "@/lib/generateLoanId";
+import { parseDaysInArrears } from "@/lib/daysInArrears";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
@@ -41,7 +42,8 @@ interface CSVRow {
   'Assigned Agent'?: string;
   // New loan book fields (all optional)
   'Branch Name'?: string;
-  'Arrear Status'?: string;
+  'Days In Arrears'?: string;
+  'Arrear Status'?: string; // legacy header — still accepted for backward compatibility
   'Employer Name'?: string;
   'Employer Subdivision'?: string;
   'Loan Consultant'?: string;
@@ -73,7 +75,7 @@ interface ParsedRow {
   isDuplicateLoanId: boolean;
   // New loan book fields (all nullable)
   branchName: string | null;
-  arrearStatus: string | null;
+  daysInArrears: number | null;
   employerName: string | null;
   employerSubdivision: string | null;
   loanConsultant: string | null;
@@ -86,10 +88,10 @@ interface ParsedRow {
   workplaceDestination: string | null;
 }
 
-const SAMPLE_CSV = `Loan ID,Customer Name,NRC Number,Amount Owed,Mobile Number,Assigned Agent,Next of Kin Name,Next of Kin Contact,Branch Name,Arrear Status,Employer Name,Employer Subdivision,Workplace Contact,Workplace Destination,Loan Consultant,Tenure,Last Payment Date
-LN20260302A1B2C3D4,John Mwanza,123456/10/1,15000,260971234567,Ziba,Mary Mwanza,260977654321,Lusaka Main,60+ Days,Ministry of Health,Finance Dept,260211234567,Cairo Road HQ,Grace Tembo,24 months,2025-12-15
-LN20260302E5F6A7B8,Jane Banda,234567/20/2,0,260972345678,Mary,Peter Banda,260978765432,Ndola Branch,Cleared,Zambia Airways,Operations,260212345678,Kenneth Kaunda Intl,Peter Sakala,12 months,
-LN20260302C9D0E1F2,Peter Phiri,345678/30/3,22000,260973456789,Ziba,Susan Phiri,260979876543,Kitwe Branch,90+ Days,Zambia Sugar,Production,260213456789,Nakambala Estate,Mary Mulenga,36 months,2025-11-20`;
+const SAMPLE_CSV = `Loan ID,Customer Name,NRC Number,Amount Owed,Mobile Number,Assigned Agent,Next of Kin Name,Next of Kin Contact,Branch Name,Days In Arrears,Employer Name,Employer Subdivision,Workplace Contact,Workplace Destination,Loan Consultant,Tenure,Last Payment Date
+LN20260302A1B2C3D4,John Mwanza,123456/10/1,15000,260971234567,Ziba,Mary Mwanza,260977654321,Lusaka Main,65,Ministry of Health,Finance Dept,260211234567,Cairo Road HQ,Grace Tembo,24 months,2025-12-15
+LN20260302E5F6A7B8,Jane Banda,234567/20/2,0,260972345678,Mary,Peter Banda,260978765432,Ndola Branch,0,Zambia Airways,Operations,260212345678,Kenneth Kaunda Intl,Peter Sakala,12 months,
+LN20260302C9D0E1F2,Peter Phiri,345678/30/3,22000,260973456789,Ziba,Susan Phiri,260979876543,Kitwe Branch,95,Zambia Sugar,Production,260213456789,Nakambala Estate,Mary Mulenga,36 months,2025-11-20`;
 
 // Helper to detect "empty" values from Excel artifacts
 const isEmptyValue = (value: string | undefined | null): boolean => {
@@ -222,7 +224,8 @@ export default function CSVImport() {
       
       // Parse optional fields - all return null if empty/N/A
       const branchName = cleanString(row['Branch Name']);
-      const arrearStatus = cleanString(row['Arrear Status']);
+      // Days In Arrears (numeric). Accept legacy "Arrear Status" header for backward compatibility.
+      const daysInArrears = parseDaysInArrears(row['Days In Arrears'] ?? row['Arrear Status']);
       const employerName = cleanString(row['Employer Name']);
       const employerSubdivision = cleanString(row['Employer Subdivision']);
       const loanConsultant = cleanString(row['Loan Consultant']);
@@ -287,7 +290,7 @@ export default function CSVImport() {
         isDuplicateLoanId,
         // Loan book fields (nullable)
         branchName,
-        arrearStatus,
+        daysInArrears,
         employerName,
         employerSubdivision,
         loanConsultant,
@@ -721,7 +724,7 @@ export default function CSVImport() {
           }
           if (row.name) batchCustomerUpdate.name = row.name;
           if (row.mobileNumber) batchCustomerUpdate.mobile_number = row.mobileNumber;
-          if (row.arrearStatus) batchCustomerUpdate.arrear_status = row.arrearStatus;
+          // (legacy free-text "arrear_status" column on batch_customers no longer written from CSV — replaced by Days In Arrears on tickets)
           if (row.assignedAgentId) batchCustomerUpdate.assigned_agent_id = row.assignedAgentId;
           if (parsedDate) batchCustomerUpdate.last_payment_date = parsedDate;
 
@@ -744,6 +747,7 @@ export default function CSVImport() {
           if (row.name) ticketUpdate.customer_name = row.name;
           if (row.mobileNumber) ticketUpdate.mobile_number = row.mobileNumber;
           if (row.assignedAgentId) ticketUpdate.assigned_agent = row.assignedAgentId;
+          if (row.daysInArrears !== null) ticketUpdate.days_in_arrears = row.daysInArrears;
 
           if (Object.keys(ticketUpdate).length > 0) {
             await supabase.from('tickets').update(ticketUpdate)
@@ -822,7 +826,7 @@ export default function CSVImport() {
             loan_book_arrears: row.amountOwed,
             assigned_agent: row.assignedAgentId,
             branch_name: row.branchName || null,
-            arrear_status: row.arrearStatus || null,
+            // Note: legacy `arrear_status` (free-text) no longer written from CSV — Days In Arrears now lives on tickets.
             employer_name: row.employerName || null,
             employer_subdivision: row.employerSubdivision || null,
             loan_consultant: row.loanConsultant || null,
@@ -861,6 +865,7 @@ export default function CSVImport() {
                 status: amountOwed === 0 ? 'Resolved' : 'Open',
                 resolved_date: amountOwed === 0 ? new Date().toISOString() : null,
                 loan_id: row?.loanId || generateLoanId(),
+                days_in_arrears: row?.daysInArrears ?? null,
               };
             });
 
@@ -881,7 +886,7 @@ export default function CSVImport() {
                 mobile_number: mc.mobile_number,
                 amount_owed: row?.amountOwed ?? 0,
                 assigned_agent_id: row?.assignedAgentId,
-                arrear_status: row?.arrearStatus || null,
+                // Note: legacy `arrear_status` (free-text) no longer written from CSV.
                 last_payment_date: validateAndParseDate(row?.lastPaymentDate),
               };
             });
@@ -953,7 +958,7 @@ export default function CSVImport() {
                 mobile_number: row.mobileNumber || null,
                 amount_owed: row.amountOwed,
                 assigned_agent_id: row.assignedAgentId,
-                arrear_status: row.arrearStatus || null,
+                // Note: legacy `arrear_status` (free-text) no longer written from CSV.
                 last_payment_date: validateAndParseDate(row.lastPaymentDate),
               });
 
@@ -974,6 +979,7 @@ export default function CSVImport() {
                 status: ticketStatus,
                 resolved_date: row.amountOwed === 0 ? new Date().toISOString() : null,
                 loan_id: row.loanId || generateLoanId(),
+                days_in_arrears: row.daysInArrears ?? null,
               });
             }
           }
