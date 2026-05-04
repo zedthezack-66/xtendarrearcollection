@@ -1,197 +1,70 @@
 
+## Goal
 
-# Daily Loan Book Update - Payment Creation for Collections
+Repurpose the CSV upload "Arrear Status" column into a numeric **Days In Arrears** field, persist it on each ticket, display it prominently in ticket views, and add a bucketed filter on the Tickets page (0–30, 31–90, 91–120, 121–180, 180+).
 
-## Problem Statement
+## Important scoping note
 
-The current Daily Loan Book Update correctly updates `amount_owed` and `outstanding_balance`, but **does not create payment records**. This means:
+The project has **two different "arrear" fields** today and we must not confuse them:
 
-- When arrears are cleared (15,000 to 0), the K15,000 recovered does NOT appear in "Total Collected"
-- When arrears are reduced (15,000 to 5,000), the K10,000 recovered does NOT appear in "Total Collected"
-- Dashboard KPIs are inaccurate because they only count agent-recorded payments
+1. **`tickets.ticket_arrear_status`** (text) — agent-managed locked dropdown (`Non-paying`, `Settled`, etc. in `TicketStatusDropdowns.tsx`). **This is NOT being changed.** Per the locked-dropdown memory, agent interaction statuses must remain untouched.
+2. **`master_customers.arrear_status` / `batch_customers.arrear_status`** (text) — comes from the CSV upload "Arrear Status" column. **This is what gets renamed/repurposed** into a numeric `days_in_arrears` value on each ticket.
 
-## Solution
+The `tickets.days_in_arrears` column already exists in the schema but is never populated from CSV imports today — we'll start populating it.
 
-Add a `source` column to the `payments` table and create payment records for cleared/reduced movements during loan book sync.
+## Changes
 
----
+### 1. CSV Import (`src/pages/CSVImport.tsx`) — Create / Add to / Update batch
 
-## Implementation Plan
+- Rename the parsed CSV header from `Arrear Status` to `Days In Arrears` (also accept legacy `Arrear Status` and `days_in_arrears` headers as fallback so older templates don't break).
+- Replace `arrearStatus = cleanString(row['Arrear Status'])` with `daysInArrears = parseDaysInArrears(row['Days In Arrears'] ?? row['Arrear Status'])`.
+  - Helper validates: integer ≥ 0; non-numeric/empty → `null` (per fault-tolerance rule).
+- Update `ParsedRow` typing: drop `arrearStatus`, add `daysInArrears: number | null`.
+- Update the SAMPLE_CSV string and the on-screen template legend to show `Days In Arrears` instead of `Arrear Status`.
+- Stop writing `arrear_status` from CSV onto `master_customers` and `batch_customers`. Instead:
+  - Write `days_in_arrears` onto every newly inserted **ticket** row.
+  - On Update-Existing-Batch, update `tickets.days_in_arrears` when a value is provided.
+- Leave the existing `arrear_status` columns in the database alone (no migration / no destructive change) — they simply stop being written from CSV. Existing data remains queryable.
 
-### Phase 1: Database Schema Update
+### 2. Tickets list page (`src/pages/Tickets.tsx`)
 
-**Add `source` column to payments table:**
+- Add a new **Days In Arrears** column in the table (positioned next to Amount Owed) showing the numeric value with a colored badge by bucket:
+  - 0–30 → green, 31–90 → yellow, 91–120 → orange, 121–180 → red, 180+ → dark red, `null` → muted dash.
+- Add a `daysInArrearsFilter` Select with options `all | 0-30 | 31-90 | 91-120 | 121-180 | 180+`.
+  - Persist to `localStorage` under `tickets_days_arrears` (consistent with the existing filter-persistence pattern).
+- Apply the bucket filter in the existing `useMemo` filter pipeline alongside search/status/priority/agent.
+- Filtering is purely client-side over the already-fetched `tickets` array — respects the ≤500-row guardrail and existing RLS.
 
-```text
-payments table
-+------------------+
-| ...existing...   |
-| source (text)    |  <- NEW: 'system_manual' | 'loanbook_daily'
-+------------------+
-```
+### 3. Ticket detail page (`src/pages/TicketDetail.tsx`)
 
-- Default: `'system_manual'` (backward compatible - all existing payments become manual)
-- Check constraint: `source IN ('system_manual', 'loanbook_daily')`
+- Add **Days In Arrears** as a prominent stat in the "Ticket Details" card (next to Priority), rendered as a colored badge using the same bucket coloring helper.
+- Show `—` when `null`.
 
-### Phase 2: Update RPC Functions
+### 4. Customer profile (`src/pages/CustomerProfile.tsx`)
 
-**Modify `process_loan_book_sync` (global sync):**
+- Where each customer ticket is listed, show `Days In Arrears` next to the amount, using the same badge helper. Read-only.
 
-When movement is CLEARED or REDUCED:
-1. Create a payment record with:
-   - `amount` = difference (old - new)
-   - `source` = 'loanbook_daily'
-   - `payment_method` = 'Loan Book Reconciliation'
-   - `customer_name` from master_customers
-   - `ticket_id` if ticket exists
-2. This payment will automatically be included in Total Collected calculations
+### 5. Shared helper
 
-**Modify `process_daily_loan_book_update` (batch-specific sync):**
+- New `src/lib/daysInArrears.ts` exporting:
+  - `getDaysInArrearsBucket(days: number | null): '0-30' | '31-90' | '91-120' | '121-180' | '180+' | null`
+  - `getDaysInArrearsBadgeClass(days: number | null): string` (Tailwind classes for each bucket)
+  - Used by Tickets list, Ticket detail, Customer profile.
 
-Same payment creation logic for CLEARED and REDUCED movements.
+### 6. Export (`src/pages/Export.tsx`)
 
-### Phase 3: Template Enhancement
+- Add a **Days In Arrears** column to ticket-row exports (numeric). Keep existing `Arrear Status` text column for backward compatibility with historical data.
 
-**Update template download to include "Old Arrears":**
+## Out of scope (explicitly NOT changed)
 
-Current template columns:
-- NRC Number
-- Amount Owed (empty)
-- Days in Arrears (empty)
-- Last Payment Date (empty)
+- The agent dropdown `ticket_arrear_status` (locked options) and its UI in `TicketStatusDropdowns.tsx` remain exactly as they are.
+- No DB schema changes required (column `tickets.days_in_arrears` already exists).
+- RLS policies, batch deletion, sync logic, and all other behavior unchanged.
 
-New template columns:
-- NRC Number
-- Old Arrears Amount (pre-filled from current `amount_owed`)
-- New Arrears Amount (empty - admin fills from external loan book)
-- Days in Arrears (empty)
-- Last Payment Date (empty)
+## Verification checklist
 
-The admin workflow:
-1. Download template (system fills NRC + Old Arrears from database)
-2. Open in Excel alongside external loan book
-3. Fill in "New Arrears Amount" from external source
-4. Upload back to system
-
-### Phase 4: Dashboard Verification
-
-**Existing `get_dashboard_stats` already sums ALL payments:**
-
-```sql
-v_total_collected := SUM(p.amount) FROM payments p ...
-```
-
-Since it sums all payments, adding `loanbook_daily` payments will:
-- Increase Total Collected
-- Decrease Total Outstanding (because Outstanding = Owed - Collected)
-
-**Update `get_collections_by_agent` for agent KPIs:**
-
-Add filter: `WHERE source = 'system_manual'`
-
-This ensures agent performance metrics only show their manual collections, not loan book reconciliations.
-
----
-
-## Movement Logic Summary
-
-```text
-+---------------+-------------------+-----------------------------------+
-| Condition     | Movement Type     | Payment Created?                  |
-+---------------+-------------------+-----------------------------------+
-| Old>0, New=0  | CLEARED           | YES: amount = Old                 |
-|               |                   | source = loanbook_daily           |
-|               |                   | Ticket -> Resolved                |
-+---------------+-------------------+-----------------------------------+
-| Old>New>0     | REDUCED           | YES: amount = (Old - New)         |
-|               |                   | source = loanbook_daily           |
-|               |                   | Ticket stays current status       |
-+---------------+-------------------+-----------------------------------+
-| New>Old       | INCREASED         | NO payment                        |
-|               |                   | Just increase outstanding         |
-+---------------+-------------------+-----------------------------------+
-| Old=New       | MAINTAINED        | NO changes                        |
-+---------------+-------------------+-----------------------------------+
-| Old=0, New>0  | REOPENED          | NO payment                        |
-|               |                   | Ticket -> In Progress             |
-+---------------+-------------------+-----------------------------------+
-```
-
----
-
-## Files to Change
-
-| File | Change |
-|------|--------|
-| `supabase/migrations/NEW.sql` | Add `source` column to payments, update both RPC functions |
-| `src/pages/LoanBookSync.tsx` | Update template download to include Old Arrears column |
-| `src/pages/CSVImport.tsx` | Update Daily Loan Book Update mode to use new format |
-
----
-
-## Technical Details (for implementation)
-
-### SQL Migration
-
-```sql
--- Add source column to payments
-ALTER TABLE payments 
-ADD COLUMN IF NOT EXISTS source text DEFAULT 'system_manual';
-
--- Add constraint
-ALTER TABLE payments
-ADD CONSTRAINT payments_source_check 
-CHECK (source IN ('system_manual', 'loanbook_daily'));
-
--- Update RPC to create payments for cleared/reduced
--- (in process_loan_book_sync and process_daily_loan_book_update)
-INSERT INTO payments (
-  ticket_id, master_customer_id, customer_name,
-  amount, payment_method, source, notes, recorded_by
-) VALUES (
-  v_ticket_id, v_customer_id, v_customer_name,
-  v_old_arrears - v_new_arrears, -- difference is the "collected" amount
-  'Loan Book Reconciliation',
-  'loanbook_daily',
-  'Daily loan book sync - arrears ' || v_movement_type,
-  v_admin_id
-);
-```
-
-### Template CSV Format
-
-```text
-NRC Number,Old Arrears Amount,New Arrears Amount,Days in Arrears,Last Payment Date
-123456/10/1,15000,,, 
-234567/20/2,8500,,,
-345678/30/3,0,,,
-```
-
-Admin fills the "New Arrears Amount" column from their external loan book.
-
----
-
-## Expected Outcome
-
-After implementation:
-
-1. **Cleared account (15,000 → 0):**
-   - Creates K15,000 payment (source = loanbook_daily)
-   - Total Collected increases by K15,000
-   - Total Outstanding decreases by K15,000
-   - Ticket marked as Resolved
-
-2. **Reduced account (15,000 → 5,000):**
-   - Creates K10,000 payment (source = loanbook_daily)
-   - Total Collected increases by K10,000
-   - Outstanding shows K5,000
-   - Ticket stays In Progress
-
-3. **Agent KPIs:**
-   - Only show payments with source = system_manual
-   - Loan book collections don't inflate agent performance
-
-4. **Dashboard accuracy:**
-   - Total Collected = Agent collections + Loan book collections
-   - Outstanding = Amount Owed - Total Collected
-
+- Upload a CSV with `Days In Arrears` values (and a few blank / "#N/A" rows). Confirm tickets are created with the correct numeric value and blanks become `null`.
+- Re-upload using the legacy header `Arrear Status` with numeric values — still parsed (graceful fallback).
+- On Tickets page, each bucket filter narrows the list correctly; filter persists across navigation.
+- Ticket detail and Customer profile show the colored Days In Arrears badge.
+- Existing `ticket_arrear_status` dropdown and saved values are untouched.
