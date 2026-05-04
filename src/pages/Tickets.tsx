@@ -499,6 +499,19 @@ export default function Tickets() {
                               source="ticket_list"
                             />
                           </TableCell>
+                          <TableCell className="text-center py-2 hidden md:table-cell">
+                            {(() => {
+                              const days = (ticket as any).days_in_arrears as number | null | undefined;
+                              if (days === null || days === undefined) {
+                                return <span className="text-muted-foreground text-xs">—</span>;
+                              }
+                              return (
+                                <Badge variant="outline" className={`text-xs ${getDaysInArrearsBadgeClass(days)}`}>
+                                  {days}
+                                </Badge>
+                              );
+                            })()}
+                          </TableCell>
                           <TableCell className="text-right font-semibold text-success py-2 text-sm hidden md:table-cell">{formatCurrency(totalPaid)}</TableCell>
                           <TableCell className={`text-right font-semibold py-2 text-sm ${balance > 0 ? 'text-destructive' : 'text-success'}`}>
                             {formatCurrency(balance)}
