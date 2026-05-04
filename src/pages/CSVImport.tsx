@@ -23,6 +23,7 @@ import { useMasterCustomers, useCreateBatch, useProfiles, useBatches } from "@/h
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { generateLoanId } from "@/lib/generateLoanId";
+import { parseDaysInArrears } from "@/lib/daysInArrears";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
