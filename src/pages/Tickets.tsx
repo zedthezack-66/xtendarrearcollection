@@ -386,6 +386,7 @@ export default function Tickets() {
                   <TableHead className="w-[10%] hidden lg:table-cell">Loan ID</TableHead>
                   <TableHead className="w-[10%] hidden sm:table-cell">NRC</TableHead>
                   <TableHead className="text-right w-[10%]">Owed</TableHead>
+                  <TableHead className="text-center w-[9%] hidden md:table-cell">Days In Arrears</TableHead>
                   <TableHead className="text-right w-[10%] hidden md:table-cell">Paid</TableHead>
                   <TableHead className="text-right w-[10%]">Balance</TableHead>
                   <TableHead className="w-[8%] hidden lg:table-cell">Priority</TableHead>
