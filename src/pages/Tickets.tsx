@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/tooltip";
 import { InlineNoteInput } from "@/components/InlineNoteInput";
 import { TicketStatusDropdowns, ARREAR_STATUS_OPTIONS, PAYMENT_STATUS_OPTIONS, EMPLOYER_REASON_OPTIONS } from "@/components/TicketStatusDropdowns";
+import { getDaysInArrearsBucket, getDaysInArrearsBadgeClass, DAYS_IN_ARREARS_BUCKETS, type DaysInArrearsBucket } from "@/lib/daysInArrears";
 import { BatchTransferDialog } from "@/components/BatchTransferDialog";
 import { BulkTransferDialog } from "@/components/BulkTransferDialog";
 import { EditableAmountOwed } from "@/components/EditableAmountOwed";
@@ -112,6 +113,7 @@ export default function Tickets() {
   const [priorityFilter, setPriorityFilter] = useState<string>(() => localStorage.getItem('tickets_priority') || "all");
   const [agentFilter, setAgentFilter] = useState<string>(() => localStorage.getItem('tickets_agent') || "all");
   const [amountSort, setAmountSort] = useState<string>(() => localStorage.getItem('tickets_sort') || "none");
+  const [daysInArrearsFilter, setDaysInArrearsFilter] = useState<string>(() => localStorage.getItem('tickets_days_arrears') || "all");
 
   // Persist filters to localStorage
   useEffect(() => {
@@ -120,7 +122,8 @@ export default function Tickets() {
     localStorage.setItem('tickets_priority', priorityFilter);
     localStorage.setItem('tickets_agent', agentFilter);
     localStorage.setItem('tickets_sort', amountSort);
-  }, [searchQuery, statusFilter, priorityFilter, agentFilter, amountSort]);
+    localStorage.setItem('tickets_days_arrears', daysInArrearsFilter);
+  }, [searchQuery, statusFilter, priorityFilter, agentFilter, amountSort, daysInArrearsFilter]);
   const [ticketToDelete, setTicketToDelete] = useState<string | null>(null);
   const [blockedResolveModal, setBlockedResolveModal] = useState<{ ticketId: string; balance: number } | null>(null);
   const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
@@ -251,7 +254,9 @@ export default function Tickets() {
       const matchesStatus = statusFilter === "all" || ticket.status === statusFilter;
       const matchesPriority = priorityFilter === "all" || ticket.priority === priorityFilter;
       const matchesAgent = isAdmin ? (agentFilter === "all" || ticket.assigned_agent === agentFilter) : true;
-      return matchesSearch && matchesStatus && matchesPriority && matchesAgent;
+      const matchesDays = daysInArrearsFilter === "all" ||
+        getDaysInArrearsBucket((ticket as any).days_in_arrears) === daysInArrearsFilter;
+      return matchesSearch && matchesStatus && matchesPriority && matchesAgent && matchesDays;
     })
     .sort((a, b) => {
       // Primary sort: amount owed if selected
@@ -337,6 +342,15 @@ export default function Tickets() {
               <SelectContent>
                 <SelectItem value="all">All Agents</SelectItem>
                 {profiles?.map(p => <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={daysInArrearsFilter} onValueChange={setDaysInArrearsFilter}>
+              <SelectTrigger className="w-[170px]"><SelectValue placeholder="Days In Arrears" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Days In Arrears</SelectItem>
+                {DAYS_IN_ARREARS_BUCKETS.map(b => (
+                  <SelectItem key={b} value={b}>{b} days</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select value={amountSort} onValueChange={setAmountSort}>
