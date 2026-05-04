@@ -397,7 +397,7 @@ export default function Tickets() {
               </TableHeader>
               <TableBody>
                 {filteredTickets.length === 0 ? (
-                  <TableRow><TableCell colSpan={12} className="text-center py-8 text-muted-foreground">No tickets found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={13} className="text-center py-8 text-muted-foreground">No tickets found</TableCell></TableRow>
                 ) : (
                   filteredTickets.map((ticket) => {
                     const totalPaid = paymentsByTicket[ticket.id] || 0;
@@ -574,7 +574,7 @@ export default function Tickets() {
                         
                         {/* Call Notes Inline Edit Row (always visible) */}
                         <TableRow className={`${ticket.status === 'Resolved' ? 'bg-success/5' : ''}`}>
-                          <TableCell colSpan={12} className="pt-0 pb-3 border-b">
+                          <TableCell colSpan={13} className="pt-0 pb-3 border-b">
                             <div className="flex flex-wrap items-center justify-center gap-2 py-2">
                               <div className="flex-1 min-w-[180px] max-w-sm">
                                 <InlineNoteInput
@@ -620,7 +620,7 @@ export default function Tickets() {
                         </TableRow>
                         {hasCallLogs && isExpanded && (
                           <TableRow className="bg-info/5 hover:bg-info/5">
-                            <TableCell colSpan={12} className="p-0">
+                            <TableCell colSpan={13} className="p-0">
                               <div className="p-4 space-y-3">
                                 <div className="flex items-center gap-2 text-sm font-medium text-info">
                                   <MessageSquare className="h-4 w-4" />
