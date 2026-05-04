@@ -724,7 +724,7 @@ export default function CSVImport() {
           }
           if (row.name) batchCustomerUpdate.name = row.name;
           if (row.mobileNumber) batchCustomerUpdate.mobile_number = row.mobileNumber;
-          if (row.arrearStatus) batchCustomerUpdate.arrear_status = row.arrearStatus;
+          // (legacy free-text "arrear_status" column on batch_customers no longer written from CSV — replaced by Days In Arrears on tickets)
           if (row.assignedAgentId) batchCustomerUpdate.assigned_agent_id = row.assignedAgentId;
           if (parsedDate) batchCustomerUpdate.last_payment_date = parsedDate;
 
@@ -747,6 +747,7 @@ export default function CSVImport() {
           if (row.name) ticketUpdate.customer_name = row.name;
           if (row.mobileNumber) ticketUpdate.mobile_number = row.mobileNumber;
           if (row.assignedAgentId) ticketUpdate.assigned_agent = row.assignedAgentId;
+          if (row.daysInArrears !== null) ticketUpdate.days_in_arrears = row.daysInArrears;
 
           if (Object.keys(ticketUpdate).length > 0) {
             await supabase.from('tickets').update(ticketUpdate)
@@ -825,7 +826,7 @@ export default function CSVImport() {
             loan_book_arrears: row.amountOwed,
             assigned_agent: row.assignedAgentId,
             branch_name: row.branchName || null,
-            arrear_status: row.arrearStatus || null,
+            // Note: legacy `arrear_status` (free-text) no longer written from CSV — Days In Arrears now lives on tickets.
             employer_name: row.employerName || null,
             employer_subdivision: row.employerSubdivision || null,
             loan_consultant: row.loanConsultant || null,
@@ -864,6 +865,7 @@ export default function CSVImport() {
                 status: amountOwed === 0 ? 'Resolved' : 'Open',
                 resolved_date: amountOwed === 0 ? new Date().toISOString() : null,
                 loan_id: row?.loanId || generateLoanId(),
+                days_in_arrears: row?.daysInArrears ?? null,
               };
             });
 
@@ -884,7 +886,7 @@ export default function CSVImport() {
                 mobile_number: mc.mobile_number,
                 amount_owed: row?.amountOwed ?? 0,
                 assigned_agent_id: row?.assignedAgentId,
-                arrear_status: row?.arrearStatus || null,
+                // Note: legacy `arrear_status` (free-text) no longer written from CSV.
                 last_payment_date: validateAndParseDate(row?.lastPaymentDate),
               };
             });
@@ -956,7 +958,7 @@ export default function CSVImport() {
                 mobile_number: row.mobileNumber || null,
                 amount_owed: row.amountOwed,
                 assigned_agent_id: row.assignedAgentId,
-                arrear_status: row.arrearStatus || null,
+                // Note: legacy `arrear_status` (free-text) no longer written from CSV.
                 last_payment_date: validateAndParseDate(row.lastPaymentDate),
               });
 
@@ -977,6 +979,7 @@ export default function CSVImport() {
                 status: ticketStatus,
                 resolved_date: row.amountOwed === 0 ? new Date().toISOString() : null,
                 loan_id: row.loanId || generateLoanId(),
+                days_in_arrears: row.daysInArrears ?? null,
               });
             }
           }
