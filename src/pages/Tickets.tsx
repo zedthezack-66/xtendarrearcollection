@@ -57,6 +57,41 @@ import { useUIStore } from "@/store/useUIStore";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+// Canonical employer list for the Tickets employer filter
+const EMPLOYER_FILTER_OPTIONS = [
+  "Government of the Republic of Zambia",
+  "LWSC - Lusaka Water and Sewerage",
+  "Medlink Limited",
+  "National Assembly of Zambia (NAZ)",
+  "National Construction Council",
+  "Zambia Air Force (ZAF)",
+  "Zambia Army (ZA) - Non Commissioned",
+  "Zambia Army (ZA) - Confidential",
+  "Zambia Army (ZA) - Non Military",
+  "Zambia Army (ZA) - Soldiers",
+  "Zambia National Service - Civilian",
+  "Zambia National Service - Uniformed",
+  "Water Resources Management Authority",
+  "Zambia Army (ZA) - Civilian",
+  "Zambia Forestry and Forest Industries Corporation",
+  "Zambia Medicines and Medical Supplies Agency",
+  "ZEMA",
+  "ZPPA",
+  "National Food and Nutrition Commission of Zambia (NFNC)",
+  "National Prosecution Authority",
+  "Ngombe Water Trust",
+  "Off Payroll Clients",
+  "Professional Teachers' Union of Zambia",
+  "Staff",
+];
+
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW', minimumFractionDigits: 0 }).format(amount);
