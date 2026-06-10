@@ -412,6 +412,48 @@ export default function Tickets() {
                 ))}
               </SelectContent>
             </Select>
+            <Popover open={employerOpen} onOpenChange={setEmployerOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={employerOpen}
+                  className="w-[220px] justify-between font-normal"
+                >
+                  <span className="truncate">
+                    {employerFilter === "all" ? "All Employers" : employerFilter}
+                  </span>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[280px] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Search employer..." />
+                  <CommandList>
+                    <CommandEmpty>No employer found.</CommandEmpty>
+                    <CommandGroup>
+                      <CommandItem
+                        value="all"
+                        onSelect={() => { setEmployerFilter("all"); setEmployerOpen(false); }}
+                      >
+                        <Check className={cn("mr-2 h-4 w-4", employerFilter === "all" ? "opacity-100" : "opacity-0")} />
+                        All Employers
+                      </CommandItem>
+                      {employerOptions.map((emp) => (
+                        <CommandItem
+                          key={emp}
+                          value={emp}
+                          onSelect={() => { setEmployerFilter(emp); setEmployerOpen(false); }}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", employerFilter === emp ? "opacity-100" : "opacity-0")} />
+                          <span className="truncate">{emp}</span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
             <Select value={amountSort} onValueChange={setAmountSort}>
               <SelectTrigger className="w-[150px]"><SelectValue placeholder="Sort by Amount" /></SelectTrigger>
               <SelectContent>
