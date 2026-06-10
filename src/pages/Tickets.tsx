@@ -57,6 +57,41 @@ import { useUIStore } from "@/store/useUIStore";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+// Canonical employer list for the Tickets employer filter
+const EMPLOYER_FILTER_OPTIONS = [
+  "Government of the Republic of Zambia",
+  "LWSC - Lusaka Water and Sewerage",
+  "Medlink Limited",
+  "National Assembly of Zambia (NAZ)",
+  "National Construction Council",
+  "Zambia Air Force (ZAF)",
+  "Zambia Army (ZA) - Non Commissioned",
+  "Zambia Army (ZA) - Confidential",
+  "Zambia Army (ZA) - Non Military",
+  "Zambia Army (ZA) - Soldiers",
+  "Zambia National Service - Civilian",
+  "Zambia National Service - Uniformed",
+  "Water Resources Management Authority",
+  "Zambia Army (ZA) - Civilian",
+  "Zambia Forestry and Forest Industries Corporation",
+  "Zambia Medicines and Medical Supplies Agency",
+  "ZEMA",
+  "ZPPA",
+  "National Food and Nutrition Commission of Zambia (NFNC)",
+  "National Prosecution Authority",
+  "Ngombe Water Trust",
+  "Off Payroll Clients",
+  "Professional Teachers' Union of Zambia",
+  "Staff",
+];
+
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW', minimumFractionDigits: 0 }).format(amount);
@@ -114,6 +149,8 @@ export default function Tickets() {
   const [agentFilter, setAgentFilter] = useState<string>(() => localStorage.getItem('tickets_agent') || "all");
   const [amountSort, setAmountSort] = useState<string>(() => localStorage.getItem('tickets_sort') || "none");
   const [daysInArrearsFilter, setDaysInArrearsFilter] = useState<string>(() => localStorage.getItem('tickets_days_arrears') || "all");
+  const [employerFilter, setEmployerFilter] = useState<string>(() => localStorage.getItem('tickets_employer') || "all");
+  const [employerOpen, setEmployerOpen] = useState(false);
 
   // Persist filters to localStorage
   useEffect(() => {
@@ -123,7 +160,8 @@ export default function Tickets() {
     localStorage.setItem('tickets_agent', agentFilter);
     localStorage.setItem('tickets_sort', amountSort);
     localStorage.setItem('tickets_days_arrears', daysInArrearsFilter);
-  }, [searchQuery, statusFilter, priorityFilter, agentFilter, amountSort, daysInArrearsFilter]);
+    localStorage.setItem('tickets_employer', employerFilter);
+  }, [searchQuery, statusFilter, priorityFilter, agentFilter, amountSort, daysInArrearsFilter, employerFilter]);
   const [ticketToDelete, setTicketToDelete] = useState<string | null>(null);
   const [blockedResolveModal, setBlockedResolveModal] = useState<{ ticketId: string; balance: number } | null>(null);
   const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
@@ -201,6 +239,25 @@ export default function Tickets() {
     return map;
   }, [payments]);
 
+  // Map master_customer_id -> employer_name
+  const employerByCustomer = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const mc of masterCustomers) {
+      if ((mc as any).employer_name) map[mc.id] = (mc as any).employer_name;
+    }
+    return map;
+  }, [masterCustomers]);
+
+  // Build the list of employer options (predefined + any found in data)
+  const employerOptions = useMemo(() => {
+    const set = new Set<string>(EMPLOYER_FILTER_OPTIONS);
+    for (const mc of masterCustomers) {
+      const name = (mc as any).employer_name;
+      if (name && String(name).trim()) set.add(String(name).trim());
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [masterCustomers]);
+
   // Handler for inline note save (add or update) - MUST be before any early returns
   const handleInlineNoteSave = useCallback(async (
     ticketId: string,
@@ -256,7 +313,9 @@ export default function Tickets() {
       const matchesAgent = isAdmin ? (agentFilter === "all" || ticket.assigned_agent === agentFilter) : true;
       const matchesDays = daysInArrearsFilter === "all" ||
         getDaysInArrearsBucket((ticket as any).days_in_arrears) === daysInArrearsFilter;
-      return matchesSearch && matchesStatus && matchesPriority && matchesAgent && matchesDays;
+      const matchesEmployer = employerFilter === "all" ||
+        (employerByCustomer[(ticket as any).master_customer_id] === employerFilter);
+      return matchesSearch && matchesStatus && matchesPriority && matchesAgent && matchesDays && matchesEmployer;
     })
     .sort((a, b) => {
       // Primary sort: amount owed if selected
@@ -353,6 +412,48 @@ export default function Tickets() {
                 ))}
               </SelectContent>
             </Select>
+            <Popover open={employerOpen} onOpenChange={setEmployerOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={employerOpen}
+                  className="w-[220px] justify-between font-normal"
+                >
+                  <span className="truncate">
+                    {employerFilter === "all" ? "All Employers" : employerFilter}
+                  </span>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[280px] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Search employer..." />
+                  <CommandList>
+                    <CommandEmpty>No employer found.</CommandEmpty>
+                    <CommandGroup>
+                      <CommandItem
+                        value="all"
+                        onSelect={() => { setEmployerFilter("all"); setEmployerOpen(false); }}
+                      >
+                        <Check className={cn("mr-2 h-4 w-4", employerFilter === "all" ? "opacity-100" : "opacity-0")} />
+                        All Employers
+                      </CommandItem>
+                      {employerOptions.map((emp) => (
+                        <CommandItem
+                          key={emp}
+                          value={emp}
+                          onSelect={() => { setEmployerFilter(emp); setEmployerOpen(false); }}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", employerFilter === emp ? "opacity-100" : "opacity-0")} />
+                          <span className="truncate">{emp}</span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
             <Select value={amountSort} onValueChange={setAmountSort}>
               <SelectTrigger className="w-[150px]"><SelectValue placeholder="Sort by Amount" /></SelectTrigger>
               <SelectContent>
