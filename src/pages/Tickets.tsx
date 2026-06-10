@@ -313,7 +313,9 @@ export default function Tickets() {
       const matchesAgent = isAdmin ? (agentFilter === "all" || ticket.assigned_agent === agentFilter) : true;
       const matchesDays = daysInArrearsFilter === "all" ||
         getDaysInArrearsBucket((ticket as any).days_in_arrears) === daysInArrearsFilter;
-      return matchesSearch && matchesStatus && matchesPriority && matchesAgent && matchesDays;
+      const matchesEmployer = employerFilter === "all" ||
+        (employerByCustomer[(ticket as any).master_customer_id] === employerFilter);
+      return matchesSearch && matchesStatus && matchesPriority && matchesAgent && matchesDays && matchesEmployer;
     })
     .sort((a, b) => {
       // Primary sort: amount owed if selected
