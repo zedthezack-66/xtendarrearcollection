@@ -204,6 +204,25 @@ export default function Tickets() {
     return map;
   }, [payments]);
 
+  // Map master_customer_id -> employer_name
+  const employerByCustomer = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const mc of masterCustomers) {
+      if ((mc as any).employer_name) map[mc.id] = (mc as any).employer_name;
+    }
+    return map;
+  }, [masterCustomers]);
+
+  // Build the list of employer options (predefined + any found in data)
+  const employerOptions = useMemo(() => {
+    const set = new Set<string>(EMPLOYER_FILTER_OPTIONS);
+    for (const mc of masterCustomers) {
+      const name = (mc as any).employer_name;
+      if (name && String(name).trim()) set.add(String(name).trim());
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [masterCustomers]);
+
   // Handler for inline note save (add or update) - MUST be before any early returns
   const handleInlineNoteSave = useCallback(async (
     ticketId: string,
