@@ -114,6 +114,8 @@ export default function Tickets() {
   const [agentFilter, setAgentFilter] = useState<string>(() => localStorage.getItem('tickets_agent') || "all");
   const [amountSort, setAmountSort] = useState<string>(() => localStorage.getItem('tickets_sort') || "none");
   const [daysInArrearsFilter, setDaysInArrearsFilter] = useState<string>(() => localStorage.getItem('tickets_days_arrears') || "all");
+  const [employerFilter, setEmployerFilter] = useState<string>(() => localStorage.getItem('tickets_employer') || "all");
+  const [employerOpen, setEmployerOpen] = useState(false);
 
   // Persist filters to localStorage
   useEffect(() => {
@@ -123,7 +125,8 @@ export default function Tickets() {
     localStorage.setItem('tickets_agent', agentFilter);
     localStorage.setItem('tickets_sort', amountSort);
     localStorage.setItem('tickets_days_arrears', daysInArrearsFilter);
-  }, [searchQuery, statusFilter, priorityFilter, agentFilter, amountSort, daysInArrearsFilter]);
+    localStorage.setItem('tickets_employer', employerFilter);
+  }, [searchQuery, statusFilter, priorityFilter, agentFilter, amountSort, daysInArrearsFilter, employerFilter]);
   const [ticketToDelete, setTicketToDelete] = useState<string | null>(null);
   const [blockedResolveModal, setBlockedResolveModal] = useState<{ ticketId: string; balance: number } | null>(null);
   const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
