@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
+    PostgrestVersion: "14.17"
   }
   public: {
     Tables: {
@@ -279,34 +279,43 @@ export type Database = {
           agent_id: string
           call_outcome: string
           created_at: string
+          customer_name: string | null
           id: string
-          master_customer_id: string
+          loan_id: string | null
+          master_customer_id: string | null
           notes: string | null
+          nrc_number: string | null
           promise_to_pay_amount: number | null
           promise_to_pay_date: string | null
-          ticket_id: string
+          ticket_id: string | null
         }
         Insert: {
           agent_id: string
           call_outcome: string
           created_at?: string
+          customer_name?: string | null
           id?: string
-          master_customer_id: string
+          loan_id?: string | null
+          master_customer_id?: string | null
           notes?: string | null
+          nrc_number?: string | null
           promise_to_pay_amount?: number | null
           promise_to_pay_date?: string | null
-          ticket_id: string
+          ticket_id?: string | null
         }
         Update: {
           agent_id?: string
           call_outcome?: string
           created_at?: string
+          customer_name?: string | null
           id?: string
-          master_customer_id?: string
+          loan_id?: string | null
+          master_customer_id?: string | null
           notes?: string | null
+          nrc_number?: string | null
           promise_to_pay_amount?: number | null
           promise_to_pay_date?: string | null
-          ticket_id?: string
+          ticket_id?: string | null
         }
         Relationships: [
           {
@@ -700,6 +709,8 @@ export type Database = {
         }
         Returns: boolean
       }
+      import_master_customer: { Args: { p_customers: Json }; Returns: Json }
+      import_ticket_row: { Args: { p_tickets: Json }; Returns: Json }
       process_batch_arrears_update: {
         Args: { p_batch_id: string; p_updates: Json }
         Returns: Json
