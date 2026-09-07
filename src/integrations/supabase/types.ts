@@ -281,6 +281,7 @@ export type Database = {
           created_at: string
           customer_name: string | null
           id: string
+          is_from_previous_batch: boolean | null
           loan_id: string | null
           master_customer_id: string | null
           notes: string | null
@@ -288,6 +289,7 @@ export type Database = {
           promise_to_pay_amount: number | null
           promise_to_pay_date: string | null
           ticket_id: string | null
+          ticket_status_at_save: string | null
         }
         Insert: {
           agent_id: string
@@ -295,6 +297,7 @@ export type Database = {
           created_at?: string
           customer_name?: string | null
           id?: string
+          is_from_previous_batch?: boolean | null
           loan_id?: string | null
           master_customer_id?: string | null
           notes?: string | null
@@ -302,6 +305,7 @@ export type Database = {
           promise_to_pay_amount?: number | null
           promise_to_pay_date?: string | null
           ticket_id?: string | null
+          ticket_status_at_save?: string | null
         }
         Update: {
           agent_id?: string
@@ -309,6 +313,7 @@ export type Database = {
           created_at?: string
           customer_name?: string | null
           id?: string
+          is_from_previous_batch?: boolean | null
           loan_id?: string | null
           master_customer_id?: string | null
           notes?: string | null
@@ -316,6 +321,7 @@ export type Database = {
           promise_to_pay_amount?: number | null
           promise_to_pay_date?: string | null
           ticket_id?: string | null
+          ticket_status_at_save?: string | null
         }
         Relationships: [
           {

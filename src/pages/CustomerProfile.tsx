@@ -13,8 +13,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useState, useCallback } from "react";
-import { useMasterCustomers, useTickets, usePayments, useBatchCustomers, useBatches, useUpdateMasterCustomer, useUpdateTicket, useProfiles } from "@/hooks/useSupabaseData";
+import { useState, useCallback, useEffect } from "react";
+import { useMasterCustomers, useTickets, usePayments, useBatchCustomers, useBatches, useUpdateMasterCustomer, useUpdateTicket, useProfiles, useCallLogsByCustomer } from "@/hooks/useSupabaseData";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { TicketStatusDropdowns } from "@/components/TicketStatusDropdowns";
@@ -41,6 +41,61 @@ const getTicketStatusBadge = (status: string) => {
   }
 };
 
+function CustomerCallTimeline({ customerId }: { customerId: string }) {
+  const { data: allCallLogs = [] } = useCallLogsByCustomer(customerId);
+
+  if (allCallLogs.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        No call history for this customer
+      </div>
+    );
+  }
+
+  const grouped = allCallLogs.reduce((acc, log) => {
+    const key = new Date(log.created_at).toISOString().slice(0, 7);
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(log);
+    return acc;
+  }, {} as Record<string, typeof allCallLogs>);
+
+  return (
+    <div className="space-y-6">
+      {Object.entries(grouped)
+        .sort(([a], [b]) => b.localeCompare(a))
+        .map(([month, logs]) => (
+          <div key={month}>
+            <h4 className="font-semibold text-sm mb-3 text-muted-foreground">
+              {new Date(`${month}-01`).toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}
+            </h4>
+            <div className="space-y-2 pl-4 border-l-2 border-gray-200">
+              {logs.map((log) => (
+                <div key={log.id} className="text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline" className="text-xs">{log.call_outcome || 'Note'}</Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(log.created_at).toLocaleTimeString('en-GB', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                    {log.is_from_previous_batch && (
+                      <Badge className="text-xs bg-yellow-100 text-yellow-800">Reattached</Badge>
+                    )}
+                  </div>
+                  {log.ticket_status_at_save && (
+                    <p className="text-xs text-muted-foreground mt-1">Status was: {log.ticket_status_at_save}</p>
+                  )}
+                  {log.notes && <p className="text-gray-700 mt-1">{log.notes}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+    </div>
+  );
+}
+
 export default function CustomerProfile() {
   const { id } = useParams();
   const { toast } = useToast();
@@ -65,6 +120,10 @@ export default function CustomerProfile() {
   
   const customer = masterCustomers.find(c => c.id === id);
   const [callNotes, setCallNotes] = useState(customer?.call_notes || '');
+
+  useEffect(() => {
+    setCallNotes(customer?.call_notes || '');
+  }, [customer?.call_notes]);
   
   // Editable fields state
   const [kinName, setKinName] = useState('');
@@ -312,6 +371,13 @@ export default function CustomerProfile() {
             <CardContent className="space-y-4">
               <Textarea placeholder="Enter notes from customer calls..." value={callNotes} onChange={(e) => setCallNotes(e.target.value)} rows={4} />
               <Button onClick={handleSaveNotes} size="sm" disabled={updateCustomer.isPending}>Save Notes</Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle className="text-lg">Complete Call History Timeline</CardTitle></CardHeader>
+            <CardContent>
+              <CustomerCallTimeline customerId={customer.id} />
             </CardContent>
           </Card>
 

@@ -1,10 +1,10 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Phone, User, Building, Clock, AlertTriangle, CheckCircle, PlayCircle, Loader2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { ArrowLeft, Phone, User, Building, Clock, AlertTriangle, CheckCircle, PlayCircle, Loader2, TrendingUp, TrendingDown, Minus, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { useTickets, usePayments, useCallLogs, useProfiles, useMasterCustomers } from '@/hooks/useSupabaseData';
+import { useTickets, usePayments, useProfiles, useMasterCustomers, useCallLogsByCustomer } from '@/hooks/useSupabaseData';
 import { useAuth } from '@/contexts/AuthContext';
 import { getDaysInArrearsBadgeClass } from '@/lib/daysInArrears';
 import { useEffect } from 'react';
@@ -49,12 +49,14 @@ export default function TicketDetail() {
   const { user, isAdmin } = useAuth();
   const { data: tickets, isLoading: isLoadingTickets } = useTickets();
   const { data: payments = [] } = usePayments();
-  const { data: callLogs = [] } = useCallLogs(id);
   const { data: profiles = [] } = useProfiles();
   const { data: masterCustomers = [] } = useMasterCustomers();
 
   const ticket = tickets?.find(t => t.id === id);
   const masterCustomer = masterCustomers.find(mc => mc.id === ticket?.master_customer_id);
+  const { data: allCallLogs = [] } = useCallLogsByCustomer(ticket?.master_customer_id);
+  const currentBatchNotes = allCallLogs.filter(log => log.ticket_id === ticket?.id && !log.is_from_previous_batch);
+  const previousBatchNotes = allCallLogs.filter(log => log.is_from_previous_batch || log.ticket_id !== ticket?.id);
 
   // Access control: agent can only see their own tickets
   useEffect(() => {
@@ -219,25 +221,43 @@ export default function TicketDetail() {
         {/* Call History Card */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Call History & Notes</CardTitle>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Call History & Notes
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            {callLogs.length === 0 ? (
+          <CardContent className="space-y-4">
+            {allCallLogs.length === 0 ? (
               <p className="text-muted-foreground text-center py-4">No call logs yet</p>
             ) : (
-              <div className="space-y-3 max-h-[400px] overflow-y-auto">
-                {callLogs.map((log) => (
-                  <div key={log.id} className="p-3 bg-muted/50 rounded-lg">
-                    <div className="flex items-center justify-between mb-1">
-                      <Badge variant="outline" className="text-xs">{log.call_outcome}</Badge>
-                      <span className="text-xs text-muted-foreground">{formatDateTime(log.created_at)}</span>
+              <>
+                {currentBatchNotes.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="font-semibold text-sm">This Batch</h4>
+                    <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                      {currentBatchNotes.map((log) => (
+                        <CallLogEntry key={log.id} log={log} isCurrent />
+                      ))}
                     </div>
-                    {log.notes && (
-                      <p className="text-sm mt-1">{log.notes}</p>
-                    )}
                   </div>
-                ))}
-              </div>
+                )}
+
+                {previousBatchNotes.length > 0 && (
+                  <>
+                    <Separator />
+                    <div className="space-y-2">
+                      <h4 className="font-semibold text-sm text-muted-foreground">
+                        Previous Batch ({previousBatchNotes.length})
+                      </h4>
+                      <div className="space-y-2 max-h-[150px] overflow-y-auto opacity-75">
+                        {previousBatchNotes.map((log) => (
+                          <CallLogEntry key={log.id} log={log} isCurrent={false} />
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -284,6 +304,36 @@ export default function TicketDetail() {
           <Link to={`/payments/new?ticket_id=${ticket.id}`}>Record Payment</Link>
         </Button>
       </div>
+    </div>
+  );
+}
+
+function CallLogEntry({ log, isCurrent }: { log: any; isCurrent: boolean }) {
+  return (
+    <div
+      className={`border-l-4 p-3 rounded text-sm ${
+        isCurrent
+          ? 'border-blue-500 bg-blue-50'
+          : 'border-gray-300 bg-gray-50'
+      }`}
+    >
+      <div className="flex flex-wrap items-center gap-2 mb-1">
+        <Badge variant="outline" className="text-xs">{log.call_outcome || 'Note'}</Badge>
+        <span className="text-xs text-muted-foreground">{formatDateTime(log.created_at)}</span>
+        {!isCurrent && (
+          <Badge className="text-xs bg-yellow-100 text-yellow-800">Previous batch</Badge>
+        )}
+      </div>
+
+      {!isCurrent && log.ticket_status_at_save && (
+        <div className="text-xs text-gray-600 mb-2">
+          Status was: <code className="bg-gray-200 px-1 rounded">{log.ticket_status_at_save}</code>
+        </div>
+      )}
+
+      {log.notes && (
+        <p className="text-sm text-gray-800 mt-1">{log.notes}</p>
+      )}
     </div>
   );
 }

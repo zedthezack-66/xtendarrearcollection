@@ -1,59 +1,59 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+ function _nullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } } function _optionalChain(ops) { let lastAccessLHS = undefined; let value = ops[0]; let i = 1; while (i < ops.length) { const op = ops[i]; const fn = ops[i + 1]; i += 2; if ((op === 'optionalAccess' || op === 'optionalCall') && value == null) { return undefined; } if (op === 'access' || op === 'optionalAccess') { lastAccessLHS = value; value = fn(value); } else if (op === 'call' || op === 'optionalCall') { value = fn((...args) => value.call(lastAccessLHS, ...args)); lastAccessLHS = undefined; } } return value; }import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 
 // Types for database operations
-export interface BatchInsert {
-  name: string;
-  institution_name: string;
-  customer_count?: number;
-  total_amount?: number;
-}
 
-export interface MasterCustomerInsert {
-  nrc_number: string;
-  name: string;
-  mobile_number?: string;
-  loan_account_number?: string;
-  total_owed?: number;
-  assigned_agent?: string;
-  next_of_kin_name?: string | null;
-  next_of_kin_contact?: string | null;
-  workplace_contact?: string | null;
-  workplace_destination?: string | null;
-}
 
-export interface TicketInsert {
-  master_customer_id: string;
-  batch_id?: string;
-  customer_name: string;
-  nrc_number: string;
-  mobile_number?: string;
-  amount_owed?: number;
-  priority?: string;
-  assigned_agent?: string;
-  loan_id?: string;
-}
 
-export interface PaymentInsert {
-  ticket_id?: string;
-  master_customer_id: string;
-  customer_name: string;
-  amount: number;
-  payment_method: string;
-  payment_date?: string;
-  notes?: string;
-}
 
-export interface CallLogInsert {
-  ticket_id: string;
-  master_customer_id: string;
-  call_outcome: string;
-  notes?: string;
-  promise_to_pay_date?: string;
-  promise_to_pay_amount?: number;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // Batches hooks
 export function useBatches() {
@@ -77,12 +77,12 @@ export function useCreateBatch() {
   const { user } = useAuth();
 
   return useMutation({
-    mutationFn: async (batch: BatchInsert) => {
+    mutationFn: async (batch) => {
       const { data, error } = await supabase
         .from('batches')
         .insert({
           ...batch,
-          uploaded_by: user?.id,
+          uploaded_by: _optionalChain([user, 'optionalAccess', _ => _.id]),
         })
         .select()
         .single();
@@ -94,7 +94,7 @@ export function useCreateBatch() {
       queryClient.invalidateQueries({ queryKey: ['batches'] });
       toast({ title: 'Batch created successfully' });
     },
-    onError: (error: Error) => {
+    onError: (error) => {
       toast({ title: 'Error creating batch', description: error.message, variant: 'destructive' });
     },
   });
@@ -120,7 +120,7 @@ export function useCreateMasterCustomer() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (customer: MasterCustomerInsert) => {
+    mutationFn: async (customer) => {
       const { data, error } = await supabase
         .from('master_customers')
         .insert(customer)
@@ -140,7 +140,7 @@ export function useUpdateMasterCustomer() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { id: string } & Partial<MasterCustomerInsert & { call_notes?: string }>) => {
+    mutationFn: async ({ id, ...updates }) => {
       const { data, error } = await supabase
         .from('master_customers')
         .update(updates)
@@ -158,7 +158,7 @@ export function useUpdateMasterCustomer() {
 }
 
 // Batch Customers hooks - RLS will filter based on assigned_agent_id
-export function useBatchCustomers(batchId?: string) {
+export function useBatchCustomers(batchId) {
   return useQuery({
     queryKey: ['batch_customers', batchId],
     queryFn: async () => {
@@ -180,15 +180,15 @@ export function useCreateBatchCustomer() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (customer: {
-      batch_id: string;
-      master_customer_id: string;
-      nrc_number: string;
-      name: string;
-      mobile_number?: string;
-      amount_owed?: number;
-      assigned_agent_id?: string;
-    }) => {
+    mutationFn: async (customer
+
+
+
+
+
+
+
+) => {
       const { data, error } = await supabase
         .from('batch_customers')
         .insert(customer)
@@ -224,7 +224,7 @@ export function useCreateTicket() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (ticket: TicketInsert) => {
+    mutationFn: async (ticket) => {
       const { generateLoanId } = await import('@/lib/generateLoanId');
       const ticketWithLoanId = { ...ticket, loan_id: ticket.loan_id || generateLoanId() };
       const { data, error } = await supabase
@@ -243,7 +243,7 @@ export function useCreateTicket() {
 }
 
 // Helper to check if ticket can be resolved based on payments
-export async function canTicketBeResolved(ticketId: string): Promise<{ canResolve: boolean; amountOwed: number; totalPaid: number; balance: number }> {
+export async function canTicketBeResolved(ticketId) {
   const { data: ticket } = await supabase
     .from('tickets')
     .select('amount_owed')
@@ -272,18 +272,18 @@ export function useUpdateTicket() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { id: string; skipValidation?: boolean } & Partial<{
-      status: string;
-      priority: string;
-      call_notes: string;
-      resolved_date: string | null;
-      amount_owed: number;
-      mobile_number: string;
-      ticket_arrear_status: string;
-      ticket_payment_status: string;
-      employer_reason_for_arrears: string;
-    }>) => {
-      const { skipValidation, ...cleanUpdates } = updates as any;
+    mutationFn: async ({ id, ...updates }
+
+
+
+
+
+
+
+
+
+) => {
+      const { skipValidation, ...cleanUpdates } = updates ;
       
       // Validate status change to Resolved
       if (cleanUpdates.status === 'Resolved' && !skipValidation) {
@@ -307,7 +307,7 @@ export function useUpdateTicket() {
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
       toast({ title: 'Ticket updated successfully' });
     },
-    onError: (error: Error) => {
+    onError: (error) => {
       toast({ title: 'Error updating ticket', description: error.message, variant: 'destructive' });
     },
   });
@@ -330,7 +330,7 @@ export function usePayments() {
 }
 
 // Helper to compute and update ticket status based on payments
-async function updateTicketStatusFromPayments(ticketId: string | null | undefined, masterCustomerId: string) {
+async function updateTicketStatusFromPayments(ticketId, masterCustomerId) {
   if (!ticketId) return;
   
   // Get all payments for this ticket
@@ -351,8 +351,8 @@ async function updateTicketStatusFromPayments(ticketId: string | null | undefine
   const totalPaid = (ticketPayments || []).reduce((sum, p) => sum + Number(p.amount), 0);
   const amountOwed = Number(ticket.amount_owed);
   
-  let newStatus: string;
-  let resolvedDate: string | null = null;
+  let newStatus;
+  let resolvedDate = null;
   
   if (totalPaid <= 0) {
     newStatus = 'Open';
@@ -370,7 +370,7 @@ async function updateTicketStatusFromPayments(ticketId: string | null | undefine
 }
 
 // Helper to update master customer totals from payments
-async function updateMasterCustomerFromPayments(masterCustomerId: string) {
+async function updateMasterCustomerFromPayments(masterCustomerId) {
   // Get all payments for this customer
   const { data: customerPayments } = await supabase
     .from('payments')
@@ -390,7 +390,7 @@ async function updateMasterCustomerFromPayments(masterCustomerId: string) {
   const totalOwed = Number(customer.total_owed);
   const outstanding = Math.max(0, totalOwed - totalPaid);
   
-  let status: string;
+  let status;
   if (totalPaid <= 0) {
     status = 'Not Paid';
   } else if (outstanding <= 0) {
@@ -415,12 +415,12 @@ export function useCreatePayment() {
   const { user } = useAuth();
 
   return useMutation({
-    mutationFn: async (payment: PaymentInsert) => {
+    mutationFn: async (payment) => {
       const { data, error } = await supabase
         .from('payments')
         .insert({
           ...payment,
-          recorded_by: user?.id,
+          recorded_by: _optionalChain([user, 'optionalAccess', _2 => _2.id]),
         })
         .select()
         .single();
@@ -445,7 +445,7 @@ export function useCreatePayment() {
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
       toast({ title: 'Payment recorded successfully' });
     },
-    onError: (error: Error) => {
+    onError: (error) => {
       toast({ title: 'Error recording payment', description: error.message, variant: 'destructive' });
     },
   });
@@ -456,13 +456,13 @@ export function useUpdatePayment() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { 
-      id: string; 
-      amount?: number; 
-      payment_date?: string; 
-      notes?: string;
-      payment_method?: string;
-    }) => {
+    mutationFn: async ({ id, ...updates }
+
+
+
+
+
+) => {
       // Get existing payment to know which customer/ticket to update
       const { data: existingPayment, error: fetchError } = await supabase
         .from('payments')
@@ -493,14 +493,14 @@ export function useUpdatePayment() {
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
       toast({ title: 'Payment updated successfully' });
     },
-    onError: (error: Error) => {
+    onError: (error) => {
       toast({ title: 'Error updating payment', description: error.message, variant: 'destructive' });
     },
   });
 }
 
 // Call Logs hooks
-export function useCallLogs(ticketId?: string) {
+export function useCallLogs(ticketId) {
   return useQuery({
     queryKey: ['call_logs', ticketId],
     queryFn: async () => {
@@ -519,7 +519,7 @@ export function useCallLogs(ticketId?: string) {
 }
 
 // Fetch call logs for multiple tickets (all tickets on dashboard)
-export function useCallLogsForTickets(ticketIds: string[]) {
+export function useCallLogsForTickets(ticketIds) {
   // Use a stable string key - create a sorted COPY to avoid mutating original array
   const ticketIdsKey = ticketIds.length > 0 ? [...ticketIds].sort().join(',') : '';
   
@@ -535,7 +535,7 @@ export function useCallLogsForTickets(ticketIds: string[]) {
         .order('created_at', { ascending: false });
       
       if (error) throw error;
-      return data ?? [];
+      return _nullishCoalesce(data, () => ( []));
     },
     enabled: ticketIds.length > 0,
     staleTime: 0, // Always refetch when invalidated
@@ -543,7 +543,7 @@ export function useCallLogsForTickets(ticketIds: string[]) {
   });
 }
 
-export function useCallLogsByCustomer(masterCustomerId?: string) {
+export function useCallLogsByCustomer(masterCustomerId) {
   return useQuery({
     queryKey: ['call_logs', 'by-customer', masterCustomerId],
     queryFn: async () => {
@@ -556,7 +556,7 @@ export function useCallLogsByCustomer(masterCustomerId?: string) {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data ?? [];
+      return _nullishCoalesce(data, () => ( []));
     },
     enabled: !!masterCustomerId,
     staleTime: 1000 * 60 * 5,
@@ -569,7 +569,7 @@ export function useCreateCallLog() {
   const { user } = useAuth();
 
   return useMutation({
-    mutationFn: async (log: CallLogInsert) => {
+    mutationFn: async (log) => {
       const { data: ticket, error: ticketError } = await supabase
         .from('tickets')
         .select('status')
@@ -582,8 +582,8 @@ export function useCreateCallLog() {
         .from('call_logs')
         .insert({
           ...log,
-          agent_id: user?.id,
-          ticket_status_at_save: ticket?.status ?? null,
+          agent_id: _optionalChain([user, 'optionalAccess', _3 => _3.id]),
+          ticket_status_at_save: _nullishCoalesce(_optionalChain([ticket, 'optionalAccess', _4 => _4.status]), () => ( null)),
         })
         .select()
         .single();
@@ -599,7 +599,7 @@ export function useCreateCallLog() {
       queryClient.refetchQueries({ queryKey: ['call_logs'] });
       toast({ title: 'Call logged successfully' });
     },
-    onError: (error: Error) => {
+    onError: (error) => {
       toast({ title: 'Error logging call', description: error.message, variant: 'destructive' });
     },
   });
@@ -625,7 +625,7 @@ export function useUpdateProfile() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { id: string; full_name?: string; phone?: string | null; display_name?: string }) => {
+    mutationFn: async ({ id, ...updates }) => {
       const { data, error } = await supabase
         .from('profiles')
         .update(updates)
@@ -662,7 +662,7 @@ export function useUpdateUserRole() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ userId, newRole }: { userId: string; newRole: 'admin' | 'agent' }) => {
+    mutationFn: async ({ userId, newRole }) => {
       const { data, error } = await supabase.rpc('update_user_role', {
         p_target_user_id: userId,
         p_new_role: newRole,
@@ -671,7 +671,7 @@ export function useUpdateUserRole() {
       if (error) throw error;
       return data;
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['user_roles'] });
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
       toast({ 
@@ -679,7 +679,7 @@ export function useUpdateUserRole() {
         description: `User role changed from ${data.old_role} to ${data.new_role}` 
       });
     },
-    onError: (error: Error) => {
+    onError: (error) => {
       toast({ title: 'Error updating role', description: error.message, variant: 'destructive' });
     },
   });
@@ -691,7 +691,7 @@ export function useDeletePayment() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (paymentId: string) => {
+    mutationFn: async (paymentId) => {
       // Get payment details first
       const { data: payment, error: fetchError } = await supabase
         .from('payments')
@@ -723,7 +723,7 @@ export function useDeletePayment() {
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
       toast({ title: 'Payment deleted successfully' });
     },
-    onError: (error: Error) => {
+    onError: (error) => {
       toast({ title: 'Error deleting payment', description: error.message, variant: 'destructive' });
     },
   });
@@ -734,7 +734,7 @@ export function useDeleteTicket() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (ticketId: string) => {
+    mutationFn: async (ticketId) => {
       // Use server-side RPC for transactional hard delete
       const { data, error } = await supabase.rpc('hard_delete_ticket', {
         p_ticket_id: ticketId
@@ -742,13 +742,13 @@ export function useDeleteTicket() {
       
       if (error) throw error;
       
-      return data as {
-        success: boolean;
-        deleted_call_logs: number;
-        detached_call_logs?: number;
-        deleted_payments: number;
-        master_customer_deleted: boolean;
-      };
+      return data 
+
+
+
+
+
+;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
@@ -756,12 +756,12 @@ export function useDeleteTicket() {
       queryClient.invalidateQueries({ queryKey: ['call_logs'] });
       queryClient.invalidateQueries({ queryKey: ['batch_customers'] });
       queryClient.invalidateQueries({ queryKey: ['master_customers'] });
-      const msg = data?.master_customer_deleted 
+      const msg = _optionalChain([data, 'optionalAccess', _5 => _5.master_customer_deleted]) 
         ? 'Ticket and customer fully removed from system' 
         : 'Ticket deleted (customer retained for other batches)';
       toast({ title: msg });
     },
-    onError: (error: Error) => {
+    onError: (error) => {
       toast({ title: 'Error deleting ticket', description: error.message, variant: 'destructive' });
     },
   });
@@ -773,7 +773,7 @@ export function useUpdateCallLog() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, notes }: { id: string; notes: string }) => {
+    mutationFn: async ({ id, notes }) => {
       const { data, error } = await supabase
         .from('call_logs')
         .update({ notes })
@@ -789,7 +789,7 @@ export function useUpdateCallLog() {
       queryClient.refetchQueries({ queryKey: ['call_logs'] });
       toast({ title: 'Note updated' });
     },
-    onError: (error: Error) => {
+    onError: (error) => {
       toast({ title: 'Error updating note', description: error.message, variant: 'destructive' });
     },
   });
@@ -801,7 +801,7 @@ export function useDeleteBatch() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ batchId, archive = false }: { batchId: string; archive?: boolean }) => {
+    mutationFn: async ({ batchId, archive = false }) => {
       const { data, error } = await supabase.rpc('safe_delete_batch', {
         p_batch_id: batchId,
         p_chunk_size: 500,
@@ -809,16 +809,16 @@ export function useDeleteBatch() {
       });
       
       if (error) throw error;
-      return data as {
-        success: boolean;
-        deleted_call_logs: number;
-        detached_call_logs?: number;
-        deleted_payments: number;
-        deleted_tickets: number;
-        deleted_batch_customers: number;
-        deleted_master_customers: number;
-        archive_data: any | null;
-      };
+      return data 
+
+
+
+
+
+
+
+
+;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['batches'] });
@@ -829,10 +829,10 @@ export function useDeleteBatch() {
       queryClient.invalidateQueries({ queryKey: ['call_logs'] });
       toast({ 
         title: 'Batch deleted successfully',
-        description: `Deleted ${(data as any)?.deleted_tickets || 0} tickets, ${(data as any)?.deleted_customers || 0} customers`
+        description: `Deleted ${_optionalChain([(data ), 'optionalAccess', _6 => _6.deleted_tickets]) || 0} tickets, ${_optionalChain([(data ), 'optionalAccess', _7 => _7.deleted_customers]) || 0} customers`
       });
     },
-    onError: (error: Error) => {
+    onError: (error) => {
       toast({ title: 'Error deleting batch', description: error.message, variant: 'destructive' });
     },
   });
@@ -846,24 +846,24 @@ export function useDashboardStats() {
   const { data: profiles } = useProfiles();
 
   const stats = {
-    totalCustomers: customers?.length ?? 0,
-    totalOutstanding: customers?.reduce((sum, c) => sum + Number(c.outstanding_balance), 0) ?? 0,
-    totalCollected: payments?.reduce((sum, p) => sum + Number(p.amount), 0) ?? 0,
-    openTickets: tickets?.filter(t => t.status !== 'Resolved').length ?? 0,
-    resolvedTickets: tickets?.filter(t => t.status === 'Resolved').length ?? 0,
-    collectionsByAgent: profiles?.map(profile => ({
+    totalCustomers: _nullishCoalesce(_optionalChain([customers, 'optionalAccess', _8 => _8.length]), () => ( 0)),
+    totalOutstanding: _nullishCoalesce(_optionalChain([customers, 'optionalAccess', _9 => _9.reduce, 'call', _10 => _10((sum, c) => sum + Number(c.outstanding_balance), 0)]), () => ( 0)),
+    totalCollected: _nullishCoalesce(_optionalChain([payments, 'optionalAccess', _11 => _11.reduce, 'call', _12 => _12((sum, p) => sum + Number(p.amount), 0)]), () => ( 0)),
+    openTickets: _nullishCoalesce(_optionalChain([tickets, 'optionalAccess', _13 => _13.filter, 'call', _14 => _14(t => t.status !== 'Resolved'), 'access', _15 => _15.length]), () => ( 0)),
+    resolvedTickets: _nullishCoalesce(_optionalChain([tickets, 'optionalAccess', _16 => _16.filter, 'call', _17 => _17(t => t.status === 'Resolved'), 'access', _18 => _18.length]), () => ( 0)),
+    collectionsByAgent: _nullishCoalesce(_optionalChain([profiles, 'optionalAccess', _19 => _19.map, 'call', _20 => _20(profile => ({
       agent: profile.full_name,
-      amount: payments?.filter(p => p.recorded_by === profile.id).reduce((sum, p) => sum + Number(p.amount), 0) ?? 0,
-    })) ?? [],
+      amount: _nullishCoalesce(_optionalChain([payments, 'optionalAccess', _21 => _21.filter, 'call', _22 => _22(p => p.recorded_by === profile.id), 'access', _23 => _23.reduce, 'call', _24 => _24((sum, p) => sum + Number(p.amount), 0)]), () => ( 0)),
+    }))]), () => ( [])),
     ticketsByStatus: [
-      { status: 'Open', count: tickets?.filter(t => t.status === 'Open').length ?? 0 },
-      { status: 'In Progress', count: tickets?.filter(t => t.status === 'In Progress').length ?? 0 },
-      { status: 'Resolved', count: tickets?.filter(t => t.status === 'Resolved').length ?? 0 },
+      { status: 'Open', count: _nullishCoalesce(_optionalChain([tickets, 'optionalAccess', _25 => _25.filter, 'call', _26 => _26(t => t.status === 'Open'), 'access', _27 => _27.length]), () => ( 0)) },
+      { status: 'In Progress', count: _nullishCoalesce(_optionalChain([tickets, 'optionalAccess', _28 => _28.filter, 'call', _29 => _29(t => t.status === 'In Progress'), 'access', _30 => _30.length]), () => ( 0)) },
+      { status: 'Resolved', count: _nullishCoalesce(_optionalChain([tickets, 'optionalAccess', _31 => _31.filter, 'call', _32 => _32(t => t.status === 'Resolved'), 'access', _33 => _33.length]), () => ( 0)) },
     ],
     ticketsByPriority: [
-      { priority: 'High', count: tickets?.filter(t => t.priority === 'High').length ?? 0 },
-      { priority: 'Medium', count: tickets?.filter(t => t.priority === 'Medium').length ?? 0 },
-      { priority: 'Low', count: tickets?.filter(t => t.priority === 'Low').length ?? 0 },
+      { priority: 'High', count: _nullishCoalesce(_optionalChain([tickets, 'optionalAccess', _34 => _34.filter, 'call', _35 => _35(t => t.priority === 'High'), 'access', _36 => _36.length]), () => ( 0)) },
+      { priority: 'Medium', count: _nullishCoalesce(_optionalChain([tickets, 'optionalAccess', _37 => _37.filter, 'call', _38 => _38(t => t.priority === 'Medium'), 'access', _39 => _39.length]), () => ( 0)) },
+      { priority: 'Low', count: _nullishCoalesce(_optionalChain([tickets, 'optionalAccess', _40 => _40.filter, 'call', _41 => _41(t => t.priority === 'Low'), 'access', _42 => _42.length]), () => ( 0)) },
     ],
   };
 
@@ -879,7 +879,7 @@ export function useDashboardStats() {
 }
 
 // Weekly Report Stats (server-side computed)
-export function useWeeklyReportStats(agentId?: string) {
+export function useWeeklyReportStats(agentId) {
   return useQuery({
     queryKey: ['weekly_report_stats', agentId],
     queryFn: async () => {
@@ -888,52 +888,52 @@ export function useWeeklyReportStats(agentId?: string) {
       });
       
       if (error) throw error;
-      return data as {
-        total_tickets: number;
-        total_owed: number;
-        total_collected: number;
-        outstanding_balance: number;
-        collection_rate: number;
-        open_tickets: number;
-        in_progress_tickets: number;
-        resolved_tickets: number;
-      };
+      return data 
+
+
+
+
+
+
+
+
+;
     },
   });
 }
 
 // Interaction Analytics (call notes + ticket status changes)
-export function useInteractionAnalytics(agentId?: string, startDate?: Date, endDate?: Date) {
+export function useInteractionAnalytics(agentId, startDate, endDate) {
   return useQuery({
-    queryKey: ['interaction_analytics', agentId, startDate?.toISOString(), endDate?.toISOString()],
+    queryKey: ['interaction_analytics', agentId, _optionalChain([startDate, 'optionalAccess', _43 => _43.toISOString, 'call', _44 => _44()]), _optionalChain([endDate, 'optionalAccess', _45 => _45.toISOString, 'call', _46 => _46()])],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('get_interaction_analytics', {
         p_agent_id: agentId || null,
-        p_start_date: startDate?.toISOString().split('T')[0] || null,
-        p_end_date: endDate?.toISOString().split('T')[0] || null,
+        p_start_date: _optionalChain([startDate, 'optionalAccess', _47 => _47.toISOString, 'call', _48 => _48(), 'access', _49 => _49.split, 'call', _50 => _50('T'), 'access', _51 => _51[0]]) || null,
+        p_end_date: _optionalChain([endDate, 'optionalAccess', _52 => _52.toISOString, 'call', _53 => _53(), 'access', _54 => _54.split, 'call', _55 => _55('T'), 'access', _56 => _56[0]]) || null,
       });
       
       if (error) throw error;
-      return data as {
-        total_interactions: number;
-        total_tickets_resolved: number;
-        total_collected: number;
-        by_agent: Array<{
-          agent_id: string;
-          agent_name: string;
-          total_calls: number;
-          tickets_created: number;
-          tickets_resolved: number;
-          collected_amount: number;
-          total_interactions: number;
-        }>;
-      };
+      return data 
+
+
+
+
+
+
+
+
+
+
+
+
+;
     },
   });
 }
 
 // Admin Agent Analytics
-export function useAdminAgentAnalytics(agentId?: string) {
+export function useAdminAgentAnalytics(agentId) {
   return useQuery({
     queryKey: ['admin_agent_analytics', agentId],
     queryFn: async () => {
@@ -942,25 +942,25 @@ export function useAdminAgentAnalytics(agentId?: string) {
       });
       
       if (error) throw error;
-      return data as {
-        agents: Array<{
-          agent_id: string;
-          agent_name: string;
-          total_tickets: number;
-          total_owed: number;
-          total_collected: number;
-          outstanding_balance: number;
-          collection_rate: number;
-          interaction_count: number;
-        }>;
-        totals: {
-          total_tickets: number;
-          total_owed: number;
-          total_collected: number;
-          outstanding_balance: number;
-          total_interactions: number;
-        };
-      };
+      return data 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;
     },
   });
 }
@@ -971,21 +971,21 @@ export function useAdminDeleteUser() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (userId: string) => {
+    mutationFn: async (userId) => {
       const { data, error } = await supabase.rpc('admin_delete_user', {
         p_user_id: userId,
       });
       
       if (error) throw error;
-      return data as {
-        success: boolean;
-        blocked?: boolean;
-        reason?: string;
-        assigned_tickets?: number;
-        assigned_customers?: number;
-        deleted_user?: string;
-        user_id?: string;
-      };
+      return data 
+
+
+
+
+
+
+
+;
     },
     onSuccess: (data) => {
       if (data.success) {
@@ -1003,14 +1003,14 @@ export function useAdminDeleteUser() {
         });
       }
     },
-    onError: (error: Error) => {
+    onError: (error) => {
       toast({ title: 'Error deleting user', description: error.message, variant: 'destructive' });
     },
   });
 }
 
 // Tickets with server-side sorting by amount_owed
-export function useTicketsSorted(sortOrder: 'high' | 'low' = 'high', batchId?: string) {
+export function useTicketsSorted(sortOrder = 'high', batchId) {
   return useQuery({
     queryKey: ['tickets_sorted', sortOrder, batchId],
     queryFn: async () => {
@@ -1041,11 +1041,11 @@ export function useTransferClientToBatch() {
       ticketId, 
       targetBatchId, 
       targetAgentId 
-    }: { 
-      ticketId: string; 
-      targetBatchId: string; 
-      targetAgentId: string; 
-    }) => {
+    }
+
+
+
+) => {
       const { data, error } = await supabase.rpc('transfer_client_to_batch', {
         p_ticket_id: ticketId,
         p_target_batch_id: targetBatchId,
@@ -1053,14 +1053,14 @@ export function useTransferClientToBatch() {
       });
       
       if (error) throw error;
-      return data as {
-        success: boolean;
-        message: string;
-        ticket_id: string;
-        from_batch_id: string;
-        to_batch_id: string;
-        new_agent_id: string;
-      };
+      return data 
+
+
+
+
+
+
+;
     },
     onSuccess: (data) => {
       // Invalidate ALL affected queries for complete dashboard recalculation
@@ -1084,7 +1084,7 @@ export function useTransferClientToBatch() {
         description: data.message
       });
     },
-    onError: (error: Error) => {
+    onError: (error) => {
       toast({ 
         title: 'Transfer failed', 
         description: error.message, 
@@ -1103,24 +1103,24 @@ export function useBulkTransferClients() {
     mutationFn: async ({ 
       ticketIds, 
       targetAgentId 
-    }: { 
-      ticketIds: string[]; 
-      targetAgentId: string; 
-    }) => {
+    }
+
+
+) => {
       const { data, error } = await supabase.rpc('bulk_transfer_clients', {
         p_ticket_ids: ticketIds,
         p_target_agent_id: targetAgentId
       });
       
       if (error) throw error;
-      return data as {
-        success: boolean;
-        transferred_count: number;
-        failed_count: number;
-        total_requested: number;
-        errors: string[];
-        target_agent_id: string;
-      };
+      return data 
+
+
+
+
+
+
+;
     },
     onSuccess: (data) => {
       // Invalidate ALL affected queries for complete dashboard recalculation
@@ -1144,7 +1144,7 @@ export function useBulkTransferClients() {
         description: `Successfully transferred ${data.transferred_count} of ${data.total_requested} clients`
       });
     },
-    onError: (error: Error) => {
+    onError: (error) => {
       toast({ 
         title: 'Bulk transfer failed', 
         description: error.message, 

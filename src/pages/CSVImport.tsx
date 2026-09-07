@@ -88,6 +88,65 @@ interface ParsedRow {
   workplaceDestination: string | null;
 }
 
+type CreatedTicket = { id: string; master_customer_id: string };
+
+async function reattachPreviousBatchNotes(
+  newTickets: CreatedTicket[]
+): Promise<{ reattached: number; orphaned: number }> {
+  if (newTickets.length === 0) {
+    return { reattached: 0, orphaned: 0 };
+  }
+
+  const masterCustomerIds = Array.from(new Set(newTickets.map((ticket) => ticket.master_customer_id)));
+
+  const { data: orphanedNotes, error: fetchError } = await supabase
+    .from('call_logs')
+    .select('id, master_customer_id')
+    .in('master_customer_id', masterCustomerIds)
+    .is('ticket_id', null);
+
+  if (fetchError) {
+    console.error('Failed to fetch orphaned call logs for reattachment:', fetchError);
+    return { reattached: 0, orphaned: 0 };
+  }
+
+  if (!orphanedNotes || orphanedNotes.length === 0) {
+    return { reattached: 0, orphaned: 0 };
+  }
+
+  const customerToTicketMap = new Map(newTickets.map((ticket) => [ticket.master_customer_id, ticket.id]));
+  let reattached = 0;
+  let orphaned = 0;
+
+  for (const note of orphanedNotes) {
+    if (!note.master_customer_id) {
+      orphaned++;
+      continue;
+    }
+
+    const newTicketId = customerToTicketMap.get(note.master_customer_id);
+
+    if (!newTicketId) {
+      orphaned++;
+      continue;
+    }
+
+    const { error: updateError } = await supabase
+      .from('call_logs')
+      .update({ ticket_id: newTicketId, is_from_previous_batch: true })
+      .eq('id', note.id);
+
+    if (updateError) {
+      console.error(`Failed to reattach call log ${note.id}:`, updateError);
+      orphaned++;
+    } else {
+      reattached++;
+    }
+  }
+
+  return { reattached, orphaned };
+}
+
 const SAMPLE_CSV = `Loan ID,Customer Name,NRC Number,Amount Owed,Mobile Number,Assigned Agent,Next of Kin Name,Next of Kin Contact,Branch Name,Days In Arrears,Employer Name,Employer Subdivision,Workplace Contact,Workplace Destination,Loan Consultant,Tenure,Last Payment Date
 LN20260302A1B2C3D4,John Mwanza,123456/10/1,15000,260971234567,Ziba,Mary Mwanza,260977654321,Lusaka Main,65,Ministry of Health,Finance Dept,260211234567,Cairo Road HQ,Grace Tembo,24 months,2025-12-15
 LN20260302E5F6A7B8,Jane Banda,234567/20/2,0,260972345678,Mary,Peter Banda,260978765432,Ndola Branch,0,Zambia Airways,Operations,260212345678,Kenneth Kaunda Intl,Peter Sakala,12 months,
@@ -623,6 +682,7 @@ export default function CSVImport() {
 
     try {
       let batch: { id: string; name: string; customer_count: number; total_amount: number };
+      const createdTickets: CreatedTicket[] = [];
       
       if (uploadMode === "new") {
         // Create new batch
@@ -869,11 +929,13 @@ export default function CSVImport() {
               };
             });
 
-            const { error: ticketsError } = await supabase
+            const { data: insertedTickets, error: ticketsError } = await supabase
               .from('tickets')
-              .insert(newTickets);
+              .insert(newTickets)
+              .select('id, master_customer_id');
 
             if (ticketsError) throw ticketsError;
+            if (insertedTickets) createdTickets.push(...insertedTickets);
 
             // Create batch_customers entries
             const newBatchCustomers = insertedCustomers.map(mc => {
@@ -967,7 +1029,7 @@ export default function CSVImport() {
               // Create ticket for this batch
               const ticketStatus = row.amountOwed === 0 ? 'Resolved' : 'Open';
               const ticketPriority = row.amountOwed === 0 ? 'Low' : 'High';
-              await supabase.from('tickets').insert({
+              const { data: insertedTicket, error: existingTicketError } = await supabase.from('tickets').insert({
                 master_customer_id: existingMaster.id,
                 batch_id: batch.id,
                 customer_name: row.name,
@@ -980,7 +1042,10 @@ export default function CSVImport() {
                 resolved_date: row.amountOwed === 0 ? new Date().toISOString() : null,
                 loan_id: row.loanId || generateLoanId(),
                 days_in_arrears: row.daysInArrears ?? null,
-              });
+              }).select('id, master_customer_id').single();
+
+              if (existingTicketError) throw existingTicketError;
+              if (insertedTicket) createdTickets.push(insertedTicket);
             }
           }
 
@@ -1008,6 +1073,7 @@ export default function CSVImport() {
       }
 
       setImportProgress(100);
+      const reattachResult = await reattachPreviousBatchNotes(createdTickets);
       
       let message: string;
       if (uploadMode === "new") {
@@ -1016,6 +1082,9 @@ export default function CSVImport() {
         const parts = [`Added ${newlyAddedCount} new customers`];
         if (skippedCount > 0) parts.push(`skipped ${skippedCount} existing NRCs`);
         message = `${parts.join(', ')} to batch "${batch.name}"`;
+      }
+      if (reattachResult.reattached > 0) {
+        message += `. Reattached ${reattachResult.reattached} previous call note${reattachResult.reattached === 1 ? '' : 's'}.`;
       }
       toast({ title: "Import Complete", description: message });
       navigate('/customers');
