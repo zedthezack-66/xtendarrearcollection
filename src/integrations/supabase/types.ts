@@ -634,20 +634,6 @@ export type Database = {
         Args: { p_agent_id?: string }
         Returns: Json
       }
-      get_admin_full_export: {
-        Args: {
-          p_agent_id?: string
-          p_batch_id?: string
-          p_end_date?: string
-          p_export_type?: string
-          p_filter?: string
-          p_limit?: number
-          p_offset?: number
-          p_start_date?: string
-          p_worked_only?: boolean
-        }
-        Returns: Json
-      }
       get_arrears_movement_analytics:
         | {
             Args: {
@@ -670,24 +656,14 @@ export type Database = {
         Args: { p_agent_id?: string; p_batch_id?: string }
         Returns: Json
       }
-      get_interaction_analytics:
-        | {
-            Args: {
-              p_agent_id?: string
-              p_end_date?: string
-              p_start_date?: string
-            }
-            Returns: Json
-          }
-        | {
-            Args: {
-              p_agent_id?: string
-              p_end_date?: string
-              p_start_date?: string
-            }
-            Returns: Json
-          }
-      get_loan_book_sync_template: { Args: never; Returns: Json }
+      get_interaction_analytics: {
+        Args: {
+          p_agent_id?: string
+          p_end_date?: string
+          p_start_date?: string
+        }
+        Returns: Json
+      }
       get_loan_book_mtd_summary: { Args: { p_batch_ids: string[] }; Returns: Json }
       get_recent_tickets: {
         Args: {
@@ -720,8 +696,6 @@ export type Database = {
         }
         Returns: Json
       }
-      import_master_customer: { Args: { p_customers: Json }; Returns: Json }
-      import_ticket_row: { Args: { p_tickets: Json }; Returns: Json }
       safe_delete_batch: {
         Args: { p_archive?: boolean; p_batch_id: string; p_chunk_size?: number }
         Returns: Json
