@@ -180,22 +180,30 @@ function CollectionsByAgentChart({ batchId }: { batchId: string | null }) {
       ) : !collectionsByAgent || collectionsByAgent.length === 0 ? (
         <ChartPlaceholder message="No agent data available" />
       ) : (
-        <div className="h-[260px]">
+        // Horizontal bars: full agent names sit on the left and never overlap, however many agents there are.
+        <div style={{ height: Math.max(260, collectionsByAgent.length * 38) }}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={collectionsByAgent} margin={{ top: 8, right: 4, left: -12, bottom: 0 }}>
-              <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeDasharray="4 4" />
+            <BarChart data={[...collectionsByAgent].sort((a, b) => b.collected - a.collected)} layout="vertical" margin={{ top: 0, right: 12, left: 0, bottom: 0 }}>
+              <CartesianGrid horizontal={false} stroke="hsl(var(--border))" strokeDasharray="4 4" />
               <XAxis
-                dataKey="name"
-                tickLine={false}
-                axisLine={false}
-                tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
-                interval={0}
-              />
-              <YAxis
+                type="number"
                 tickFormatter={(value) => `K${(value / 1000).toFixed(0)}k`}
                 tickLine={false}
                 axisLine={false}
                 tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
+              />
+              <YAxis
+                type="category"
+                dataKey="name"
+                width={124}
+                tickLine={false}
+                axisLine={false}
+                interval={0}
+                tick={({ x, y, payload }: { x: number; y: number; payload: { value: string } }) => (
+                  <text x={x - 4} y={y} dy={4} textAnchor="end" fontSize={12} fill="hsl(var(--foreground))">
+                    {payload.value.length > 18 ? `${payload.value.slice(0, 17)}…` : payload.value}
+                  </text>
+                )}
               />
               <Tooltip
                 cursor={{ fill: 'hsl(var(--muted))' }}
@@ -203,7 +211,7 @@ function CollectionsByAgentChart({ batchId }: { batchId: string | null }) {
                 labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 600 }}
                 contentStyle={tooltipStyle}
               />
-              <Bar dataKey="collected" fill="hsl(var(--brand))" radius={[6, 6, 0, 0]} maxBarSize={44} />
+              <Bar dataKey="collected" fill="hsl(var(--brand))" radius={[0, 6, 6, 0]} barSize={18} />
             </BarChart>
           </ResponsiveContainer>
         </div>
