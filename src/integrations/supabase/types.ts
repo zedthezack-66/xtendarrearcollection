@@ -718,6 +718,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      import_batch: {
+        Args: {
+          p_batch_name: string
+          p_commit?: boolean
+          p_institution_name: string
+          p_rows: Json
+        }
+        Returns: Json
+      }
       import_master_customer: { Args: { p_customers: Json }; Returns: Json }
       import_ticket_row: { Args: { p_tickets: Json }; Returns: Json }
       process_batch_arrears_update: {

@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import Papa from "papaparse";
 import XLSX from "xlsx-js-style";
 import { ArrowLeft, Upload, FileText, Check, X, Download, AlertCircle, RefreshCw, TrendingUp, TrendingDown, Bell, CheckCircle } from "lucide-react";
@@ -19,13 +20,21 @@ import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useMasterCustomers, useCreateBatch, useProfiles, useBatches } from "@/hooks/useSupabaseData";
+import { useMasterCustomers, useProfiles, useBatches } from "@/hooks/useSupabaseData";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { generateLoanId } from "@/lib/generateLoanId";
 import { fetchAllRows, chunk } from "@/lib/fetchAllRows";
 import { parseDaysInArrears } from "@/lib/daysInArrears";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -90,6 +99,30 @@ interface ParsedRow {
 }
 
 type CreatedTicket = { id: string; master_customer_id: string };
+
+interface ImportIssue {
+  row: number;
+  loan_id: string | null;
+  message: string;
+}
+
+// Result of the server-side import_batch function (preview or committed)
+interface ImportBatchResult {
+  success: boolean;
+  committed: boolean;
+  rows: number;
+  total_amount?: number;
+  new_customers?: number;
+  returning_customers?: number;
+  new_tickets?: number;
+  continued_tickets?: number;
+  reopened_tickets?: number;
+  zero_balance?: number;
+  notes_reattached?: number;
+  overridden_payments?: number;
+  errors: ImportIssue[];
+  warnings: ImportIssue[];
+}
 
 async function reattachPreviousBatchNotes(
   newTickets: CreatedTicket[]
@@ -211,11 +244,11 @@ const parseAmount = (amountStr: string | undefined | null): { value: number; isE
 
 export default function CSVImport() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user, isAdmin } = useAuth();
   const { data: masterCustomers = [] } = useMasterCustomers();
   const { data: profiles = [] } = useProfiles();
-  const createBatch = useCreateBatch();
   
   const { data: batches = [] } = useBatches();
   
@@ -248,12 +281,14 @@ export default function CSVImport() {
 
   const existingNrcNumbers = new Set(masterCustomers.map((c) => c.nrc_number));
   
-  // Map display_name to agent ID
-  const agentDisplayNameMap = new Map(
-    profiles
-      .filter(p => p.display_name)
-      .map(p => [p.display_name!.toLowerCase(), p.id])
-  );
+  // Map agent display name or full name to agent ID (files use either)
+  const agentDisplayNameMap = new Map<string, string>();
+  for (const p of profiles) {
+    if (p.full_name) agentDisplayNameMap.set(p.full_name.trim().replace(/\s+/g, ' ').toLowerCase(), p.id);
+  }
+  for (const p of profiles) {
+    if (p.display_name) agentDisplayNameMap.set(p.display_name.trim().replace(/\s+/g, ' ').toLowerCase(), p.id);
+  }
 
   const processRows = (data: CSVRow[]) => {
     // First pass: collect all Loan IDs to detect duplicates (NRC and mobile duplicates are ALLOWED)
@@ -332,7 +367,7 @@ export default function CSVImport() {
       }
       
       // Map agent display_name to ID
-      const assignedAgentId = assignedAgent ? agentDisplayNameMap.get(assignedAgent.toLowerCase()) || null : null;
+      const assignedAgentId = assignedAgent ? agentDisplayNameMap.get(assignedAgent.replace(/\s+/g, ' ').toLowerCase()) || null : null;
       if (assignedAgent && !assignedAgentId) {
         errors.push(`Agent "${assignedAgent}" not found in system`);
       }
@@ -648,6 +683,63 @@ export default function CSVImport() {
     }
   };
 
+  const [importPreview, setImportPreview] = useState<ImportBatchResult | null>(null);
+
+  // New batches are imported by the server in one all-or-nothing step; commit = false only previews.
+  const runServerImport = async (commit: boolean): Promise<ImportBatchResult> => {
+    const rows = parsedData.map((r) => ({
+      loan_id: r.loanId,
+      customer_name: r.name,
+      nrc_number: r.nrcNumber,
+      amount_owed: r.amountOwedIsEmpty ? null : r.amountOwed,
+      mobile_number: r.mobileNumber,
+      assigned_agent: r.assignedAgent,
+      branch_name: r.branchName,
+      days_in_arrears: r.daysInArrears,
+      employer_name: r.employerName,
+      employer_subdivision: r.employerSubdivision,
+      loan_consultant: r.loanConsultant,
+      tenure: r.tenure,
+      last_payment_date: r.lastPaymentDate,
+      next_of_kin_name: r.nextOfKinName,
+      next_of_kin_contact: r.nextOfKinContact,
+      workplace_contact: r.workplaceContact,
+      workplace_destination: r.workplaceDestination,
+    }));
+    const { data, error } = await supabase.rpc('import_batch', {
+      p_batch_name: batchName.trim(),
+      p_institution_name: institutionName.trim(),
+      p_rows: rows,
+      p_commit: commit,
+    });
+    if (error) throw error;
+    return data as unknown as ImportBatchResult;
+  };
+
+  const confirmServerImport = async () => {
+    setIsImporting(true);
+    try {
+      const result = await runServerImport(true);
+      if (!result.success) {
+        setImportPreview(result);
+        return;
+      }
+      setImportPreview(null);
+      for (const key of ['batches', 'batch_customers', 'master_customers', 'tickets', 'tickets_sorted', 'payments', 'call_logs', 'dashboard_stats']) {
+        queryClient.invalidateQueries({ queryKey: [key] });
+      }
+      toast({
+        title: "Import Complete",
+        description: `Batch "${batchName.trim()}" created with ${result.rows} loans: ${result.new_customers} new customers, ${result.continued_tickets} tickets continued from earlier batches.`,
+      });
+      navigate('/customers');
+    } catch (error: any) {
+      toast({ title: "Import Failed", description: `${error.message}. Nothing was saved.`, variant: "destructive" });
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   const handleImport = async () => {
     // Daily mode (global) has its own logic - no batch selection needed
     if (uploadMode === "daily") {
@@ -670,6 +762,15 @@ export default function CSVImport() {
         toast({ title: "Institution Name Required", description: "Please enter the institution name", variant: "destructive" });
         return;
       }
+      setIsImporting(true);
+      try {
+        setImportPreview(await runServerImport(false));
+      } catch (error: any) {
+        toast({ title: "Preview Failed", description: error.message, variant: "destructive" });
+      } finally {
+        setIsImporting(false);
+      }
+      return;
     } else {
       // Both "existing" and "update" modes require batch selection
       if (!selectedBatchId) {
@@ -697,30 +798,19 @@ export default function CSVImport() {
     const CHUNK_SIZE = 100;
 
     try {
-      let batch: { id: string; name: string; customer_count: number; total_amount: number };
       const createdTickets: CreatedTicket[] = [];
       
-      if (uploadMode === "new") {
-        // Create new batch
-        batch = await createBatch.mutateAsync({
-          name: batchName.trim(),
-          institution_name: institutionName.trim(),
-          customer_count: validRows.length,
-          total_amount: validRows.reduce((sum, r) => sum + r.amountOwed, 0),
-        });
-      } else {
-        // Use existing batch for both "existing" and "update" modes
-        const existingBatch = batches.find(b => b.id === selectedBatchId);
-        if (!existingBatch) {
-          throw new Error("Selected batch not found");
-        }
-        batch = {
-          id: existingBatch.id,
-          name: existingBatch.name,
-          customer_count: existingBatch.customer_count,
-          total_amount: Number(existingBatch.total_amount),
-        };
+      // New batches are imported on the server; this path handles "existing" and "update" modes
+      const existingBatch = batches.find(b => b.id === selectedBatchId);
+      if (!existingBatch) {
+        throw new Error("Selected batch not found");
       }
+      const batch = {
+        id: existingBatch.id,
+        name: existingBatch.name,
+        customer_count: existingBatch.customer_count,
+        total_amount: Number(existingBatch.total_amount),
+      };
 
       setImportProgress(10);
 
@@ -883,14 +973,9 @@ export default function CSVImport() {
         skippedExistingRows = [];
       }
       
-      // For new batch mode, also handle existing master customers getting new tickets
-      // Use Loan ID to check if already in batch (not NRC)
-      const existingInMasterRows = uploadMode === "new" 
-        ? validRows.filter(r => r.existsInMaster && !(r.loanId && existingLoanIdsInBatch.has(r.loanId)))
-        : [];
 
       let newlyAddedCount = 0;
-      let skippedCount = skippedExistingRows.length;
+      const skippedCount = skippedExistingRows.length;
 
       // Process new customers in chunks
       if (newCustomerRows.length > 0) {
@@ -986,101 +1071,6 @@ export default function CSVImport() {
 
       setImportProgress(50);
 
-      // Handle existing master customers for NEW BATCH mode only
-      if (existingInMasterRows.length > 0) {
-        for (let i = 0; i < existingInMasterRows.length; i += CHUNK_SIZE) {
-          const chunk = existingInMasterRows.slice(i, i + CHUNK_SIZE);
-          const batchCustomersForExisting = [];
-
-          for (const row of chunk) {
-            const existingMaster = masterCustomers.find(mc => mc.nrc_number === row.nrcNumber);
-            if (existingMaster) {
-              // Only populate NULL/empty static fields
-              const masterUpdate: Record<string, any> = {};
-              if (!existingMaster.mobile_number && row.mobileNumber) {
-                masterUpdate.mobile_number = row.mobileNumber;
-              }
-              if (!existingMaster.branch_name && row.branchName) {
-                masterUpdate.branch_name = row.branchName;
-              }
-              if (!existingMaster.employer_name && row.employerName) {
-                masterUpdate.employer_name = row.employerName;
-              }
-              if (!existingMaster.employer_subdivision && row.employerSubdivision) {
-                masterUpdate.employer_subdivision = row.employerSubdivision;
-              }
-              if (!existingMaster.loan_consultant && row.loanConsultant) {
-                masterUpdate.loan_consultant = row.loanConsultant;
-              }
-              if (!existingMaster.tenure && row.tenure) {
-                masterUpdate.tenure = row.tenure;
-              }
-              if (!(existingMaster as any).next_of_kin_name && row.nextOfKinName) {
-                masterUpdate.next_of_kin_name = row.nextOfKinName;
-              }
-              if (!(existingMaster as any).next_of_kin_contact && row.nextOfKinContact) {
-                masterUpdate.next_of_kin_contact = row.nextOfKinContact;
-              }
-              if (!(existingMaster as any).workplace_contact && row.workplaceContact) {
-                masterUpdate.workplace_contact = row.workplaceContact;
-              }
-              if (!(existingMaster as any).workplace_destination && row.workplaceDestination) {
-                masterUpdate.workplace_destination = row.workplaceDestination;
-              }
-              
-              if (Object.keys(masterUpdate).length > 0) {
-                await supabase.from('master_customers').update(masterUpdate).eq('id', existingMaster.id);
-              }
-
-              batchCustomersForExisting.push({
-                batch_id: batch.id,
-                master_customer_id: existingMaster.id,
-                nrc_number: row.nrcNumber,
-                name: row.name,
-                mobile_number: row.mobileNumber || null,
-                amount_owed: row.amountOwed,
-                assigned_agent_id: row.assignedAgentId,
-                // Note: legacy `arrear_status` (free-text) no longer written from CSV.
-                last_payment_date: validateAndParseDate(row.lastPaymentDate),
-              });
-
-              newlyAddedCount++;
-
-              // Create ticket for this batch
-              const ticketStatus = row.amountOwed === 0 ? 'Resolved' : 'Open';
-              const ticketPriority = row.amountOwed === 0 ? 'Low' : 'High';
-              const { data: insertedTicket, error: existingTicketError } = await supabase.from('tickets').insert({
-                master_customer_id: existingMaster.id,
-                batch_id: batch.id,
-                customer_name: row.name,
-                nrc_number: row.nrcNumber,
-                mobile_number: row.mobileNumber || null,
-                amount_owed: row.amountOwed,
-                assigned_agent: row.assignedAgentId,
-                priority: ticketPriority,
-                status: ticketStatus,
-                resolved_date: row.amountOwed === 0 ? new Date().toISOString() : null,
-                loan_id: row.loanId || generateLoanId(),
-                days_in_arrears: row.daysInArrears ?? null,
-              }).select('id, master_customer_id').single();
-
-              if (existingTicketError) throw existingTicketError;
-              if (insertedTicket) createdTickets.push(insertedTicket);
-            }
-          }
-
-          if (batchCustomersForExisting.length > 0) {
-            const { error: existingBatchError } = await supabase
-              .from('batch_customers')
-              .insert(batchCustomersForExisting);
-
-            if (existingBatchError) throw existingBatchError;
-          }
-
-          setImportProgress(50 + (i / existingInMasterRows.length) * 30);
-        }
-      }
-
       setImportProgress(90);
 
       // Update batch totals for "existing" mode
@@ -1095,14 +1085,9 @@ export default function CSVImport() {
       setImportProgress(100);
       const reattachResult = await reattachPreviousBatchNotes(createdTickets);
       
-      let message: string;
-      if (uploadMode === "new") {
-        message = `Successfully created batch "${batchName}" with ${newlyAddedCount} customers`;
-      } else {
-        const parts = [`Added ${newlyAddedCount} new customers`];
-        if (skippedCount > 0) parts.push(`skipped ${skippedCount} existing NRCs`);
-        message = `${parts.join(', ')} to batch "${batch.name}"`;
-      }
+      const parts = [`Added ${newlyAddedCount} new customers`];
+      if (skippedCount > 0) parts.push(`skipped ${skippedCount} existing NRCs`);
+      let message = `${parts.join(', ')} to batch "${batch.name}"`;
       if (reattachResult.reattached > 0) {
         message += `. Reattached ${reattachResult.reattached} previous call note${reattachResult.reattached === 1 ? '' : 's'}.`;
       }
@@ -1239,7 +1224,10 @@ export default function CSVImport() {
                   🆕 Create New Batch
                 </Label>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Creates a fresh batch. All uploaded customers will be added. If an NRC already exists in the system, a new ticket will be created for this batch.
+                  Creates a fresh batch. Existing customers are matched by NRC, and a loan whose Loan ID is already in the system keeps its ticket, call notes and payments. You'll see a preview before anything is saved.
+                </p>
+                <p className="text-sm text-muted-foreground mt-1 font-medium">
+                  Import the new month's file before deleting last month's batch.
                 </p>
               </div>
             </div>
@@ -1755,6 +1743,70 @@ export default function CSVImport() {
             </Card>
           )}
 
+          <Dialog open={!!importPreview} onOpenChange={(open) => { if (!open && !isImporting) setImportPreview(null); }}>
+            <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>{importPreview?.success ? 'Import preview' : 'Import blocked'}</DialogTitle>
+                <DialogDescription>
+                  {importPreview?.success
+                    ? 'Nothing has been saved yet. Check the summary, then confirm to import the whole file.'
+                    : 'Nothing was saved. Fix these rows in the file and upload it again.'}
+                </DialogDescription>
+              </DialogHeader>
+              {importPreview?.success && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                  {[
+                    ['Loans', importPreview.rows],
+                    ['Total amount', formatCurrency(importPreview.total_amount || 0)],
+                    ['New customers', importPreview.new_customers],
+                    ['Returning customers', importPreview.returning_customers],
+                    ['New tickets', importPreview.new_tickets],
+                    ['Tickets continued', importPreview.continued_tickets],
+                    ['Tickets reopened', importPreview.reopened_tickets],
+                    ['Zero balance (resolved)', importPreview.zero_balance],
+                    ['Call notes reattached', importPreview.notes_reattached],
+                    ['Recorded payments replaced', importPreview.overridden_payments],
+                  ].map(([label, value]) => (
+                    <div key={label as string} className="p-3 bg-muted/50 rounded-lg">
+                      <p className="text-lg font-bold">{value ?? 0}</p>
+                      <p className="text-xs text-muted-foreground">{label}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!!importPreview?.errors.length && (
+                <div className="p-3 bg-destructive/5 rounded-lg border border-destructive/20 text-sm">
+                  <p className="font-medium text-destructive mb-1">{importPreview.errors.length} error(s)</p>
+                  <ul className="space-y-1 max-h-48 overflow-y-auto">
+                    {importPreview.errors.slice(0, 50).map((e, i) => (
+                      <li key={i}>Row {e.row}{e.loan_id ? ` (${e.loan_id})` : ''}: {e.message}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {!!importPreview?.warnings.length && (
+                <div className="p-3 bg-warning/5 rounded-lg border border-warning/20 text-sm">
+                  <p className="font-medium text-warning mb-1">{importPreview.warnings.length} warning(s), these don't block the import</p>
+                  <ul className="space-y-1 max-h-48 overflow-y-auto">
+                    {importPreview.warnings.slice(0, 50).map((w, i) => (
+                      <li key={i}>Row {w.row}{w.loan_id ? ` (${w.loan_id})` : ''}: {w.message}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setImportPreview(null)} disabled={isImporting}>
+                  Cancel
+                </Button>
+                {importPreview?.success && (
+                  <Button onClick={confirmServerImport} disabled={isImporting}>
+                    {isImporting ? 'Importing...' : `Import ${importPreview.rows} loans`}
+                  </Button>
+                )}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           <div className="flex gap-4 items-center">
             <Button variant="outline" onClick={() => { setFile(null); setParsedData([]); }}>
               Start Over
@@ -1765,7 +1817,7 @@ export default function CSVImport() {
               className={hasBlockingErrors ? 'opacity-50 cursor-not-allowed' : ''}
             >
               {isImporting ? 'Processing...' : hasBlockingErrors ? 'Fix Errors to Import' : 
-                uploadMode === "new" ? `Create Batch (${validCount} customers)` :
+                uploadMode === "new" ? `Preview Batch (${validCount} loans)` :
                 uploadMode === "existing" ? `Add ${validCount - existingCount} New Customers` :
                 uploadMode === "daily" ? `Run Daily Update (${validCount} NRCs)` :
                 uploadMode === "update" && updateSubMode === "daily_loanbook" 
