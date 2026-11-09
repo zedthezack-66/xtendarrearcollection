@@ -1,5 +1,7 @@
 -- Daily loan book, measured against the month's opening position (2026-11-09)
 -- Run AFTER 20261109120000_server_side_batch_import.sql.
+-- Every UPDATE has a WHERE clause: Supabase rejects UPDATE/DELETE without one (pg-safeupdate),
+-- even inside functions called through the API.
 --
 -- The admin uploads the raw daily loan book (LoanBook_DDMmmYYYY.csv) against the month's batches.
 -- Each loan in the month's batches is compared with its opening position, the arrears loaded at month end:
@@ -270,7 +272,8 @@ BEGIN
     arrears = CASE WHEN replace(arrears_raw, ',', '') ~ '^-?[0-9]+(\.[0-9]+)?$'
                    THEN replace(arrears_raw, ',', '')::numeric END,
     days = CASE WHEN days_raw ~ '^[0-9]{1,6}$' THEN days_raw::integer END,
-    last_payment = loan_book_try_date(date_raw);
+    last_payment = loan_book_try_date(date_raw)
+  WHERE true;
 
   SELECT COALESCE(jsonb_agg(jsonb_build_object('row', row_no, 'loan_id', loan_id, 'message', msg) ORDER BY row_no), '[]'::jsonb)
   INTO v_errors
@@ -419,7 +422,8 @@ BEGIN
     WHEN opening - cur >= c_tolerance THEN 'reduced'
     WHEN cur - opening >= c_tolerance THEN 'increased'
     ELSE 'maintained'
-  END;
+  END
+  WHERE true;
 
   UPDATE _lb_t SET
     collected = CASE
@@ -432,7 +436,8 @@ BEGIN
       WHEN method = 'missing' THEN 'Not in the loan book file'
       WHEN method = 'ambiguous' THEN 'Several possible loans for this NRC; not updated'
       WHEN movement = 'increased' THEN 'Arrears higher than the opening position'
-    END;
+    END
+  WHERE true;
 
   SELECT COALESCE(sum(prev_collected), 0) INTO v_collected_before FROM _lb_t;
 
