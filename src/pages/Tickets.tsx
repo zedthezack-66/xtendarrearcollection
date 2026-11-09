@@ -285,10 +285,6 @@ export default function Tickets() {
     }
   }, [createCallLog, updateCallLog]);
 
-  if (isLoading) {
-    return <div className="flex items-center justify-center min-h-[400px]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
-  }
-
   // Sort order: In Progress (top), Open (middle), Resolved (bottom)
   const statusOrder: Record<string, number> = { 'In Progress': 0, 'Open': 1, 'Resolved': 2 };
 
@@ -306,7 +302,8 @@ export default function Tickets() {
     return (p as any)?.display_name || p?.full_name || '-';
   };
 
-  const filteredTickets = (tickets || [])
+  // Recomputed only when the data or a filter changes, not on every redraw.
+  const filteredTickets = useMemo(() => (tickets || [])
     .filter((ticket) => {
       const matchesSearch = 
         ticket.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -331,7 +328,25 @@ export default function Tickets() {
       }
       // Default: sort by status (In Progress first, then Open, then Resolved)
       return statusOrder[a.status] - statusOrder[b.status];
-    });
+    }),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [tickets, searchQuery, statusFilter, priorityFilter, agentFilter, isAdmin, daysInArrearsFilter, employerFilter, employerByCustomer, amountSort]);
+
+  // Only one page of rows is drawn at a time; drawing all 1,700 rows with their dropdowns made the page slow.
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil(filteredTickets.length / PAGE_SIZE));
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, statusFilter, priorityFilter, agentFilter, daysInArrearsFilter, employerFilter, amountSort, activeBatchId]);
+  const currentPage = Math.min(page, pageCount);
+  const pagedTickets = filteredTickets.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  const masterCustomerById = useMemo(() => new Map(masterCustomers.map((mc) => [mc.id, mc])), [masterCustomers]);
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center min-h-[400px]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  }
 
   const handleDeleteTicket = async () => {
     if (ticketToDelete) {
@@ -505,7 +520,7 @@ export default function Tickets() {
                 {filteredTickets.length === 0 ? (
                   <TableRow><TableCell colSpan={13} className="text-center py-8 text-muted-foreground">No tickets found</TableCell></TableRow>
                 ) : (
-                  filteredTickets.map((ticket) => {
+                  pagedTickets.map((ticket) => {
                     const totalPaid = paymentsByTicket[ticket.id]?.paid || 0;
                     const amountOwed = Number(ticket.amount_owed);
                     const balance = Math.max(0, amountOwed - (paymentsByTicket[ticket.id]?.reported || 0));
@@ -514,7 +529,7 @@ export default function Tickets() {
                     const latestNote = ticketCallLogs[0];
                     const isExpanded = expandedNotes[ticket.id];
                     
-                    const masterCustomer = masterCustomers.find(mc => mc.id === ticket.master_customer_id);
+                    const masterCustomer = masterCustomerById.get(ticket.master_customer_id);
                     const hasStaticInfo = masterCustomer?.branch_name || masterCustomer?.employer_name || masterCustomer?.loan_consultant;
                     
                     return (
@@ -760,7 +775,26 @@ export default function Tickets() {
               </TableBody>
             </Table>
           </div>
-          <div className="p-4 text-sm text-muted-foreground">Showing {filteredTickets.length} of {tickets?.length || 0} tickets</div>
+          <div className="flex flex-col gap-3 p-4 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+            <span className="num">
+              {filteredTickets.length === 0
+                ? `Showing 0 of ${tickets?.length || 0} tickets`
+                : `Showing ${(currentPage - 1) * PAGE_SIZE + 1}–${Math.min(currentPage * PAGE_SIZE, filteredTickets.length)} of ${filteredTickets.length.toLocaleString()} tickets${filteredTickets.length !== (tickets?.length || 0) ? ` (filtered from ${(tickets?.length || 0).toLocaleString()})` : ''}`}
+            </span>
+            {pageCount > 1 && (
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1}>
+                  Previous
+                </Button>
+                <span className="num px-1 text-foreground">
+                  Page {currentPage} of {pageCount}
+                </span>
+                <Button variant="outline" size="sm" onClick={() => setPage(Math.min(pageCount, currentPage + 1))} disabled={currentPage === pageCount}>
+                  Next
+                </Button>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 

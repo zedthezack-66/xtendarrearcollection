@@ -124,14 +124,6 @@ export default function Customers() {
     };
   }, [queryClient]);
 
-  if (loadingCustomers) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   // Get customers based on active batch
   const getDisplayCustomers = () => {
     if (!activeBatchId || !masterCustomers || !batchCustomers) {
@@ -145,8 +137,9 @@ export default function Customers() {
       .filter(bc => bc.batch_id === activeBatchId)
       .map(bc => ({ masterCustomerId: bc.master_customer_id, batchAmount: Number(bc.amount_owed) }));
     
+    const masterById = new Map(masterCustomers.map((mc) => [mc.id, mc]));
     return batchCustomerData.map(({ masterCustomerId, batchAmount }) => {
-      const master = masterCustomers.find(mc => mc.id === masterCustomerId);
+      const master = masterById.get(masterCustomerId);
       if (!master) return null;
       return { ...master, batchAmount };
     }).filter(Boolean) as (NonNullable<typeof masterCustomers>[0] & { batchAmount: number })[];
@@ -314,6 +307,24 @@ export default function Customers() {
     
     return matchesSearch && matchesStatus && matchesAgent;
   });
+
+  // Only one page of rows is drawn at a time, so long lists stay quick.
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil(filteredCustomers.length / PAGE_SIZE));
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, statusFilter, agentFilter, activeBatchId]);
+  const currentPage = Math.min(page, pageCount);
+  const pagedCustomers = filteredCustomers.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  if (loadingCustomers) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   const displayName = profile?.display_name || profile?.full_name?.split(' ')[0] || 'Agent';
 
@@ -494,7 +505,7 @@ export default function Customers() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredCustomers.map((customer) => (
+                  pagedCustomers.map((customer) => (
                     <TableRow key={customer.id}>
                       <TableCell className="font-medium">{customer.name}</TableCell>
                       <TableCell className="font-mono text-sm">{customer.nrc_number}</TableCell>
@@ -554,8 +565,23 @@ export default function Customers() {
               </TableBody>
             </Table>
           </div>
-          <div className="mt-4 text-sm text-muted-foreground">
-            Showing {filteredCustomers.length} of {displayCustomers.length} customers
+          <div className="mt-4 flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+            <span className="num">
+              {filteredCustomers.length === 0
+                ? `Showing 0 of ${displayCustomers.length} customers`
+                : `Showing ${(currentPage - 1) * PAGE_SIZE + 1}–${Math.min(currentPage * PAGE_SIZE, filteredCustomers.length)} of ${filteredCustomers.length.toLocaleString()} customers${filteredCustomers.length !== displayCustomers.length ? ` (filtered from ${displayCustomers.length.toLocaleString()})` : ''}`}
+            </span>
+            {pageCount > 1 && (
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1}>
+                  Previous
+                </Button>
+                <span className="num px-1 text-foreground">Page {currentPage} of {pageCount}</span>
+                <Button variant="outline" size="sm" onClick={() => setPage(Math.min(pageCount, currentPage + 1))} disabled={currentPage === pageCount}>
+                  Next
+                </Button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

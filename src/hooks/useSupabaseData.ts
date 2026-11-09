@@ -437,8 +437,8 @@ export function useCallLogsForTickets(ticketIds: string[]) {
       return pages.flat().sort((a, b) => b.created_at.localeCompare(a.created_at));
     },
     enabled: ticketIds.length > 0,
-    staleTime: 0, // Always refetch when invalidated
-    refetchOnMount: 'always',
+    // Reused for 30 seconds between visits; saving a note invalidates it, which refetches straight away.
+    staleTime: 30_000,
   });
 }
 

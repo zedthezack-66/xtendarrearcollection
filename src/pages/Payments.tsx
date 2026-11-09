@@ -161,11 +161,14 @@ export default function Payments() {
 
   const displayPayments = getDisplayPayments();
   const activeBatch = batches.find(b => b.id === activeBatchId);
+  // Lookups by id instead of scanning the full lists for every payment row.
+  const customerById = new Map(masterCustomers.map((c) => [c.id, c]));
+  const ticketById = new Map(tickets.map((t) => [t.id, t]));
 
   const filteredPayments = displayPayments.filter((payment) => {
-    const customer = masterCustomers.find(c => c.id === payment.master_customer_id);
+    const customer = customerById.get(payment.master_customer_id);
     const customerName = customer?.name || payment.customer_name || '';
-    const ticket = tickets.find(t => t.id === payment.ticket_id);
+    const ticket = (payment.ticket_id ? ticketById.get(payment.ticket_id) : undefined);
     const loanId = ticket?.loan_id?.toLowerCase() || '';
     const q = searchQuery.toLowerCase();
     return customerName.toLowerCase().includes(q) || payment.id.toLowerCase().includes(q) || loanId.includes(q);
@@ -214,8 +217,8 @@ export default function Payments() {
                   <TableRow><TableCell colSpan={12}className="text-center py-8 text-muted-foreground">{payments.length === 0 ? "No payments recorded yet" : "No payments found"}</TableCell></TableRow>
                 ) : (
                   filteredPayments.map((payment) => {
-                    const customer = masterCustomers.find(c => c.id === payment.master_customer_id);
-                    const ticket = tickets.find(t => t.id === payment.ticket_id);
+                    const customer = customerById.get(payment.master_customer_id);
+                    const ticket = (payment.ticket_id ? ticketById.get(payment.ticket_id) : undefined);
                     const ticketAmountOwed = ticket ? Number(ticket.amount_owed) : 0;
                     const ticketTotals = payment.ticket_id ? paymentsByTicket[payment.ticket_id] : undefined;
                     const ticketTotalPaid = ticketTotals?.paid || 0;

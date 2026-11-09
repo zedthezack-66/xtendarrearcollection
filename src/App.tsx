@@ -6,24 +6,43 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AppLayout } from "@/components/layout/AppLayout";
-import Dashboard from "./pages/Dashboard";
-import Customers from "./pages/Customers";
-import CustomerProfile from "./pages/CustomerProfile";
-import CSVImport from "./pages/CSVImport";
-import Tickets from "./pages/Tickets";
-import TicketDetail from "./pages/TicketDetail";
-import Payments from "./pages/Payments";
-import RecordPayment from "./pages/RecordPayment";
-import Settings from "./pages/Settings";
-import Export from "./pages/Export";
-import MasterRegistry from "./pages/MasterRegistry";
-import Reports from "./pages/Reports";
-import LoanBookSync from "./pages/LoanBookSync";
-import ArrearsAnalytics from "./pages/ArrearsAnalytics";
 import Auth from "./pages/Auth";
-import NotFound from "./pages/NotFound";
+import { lazy, Suspense } from "react";
+import { Loader2 } from "lucide-react";
 
-const queryClient = new QueryClient();
+// Each page downloads only when it's first opened, so the app starts without loading every page and library.
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Customers = lazy(() => import("./pages/Customers"));
+const CustomerProfile = lazy(() => import("./pages/CustomerProfile"));
+const CSVImport = lazy(() => import("./pages/CSVImport"));
+const Tickets = lazy(() => import("./pages/Tickets"));
+const TicketDetail = lazy(() => import("./pages/TicketDetail"));
+const Payments = lazy(() => import("./pages/Payments"));
+const RecordPayment = lazy(() => import("./pages/RecordPayment"));
+const Settings = lazy(() => import("./pages/Settings"));
+const Export = lazy(() => import("./pages/Export"));
+const MasterRegistry = lazy(() => import("./pages/MasterRegistry"));
+const Reports = lazy(() => import("./pages/Reports"));
+const LoanBookSync = lazy(() => import("./pages/LoanBookSync"));
+const ArrearsAnalytics = lazy(() => import("./pages/ArrearsAnalytics"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+
+// Data loaded in the last minute is reused when moving between pages instead of being fetched again.
+// Saving a payment, note or status still refreshes the affected lists straight away.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
+
+const PageLoading = () => (
+  <div className="flex min-h-[50vh] items-center justify-center">
+    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+  </div>
+);
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -39,6 +58,7 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <AppLayout>
+                    <Suspense fallback={<PageLoading />}>
                     <Routes>
                       <Route path="/" element={<Dashboard />} />
                       <Route path="/customers" element={<Customers />} />
@@ -56,6 +76,7 @@ const App = () => (
                       <Route path="/arrears-analytics" element={<ArrearsAnalytics />} />
                       <Route path="*" element={<NotFound />} />
                     </Routes>
+                    </Suspense>
                   </AppLayout>
                 </ProtectedRoute>
               }
