@@ -10,6 +10,7 @@ import {
   SidebarMenuItem,
   SidebarHeader,
   SidebarFooter,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { BatchSelector } from "@/components/BatchSelector";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,9 @@ const groupLabel = "px-3 text-[10.5px] font-semibold uppercase tracking-[0.1em] 
 
 export function AppSidebar() {
   const { profile, userRole, signOut, isAdmin } = useAuth();
+  const { isMobile, setOpen, setOpenMobile } = useSidebar();
+  // Choosing a page closes the panel so the page gets the full screen; the Menu button reopens it.
+  const closePanel = () => (isMobile ? setOpenMobile(false) : setOpen(false));
   const fullName = profile?.display_name || profile?.full_name || "User";
 
   return (
@@ -75,6 +79,7 @@ export function AppSidebar() {
                       <NavLink
                           to={item.url}
                           end={item.url === "/"}
+                          onClick={closePanel}
                           className="group/nav relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-white"
                           activeClassName="bg-sidebar-accent text-white before:absolute before:left-0 before:top-1/2 before:h-5 before:w-[3px] before:-translate-y-1/2 before:rounded-r-full before:bg-sidebar-primary [&>svg]:text-sidebar-primary"
                         >
