@@ -45,6 +45,9 @@ export default function Settings() {
   const [displayName, setDisplayName] = useState('');
   const [phone, setPhone] = useState('');
   const [isClearing, setIsClearing] = useState(false);
+  // "Clear all data" only runs after the admin types this phrase exactly.
+  const CLEAR_PHRASE = "DELETE ALL DATA";
+  const [clearConfirmText, setClearConfirmText] = useState("");
   const [userToDelete, setUserToDelete] = useState<{ id: string; name: string } | null>(null);
 
   // Build a map of userId -> role
@@ -114,6 +117,10 @@ export default function Settings() {
   const handleClearData = async () => {
     if (!isAdmin) {
       toast({ title: "Access Denied", description: "Only admins can clear all data", variant: "destructive" });
+      return;
+    }
+    if (clearConfirmText !== CLEAR_PHRASE) {
+      toast({ title: "Not confirmed", description: `Type ${CLEAR_PHRASE} to confirm`, variant: "destructive" });
       return;
     }
 
@@ -332,7 +339,7 @@ export default function Settings() {
             <CardDescription>Administrative actions (use with caution)</CardDescription>
           </CardHeader>
           <CardContent>
-            <AlertDialog>
+            <AlertDialog onOpenChange={(open) => { if (!open) setClearConfirmText(""); }}>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive" disabled={isClearing}>
                   {isClearing ? (
@@ -352,9 +359,26 @@ export default function Settings() {
                     This action cannot be undone. This will permanently delete all batches, customers, tickets, payments, and call logs from the database.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
+                <div className="space-y-2">
+                  <Label htmlFor="clear-confirm">
+                    Type <span className="font-semibold text-destructive">{CLEAR_PHRASE}</span> to confirm
+                  </Label>
+                  <Input
+                    id="clear-confirm"
+                    value={clearConfirmText}
+                    onChange={(e) => setClearConfirmText(e.target.value)}
+                    placeholder={CLEAR_PHRASE}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </div>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleClearData} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                  <AlertDialogAction
+                    onClick={handleClearData}
+                    disabled={clearConfirmText !== CLEAR_PHRASE}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
                     Yes, delete everything
                   </AlertDialogAction>
                 </AlertDialogFooter>
