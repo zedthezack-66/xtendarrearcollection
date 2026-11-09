@@ -32,6 +32,7 @@ interface SyncResult {
   not_found: number;
   resolved: number;
   reopened: number;
+  overridden_payments: number;
   payments_created: number;
   total_amount_collected: number;
   errors: string[];
@@ -174,6 +175,7 @@ export default function LoanBookSync() {
       let totalNotFound = 0;
       let totalResolved = 0;
       let totalReopened = 0;
+      let totalOverridden = 0;
       let totalPaymentsCreated = 0;
       let totalAmountCollected = 0;
       let allErrors: string[] = [];
@@ -195,6 +197,7 @@ export default function LoanBookSync() {
         totalNotFound += result.not_found;
         totalResolved += result.resolved;
         totalReopened += result.reopened || 0;
+        totalOverridden += result.overridden_payments || 0;
         totalPaymentsCreated += result.payments_created || 0;
         totalAmountCollected += result.total_amount_collected || 0;
         allErrors = [...allErrors, ...result.errors];
@@ -214,6 +217,7 @@ export default function LoanBookSync() {
         not_found: totalNotFound,
         resolved: totalResolved,
         reopened: totalReopened,
+        overridden_payments: totalOverridden,
         payments_created: totalPaymentsCreated,
         total_amount_collected: totalAmountCollected,
         errors: allErrors,
@@ -558,7 +562,14 @@ export default function LoanBookSync() {
                       <RefreshCw className="h-4 w-4 text-orange-500" />
                       <p className="text-2xl font-bold text-orange-600">{syncResult.reopened}</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">Reopened</p>
+                    <p className="text-xs text-muted-foreground">Tickets reopened</p>
+                  </div>
+                  <div className="p-3 bg-muted/50 rounded-lg">
+                    <div className="flex items-center gap-1">
+                      <RefreshCw className="h-4 w-4 text-muted-foreground" />
+                      <p className="text-2xl font-bold">{syncResult.overridden_payments}</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Agent payments replaced by loan book</p>
                   </div>
                   <div className="p-3 bg-muted/50 rounded-lg">
                     <div className="flex items-center gap-1">

@@ -177,6 +177,8 @@ export default function Customers() {
 
     try {
       const targetBatchId = activeBatchId;
+      // Agents can only add walk-in customers assigned to themselves.
+      const assignedAgentId = isAdmin ? (newCustomerAgent || null) : (profile?.id ?? null);
 
       // Create master customer - no arrears at master level
       const { data: customer, error: customerError } = await supabase
@@ -187,7 +189,7 @@ export default function Customers() {
           mobile_number: newCustomerMobile.trim() || null,
           total_owed: 0,
           outstanding_balance: 0,
-          assigned_agent: newCustomerAgent || null,
+          assigned_agent: assignedAgentId,
         })
         .select()
         .single();
@@ -202,7 +204,7 @@ export default function Customers() {
         name: newCustomerName.trim(),
         mobile_number: newCustomerMobile.trim() || null,
         amount_owed: amount,
-        assigned_agent_id: newCustomerAgent || null,
+        assigned_agent_id: assignedAgentId,
       });
 
       // Create ticket with batch_id
@@ -214,7 +216,7 @@ export default function Customers() {
         nrc_number: newCustomerNrc.trim(),
         mobile_number: newCustomerMobile.trim() || null,
         amount_owed: amount,
-        assigned_agent: newCustomerAgent || null,
+        assigned_agent: assignedAgentId,
         priority: 'High',
         loan_id: generateLoanId(),
       });
@@ -326,9 +328,9 @@ export default function Customers() {
         </div>
         
         <div className="flex gap-2">
-          {activeBatch && (
-            <Button 
-              variant="destructive" 
+          {activeBatch && isAdmin && (
+            <Button
+              variant="destructive"
               size="sm"
               onClick={() => setBatchToDelete(activeBatchId!)}
             >
@@ -388,21 +390,23 @@ export default function Customers() {
                     onChange={(e) => setNewCustomerAmount(e.target.value)}
                   />
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="agent">Assigned Agent</Label>
-                  <Select value={newCustomerAgent} onValueChange={setNewCustomerAgent}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select agent" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {profiles?.map(prof => (
-                        <SelectItem key={prof.id} value={prof.id}>
-                          {prof.display_name || prof.full_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {isAdmin && (
+                  <div className="grid gap-2">
+                    <Label htmlFor="agent">Assigned Agent</Label>
+                    <Select value={newCustomerAgent} onValueChange={setNewCustomerAgent}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select agent" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {profiles?.map(prof => (
+                          <SelectItem key={prof.id} value={prof.id}>
+                            {prof.display_name || prof.full_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>

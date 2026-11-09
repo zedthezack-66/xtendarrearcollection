@@ -443,6 +443,7 @@ export type Database = {
           recorded_by: string | null
           source: string
           ticket_id: string | null
+          verification_status: string
         }
         Insert: {
           amount: number
@@ -456,6 +457,7 @@ export type Database = {
           recorded_by?: string | null
           source?: string
           ticket_id?: string | null
+          verification_status?: string
         }
         Update: {
           amount?: number
@@ -469,6 +471,7 @@ export type Database = {
           recorded_by?: string | null
           source?: string
           ticket_id?: string | null
+          verification_status?: string
         }
         Relationships: [
           {

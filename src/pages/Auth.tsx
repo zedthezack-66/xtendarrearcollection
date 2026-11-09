@@ -103,8 +103,8 @@ export default function Auth() {
       });
     } else {
       toast({
-        title: 'Account Created!',
-        description: 'You can now sign in with your credentials.',
+        title: 'Account created',
+        description: 'An administrator must approve your access before you can sign in and use the system.',
       });
       navigate('/');
     }

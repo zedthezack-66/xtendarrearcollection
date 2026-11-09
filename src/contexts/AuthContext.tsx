@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -24,6 +24,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [profile, setProfile] = useState<{ id: string; full_name: string; display_name: string | null; phone: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
+  // User whose profile and role are loaded (or loading); token refreshes for the same user don't reload them.
+  const loadedUserId = useRef<string | null>(null);
 
   useEffect(() => {
     // Set up auth state listener FIRST
@@ -31,13 +33,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-        
+
         // Defer Supabase calls with setTimeout
         if (session?.user) {
-          setTimeout(() => {
-            fetchUserData(session.user.id);
-          }, 0);
+          if (loadedUserId.current !== session.user.id) {
+            loadedUserId.current = session.user.id;
+            setLoading(true);
+            setTimeout(() => {
+              fetchUserData(session.user.id);
+            }, 0);
+          }
         } else {
+          loadedUserId.current = null;
           setUserRole(null);
           setProfile(null);
           setLoading(false);
@@ -50,7 +57,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchUserData(session.user.id);
+        if (loadedUserId.current !== session.user.id) {
+          loadedUserId.current = session.user.id;
+          fetchUserData(session.user.id);
+        }
       } else {
         setLoading(false);
       }
@@ -60,6 +70,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const fetchUserData = async (userId: string) => {
+    setProfile(null);
+    setUserRole(null);
     try {
       // Fetch profile
       const { data: profileData } = await supabase
@@ -115,6 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    loadedUserId.current = null;
     setUser(null);
     setSession(null);
     setUserRole(null);

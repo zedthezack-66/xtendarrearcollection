@@ -226,7 +226,7 @@ export default function Settings() {
         <CardContent>
           <div className="space-y-2">
             {profiles.map((p) => {
-              const pRole = userRoleMap[p.id] || 'agent';
+              const pRole = userRoleMap[p.id] || 'pending';
               const isSelf = p.id === user?.id;
               
               return (
@@ -257,6 +257,7 @@ export default function Settings() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
+                            <SelectItem value="pending" disabled>Pending approval</SelectItem>
                             <SelectItem value="admin">
                               <div className="flex items-center gap-2">
                                 <Shield className="h-3 w-3" />
@@ -279,8 +280,8 @@ export default function Settings() {
                         )}
                       </div>
                     ) : (
-                      <Badge variant={pRole === 'admin' ? 'default' : 'secondary'}>
-                        {pRole === 'admin' ? 'Admin' : 'Agent'}
+                      <Badge variant={pRole === 'admin' ? 'default' : pRole === 'pending' ? 'outline' : 'secondary'}>
+                        {pRole === 'admin' ? 'Admin' : pRole === 'pending' ? 'Pending' : 'Agent'}
                       </Badge>
                     )}
                   </div>

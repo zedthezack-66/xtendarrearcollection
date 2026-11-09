@@ -58,11 +58,19 @@ function StatsWidget({ batchId }: { batchId: string | null }) {
   // Interactions = In Progress + Resolved tickets
   const totalInteractions = (stats?.in_progress_tickets || 0) + (stats?.resolved_tickets || 0);
 
+  const reportedPending = stats?.reported_pending || 0;
+
   // Build cards array - always show same number for layout stability
-  const cards = [
+  const cards: { title: string; value: string | number; icon: typeof Users; variant: 'default' | 'success' | 'warning' | 'destructive' | 'info'; subtitle?: string }[] = [
     { title: "Total Customers", value: stats?.total_customers || 0, icon: Users, variant: "default" as const },
     { title: "Total Outstanding", value: formatCurrency(stats?.total_outstanding || 0), icon: AlertTriangle, variant: "destructive" as const },
-    { title: "Total Collected", value: formatCurrency(stats?.total_collected || 0), icon: DollarSign, variant: "success" as const },
+    {
+      title: "Total Collected",
+      value: formatCurrency(stats?.total_collected || 0),
+      icon: DollarSign,
+      variant: "success" as const,
+      subtitle: reportedPending > 0 ? `Includes ${formatCurrency(reportedPending)} recorded, not yet confirmed by the loan book` : undefined,
+    },
     { title: "Collection Rate", value: `${stats?.collection_rate || 0}%`, icon: TrendingUp, variant: "info" as const },
     { title: "Open Tickets", value: openAndInProgress, icon: Ticket, variant: "warning" as const },
     { title: "Resolved Tickets", value: stats?.resolved_tickets || 0, icon: CheckCircle, variant: "success" as const },
@@ -78,6 +86,7 @@ function StatsWidget({ batchId }: { batchId: string | null }) {
           value={card.value}
           icon={card.icon}
           variant={card.variant}
+          subtitle={card.subtitle}
         />
       ))}
     </div>

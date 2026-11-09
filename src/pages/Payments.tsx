@@ -37,6 +37,8 @@ import {
 import { usePayments, useMasterCustomers, useBatches, useBatchCustomers, useDeletePayment, useUpdatePayment, useTickets } from "@/hooks/useSupabaseData";
 import { useUIStore } from "@/store/useUIStore";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { paidTotal, reportedTotal } from "@/lib/paymentTotals";
 import { useQueryClient } from "@tanstack/react-query";
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW', minimumFractionDigits: 0 }).format(amount);
@@ -47,6 +49,14 @@ const getPaymentMethodBadge = (method: string) => {
     case 'Mobile Money': return <Badge className="bg-info/10 text-info border-info/20">Mobile Money</Badge>;
     case 'Bank': return <Badge className="bg-primary/10 text-primary border-primary/20">Bank</Badge>;
     default: return <Badge variant="outline">{method}</Badge>;
+  }
+};
+
+const getVerificationBadge = (status: string) => {
+  switch (status) {
+    case 'verified': return <Badge className="bg-success/10 text-success border-success/20">Loan Book</Badge>;
+    case 'overridden': return <Badge variant="outline" className="text-muted-foreground">Replaced by loan book</Badge>;
+    default: return <Badge className="bg-warning/10 text-warning border-warning/20">Recorded</Badge>;
   }
 };
 
@@ -71,14 +81,19 @@ export default function Payments() {
   const deletePayment = useDeletePayment();
   const updatePayment = useUpdatePayment();
   const queryClient = useQueryClient();
+  const { isAdmin } = useAuth();
 
-  // Compute payments per ticket for balance display
+  // Paid and still-unconfirmed totals per ticket for balance display
   const paymentsByTicket = useMemo(() => {
-    const map: Record<string, number> = {};
+    const grouped: Record<string, typeof payments> = {};
     for (const p of payments) {
       if (p.ticket_id) {
-        map[p.ticket_id] = (map[p.ticket_id] || 0) + Number(p.amount);
+        (grouped[p.ticket_id] ||= []).push(p);
       }
+    }
+    const map: Record<string, { paid: number; reported: number }> = {};
+    for (const [ticketId, list] of Object.entries(grouped)) {
+      map[ticketId] = { paid: paidTotal(list), reported: reportedTotal(list) };
     }
     return map;
   }, [payments]);
@@ -156,7 +171,7 @@ export default function Payments() {
     return customerName.toLowerCase().includes(q) || payment.id.toLowerCase().includes(q) || loanId.includes(q);
   });
 
-  const totalPayments = filteredPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+  const totalPayments = paidTotal(filteredPayments);
 
   return (
     <div className="space-y-6">
@@ -185,6 +200,7 @@ export default function Payments() {
                   <TableHead>Customer</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Method</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                   <TableHead className="text-right">Ticket Owed</TableHead>
                   <TableHead className="text-right">Total Paid</TableHead>
@@ -195,15 +211,18 @@ export default function Payments() {
               </TableHeader>
               <TableBody>
                 {filteredPayments.length === 0 ? (
-                  <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">{payments.length === 0 ? "No payments recorded yet" : "No payments found"}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={12}className="text-center py-8 text-muted-foreground">{payments.length === 0 ? "No payments recorded yet" : "No payments found"}</TableCell></TableRow>
                 ) : (
                   filteredPayments.map((payment) => {
                     const customer = masterCustomers.find(c => c.id === payment.master_customer_id);
                     const ticket = tickets.find(t => t.id === payment.ticket_id);
                     const ticketAmountOwed = ticket ? Number(ticket.amount_owed) : 0;
-                    const ticketTotalPaid = payment.ticket_id ? (paymentsByTicket[payment.ticket_id] || 0) : 0;
-                    const ticketBalance = Math.max(0, ticketAmountOwed - ticketTotalPaid);
-                    
+                    const ticketTotals = payment.ticket_id ? paymentsByTicket[payment.ticket_id] : undefined;
+                    const ticketTotalPaid = ticketTotals?.paid || 0;
+                    const ticketBalance = Math.max(0, ticketAmountOwed - (ticketTotals?.reported || 0));
+                    const isOverridden = payment.verification_status === 'overridden';
+                    const canChange = isAdmin || payment.verification_status === 'reported';
+
                     return (
                       <TableRow key={payment.id}>
                         <TableCell className="font-mono text-sm text-primary">{ticket?.loan_id || '-'}</TableCell>
@@ -211,7 +230,8 @@ export default function Payments() {
                         <TableCell><Link to={`/customers/${payment.master_customer_id}`} className="hover:underline">{customer?.name || payment.customer_name}</Link></TableCell>
                         <TableCell>{formatDate(payment.payment_date)}</TableCell>
                         <TableCell>{getPaymentMethodBadge(payment.payment_method)}</TableCell>
-                        <TableCell className="text-right font-semibold text-success">{formatCurrency(Number(payment.amount))}</TableCell>
+                        <TableCell>{getVerificationBadge(payment.verification_status)}</TableCell>
+                        <TableCell className={`text-right font-semibold ${isOverridden ? 'line-through text-muted-foreground' : 'text-success'}`}>{formatCurrency(Number(payment.amount))}</TableCell>
                         <TableCell className="text-right text-muted-foreground">{ticketAmountOwed > 0 ? formatCurrency(ticketAmountOwed) : '-'}</TableCell>
                         <TableCell className="text-right font-semibold text-success">{ticketTotalPaid > 0 ? formatCurrency(ticketTotalPaid) : '-'}</TableCell>
                         <TableCell className={`text-right font-semibold ${ticketBalance > 0 ? 'text-destructive' : 'text-success'}`}>
@@ -219,6 +239,7 @@ export default function Payments() {
                         </TableCell>
                         <TableCell className="text-muted-foreground max-w-[200px] truncate">{payment.notes || '-'}</TableCell>
                         <TableCell>
+                          {canChange && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -240,6 +261,7 @@ export default function Payments() {
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
+                          )}
                         </TableCell>
                       </TableRow>
                     );

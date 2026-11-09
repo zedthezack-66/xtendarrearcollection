@@ -42,7 +42,6 @@ const mainNavItems = [
 ];
 
 const toolsNavItems = [
-  { title: "New Batch Import", url: "/batch/new", icon: Upload },
   { title: "Export Data", url: "/export", icon: Download },
   { title: "Weekly Report", url: "/reports", icon: FileText },
   { title: "Master Registry", url: "/master-registry", icon: Database },
@@ -50,6 +49,7 @@ const toolsNavItems = [
 ];
 
 const adminNavItems = [
+  { title: "New Batch Import", url: "/batch/new", icon: Upload },
   { title: "Loan Book Sync", url: "/loan-book-sync", icon: RefreshCw },
   { title: "Arrears Analytics", url: "/arrears-analytics", icon: BarChart3 },
 ];

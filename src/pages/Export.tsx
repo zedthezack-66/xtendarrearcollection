@@ -14,6 +14,7 @@ import { useMasterCustomers, useBatches, useBatchCustomers, useTickets, usePayme
 import { useAuth } from "@/contexts/AuthContext";
 import { format, isWithinInterval, startOfDay, endOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
+import { paidTotal, liveBalance } from "@/lib/paymentTotals";
 import jsPDF from "jspdf";
 import XLSX from "xlsx-js-style";
 
@@ -316,9 +317,7 @@ export default function Export() {
     const rows = filteredCustomers.map((customer: any, index: number) => {
       const ticket = tickets.find((t) => t.master_customer_id === customer.id);
       // Calculate total collected from payments for this customer
-      const totalCollected = payments
-        .filter(p => p.master_customer_id === customer.id)
-        .reduce((sum, p) => sum + Number(p.amount), 0);
+      const totalCollected = paidTotal(payments.filter(p => p.master_customer_id === customer.id));
       // Use customer.call_notes directly from master_customers
       const callNotesStr = customer.call_notes || '';
       // Get last payment date (computed or stored)
@@ -337,7 +336,8 @@ export default function Export() {
       // Calculate outstanding dynamically - never blank
       const totalOwed = Number(customer.total_owed) || 0;
       const totalPaid = Number(customer.total_paid) || 0;
-      const outstandingBalance = Math.max(totalOwed - totalPaid, 0);
+      // Set by the database: loan book arrears minus payments recorded since the last sync
+      const outstandingBalance = Number(customer.outstanding_balance) || 0;
       
       return [
         ticket?.loan_id || '',
@@ -399,9 +399,7 @@ export default function Export() {
       const batch = batches.find(b => b.id === bc.batch_id);
       const ticket = tickets.find((t) => t.master_customer_id === bc.master_customer_id);
       // Calculate total collected from payments for this customer
-      const totalCollected = payments
-        .filter(p => p.master_customer_id === bc.master_customer_id)
-        .reduce((sum, p) => sum + Number(p.amount), 0);
+      const totalCollected = paidTotal(payments.filter(p => p.master_customer_id === bc.master_customer_id));
       // Use master?.call_notes from master_customers
       const callNotesStr = master?.call_notes || '';
       // Get last payment date - prefer batch_customer, fallback to master, then compute
@@ -420,7 +418,7 @@ export default function Export() {
       // Calculate outstanding dynamically - never blank
       const batchAmountOwed = Number(bc.amount_owed) || 0;
       const totalPaid = Number(master?.total_paid) || 0;
-      const outstandingBalance = Math.max(batchAmountOwed - totalPaid, 0);
+      const outstandingBalance = liveBalance(batchAmountOwed, payments.filter(p => p.master_customer_id === bc.master_customer_id));
       
       return [
         ticket?.loan_id || '',
@@ -551,7 +549,8 @@ export default function Export() {
         // Financial amounts - emphasized and accurate - calculate dynamically
         const totalOwed = Number(customer.total_owed) || 0;
         const totalPaid = Number(customer.total_paid) || 0;
-        const outstandingBalance = Math.max(totalOwed - totalPaid, 0);
+        // Set by the database: loan book arrears minus payments recorded since the last sync
+        const outstandingBalance = Number(customer.outstanding_balance) || 0;
         
         doc.setFont("helvetica", "bold");
         doc.setFontSize(10);
@@ -661,7 +660,7 @@ export default function Export() {
         // Financial amounts - emphasized and accurate - calculate dynamically
         const batchAmountOwed = Number(bc.amount_owed) || 0;
         const totalPaid = Number(master?.total_paid) || 0;
-        const outstandingBalance = Math.max(batchAmountOwed - totalPaid, 0);
+        const outstandingBalance = liveBalance(batchAmountOwed, payments.filter(p => p.master_customer_id === bc.master_customer_id));
         
         doc.setFont("helvetica", "bold");
         doc.setFontSize(10);

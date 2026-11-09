@@ -12,6 +12,7 @@ interface StatCardProps {
     isPositive: boolean;
   };
   variant?: 'default' | 'success' | 'warning' | 'destructive' | 'info';
+  subtitle?: string;
 }
 
 // Format large currency values compactly while preserving precision
@@ -36,7 +37,7 @@ function formatCompactValue(value: string | number): { display: string; full: st
   return { display: strValue, full };
 }
 
-export function StatCard({ title, value, icon: Icon, imageSrc, trend, variant = 'default' }: StatCardProps) {
+export function StatCard({ title, value, icon: Icon, imageSrc, trend, variant = 'default', subtitle }: StatCardProps) {
   const variantStyles = {
     default: 'bg-primary/10 text-primary',
     success: 'bg-success/10 text-success',
@@ -69,6 +70,9 @@ export function StatCard({ title, value, icon: Icon, imageSrc, trend, variant = 
                 </div>
               )}
             </div>
+            {subtitle && (
+              <p className="text-xs text-muted-foreground leading-tight">{subtitle}</p>
+            )}
             {trend && (
               <p className={cn(
                 "text-xs font-medium",

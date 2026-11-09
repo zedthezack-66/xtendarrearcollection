@@ -232,6 +232,7 @@ export default function CSVImport() {
     blocked: number;
     resolved: number;
     reopened: number;
+    overridden: number;
     not_found: number;
     payments_created: number;
     total_amount_collected: number;
@@ -474,6 +475,7 @@ export default function CSVImport() {
       let totalNotFound = 0;
       let totalResolved = 0;
       let totalReopened = 0;
+      let totalOverridden = 0;
       let allErrors: string[] = [];
 
       for (let i = 0; i < dailyData.length; i += CHUNK_SIZE) {
@@ -492,6 +494,7 @@ export default function CSVImport() {
         totalNotFound += result.not_found || 0;
         totalResolved += result.resolved || 0;
         totalReopened += result.reopened || 0;
+        totalOverridden += result.overridden_payments || 0;
         allErrors = [...allErrors, ...(result.errors || [])];
         
         setImportProgress(10 + ((i + chunk.length) / dailyData.length) * 80);
@@ -509,6 +512,7 @@ export default function CSVImport() {
         blocked: 0,
         resolved: totalResolved,
         reopened: totalReopened,
+        overridden: totalOverridden,
         not_found: totalNotFound,
         payments_created: 0,
         total_amount_collected: 0,
@@ -565,6 +569,8 @@ export default function CSVImport() {
       let totalReduced = 0;
       let totalIncreased = 0;
       let totalBlocked = 0;
+      let totalReopened = 0;
+      let totalOverridden = 0;
       let totalNotFound = 0;
       let totalPaymentsCreated = 0;
       let totalAmountCollected = 0;
@@ -588,6 +594,8 @@ export default function CSVImport() {
         totalReduced += result.reduced || 0;
         totalIncreased += result.increased || 0;
         totalBlocked += result.blocked || 0;
+        totalReopened += result.reopened || 0;
+        totalOverridden += result.overridden_payments || 0;
         totalNotFound += result.not_found || 0;
         totalPaymentsCreated += result.payments_created || 0;
         totalAmountCollected += result.total_amount_collected || 0;
@@ -607,7 +615,8 @@ export default function CSVImport() {
         increased: totalIncreased,
         blocked: totalBlocked,
         resolved: totalCleared,
-        reopened: 0, // Never reopens in this mode
+        reopened: totalReopened,
+        overridden: totalOverridden,
         not_found: totalNotFound,
         payments_created: totalPaymentsCreated,
         total_amount_collected: totalAmountCollected,
@@ -1565,15 +1574,17 @@ export default function CSVImport() {
                       <p className="text-xs text-muted-foreground">Blocked</p>
                     </div>
                   )}
-                  {uploadMode === "daily" && (
-                    <div className="p-3 bg-warning/10 rounded-lg text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <RefreshCw className="h-4 w-4 text-warning" />
-                        <p className="text-xl font-bold text-warning">{dailySyncResult.reopened}</p>
-                      </div>
-                      <p className="text-xs text-muted-foreground">Reopened</p>
+                  <div className="p-3 bg-warning/10 rounded-lg text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <RefreshCw className="h-4 w-4 text-warning" />
+                      <p className="text-xl font-bold text-warning">{dailySyncResult.reopened}</p>
                     </div>
-                  )}
+                    <p className="text-xs text-muted-foreground">Tickets reopened</p>
+                  </div>
+                  <div className="p-3 bg-muted/50 rounded-lg text-center">
+                    <p className="text-xl font-bold">{dailySyncResult.overridden}</p>
+                    <p className="text-xs text-muted-foreground">Agent payments replaced by loan book</p>
+                  </div>
                   <div className="p-3 bg-muted/50 rounded-lg text-center">
                     <p className="text-xl font-bold">{dailySyncResult.maintained}</p>
                     <p className="text-xs text-muted-foreground">Maintained</p>

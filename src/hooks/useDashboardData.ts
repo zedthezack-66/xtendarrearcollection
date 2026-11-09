@@ -5,6 +5,7 @@ interface DashboardStats {
   total_customers: number;
   total_outstanding: number;
   total_collected: number;
+  reported_pending: number;
   collection_rate: number;
   open_tickets: number;
   in_progress_tickets: number;

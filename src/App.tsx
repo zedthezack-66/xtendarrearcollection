@@ -43,7 +43,7 @@ const App = () => (
                       <Route path="/" element={<Dashboard />} />
                       <Route path="/customers" element={<Customers />} />
                       <Route path="/customers/:id" element={<CustomerProfile />} />
-                      <Route path="/batch/new" element={<CSVImport />} />
+                      <Route path="/batch/new" element={<ProtectedRoute requireAdmin><CSVImport /></ProtectedRoute>} />
                       <Route path="/tickets" element={<Tickets />} />
                       <Route path="/tickets/:id" element={<TicketDetail />} />
                       <Route path="/payments" element={<Payments />} />

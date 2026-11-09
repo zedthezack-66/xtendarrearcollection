@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { useState, useCallback, useEffect } from "react";
 import { useMasterCustomers, useTickets, usePayments, useBatchCustomers, useBatches, useUpdateMasterCustomer, useUpdateTicket, useProfiles, useCallLogsByCustomer } from "@/hooks/useSupabaseData";
+import { paidTotal, liveBalance } from "@/lib/paymentTotals";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { TicketStatusDropdowns } from "@/components/TicketStatusDropdowns";
@@ -191,10 +192,10 @@ export default function CustomerProfile() {
     })
     .filter(Boolean);
 
-  // Compute financial summary from tickets + payments (no stored balances)
+  // amount_owed is the last loan book figure; payments recorded since then reduce it until the next sync
   const amountOwed = customerTicket ? Number(customerTicket.amount_owed) : 0;
-  const totalPaid = customerPayments.reduce((sum, p) => sum + Number(p.amount), 0);
-  const remainingBalance = Math.max(0, amountOwed - totalPaid);
+  const totalPaid = paidTotal(customerPayments);
+  const remainingBalance = liveBalance(amountOwed, customerPayments);
   const ticketStatus = customerTicket?.status || 'No Ticket';
 
   const handleSaveNotes = async () => {
@@ -512,7 +513,7 @@ export default function CustomerProfile() {
                   <EditableAmountOwed
                     ticketId={customerTicket.id}
                     currentAmount={amountOwed}
-                    canEdit={isAdmin || customerTicket.assigned_agent === profile?.id}
+                    canEdit={isAdmin}
                     source="customer_profile"
                   />
                 ) : (

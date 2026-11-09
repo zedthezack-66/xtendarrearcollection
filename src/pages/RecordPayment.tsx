@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useMasterCustomers, useTickets, usePayments, useCreatePayment, useUpdateTicket } from "@/hooks/useSupabaseData";
+import { paidTotal, reportedTotal } from "@/lib/paymentTotals";
 
 export default function RecordPayment() {
   const navigate = useNavigate();
@@ -48,8 +49,10 @@ export default function RecordPayment() {
   const existingPayments = selectedCustomer 
     ? payments.filter(p => p.master_customer_id === selectedCustomer.id)
     : [];
-  const existingTotalPaid = existingPayments.reduce((sum, p) => sum + Number(p.amount), 0);
-  
+  const existingPaid = paidTotal(existingPayments);
+  // amount_owed is the last loan book figure, so only payments recorded since then reduce it
+  const existingTotalPaid = reportedTotal(existingPayments);
+
   // Auto-determine status based on payment amount
   const amountOwed = customerTicket ? Number(customerTicket.amount_owed) : 0;
   const paymentAmount = parseFloat(formData.amount) || 0;
@@ -130,6 +133,7 @@ export default function RecordPayment() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Record Payment</h1>
           <p className="text-muted-foreground">Log a new payment from a customer</p>
+          <p className="text-xs text-muted-foreground mt-1">Balances update as soon as you record a payment. The next loan book sync replaces them with the real figures.</p>
         </div>
       </div>
 
@@ -161,7 +165,7 @@ export default function RecordPayment() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Already Paid:</span>
-                  <span className="font-medium text-success">{formatCurrency(existingTotalPaid)}</span>
+                  <span className="font-medium text-success">{formatCurrency(existingPaid)}</span>
                 </div>
                 <div className="flex justify-between text-sm border-t pt-2">
                   <span className="text-muted-foreground">Remaining:</span>

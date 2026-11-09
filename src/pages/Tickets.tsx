@@ -63,6 +63,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { paidTotal, reportedTotal } from "@/lib/paymentTotals";
 
 // Canonical employer list for the Tickets employer filter
 const EMPLOYER_FILTER_OPTIONS = [
@@ -228,13 +229,17 @@ export default function Tickets() {
     };
   }, [queryClient]);
 
-  // Compute payments per ticket
+  // Paid and still-unconfirmed totals per ticket (amount_owed already reflects verified payments)
   const paymentsByTicket = useMemo(() => {
-    const map: Record<string, number> = {};
+    const grouped: Record<string, typeof payments> = {};
     for (const p of payments) {
       if (p.ticket_id) {
-        map[p.ticket_id] = (map[p.ticket_id] || 0) + Number(p.amount);
+        (grouped[p.ticket_id] ||= []).push(p);
       }
+    }
+    const map: Record<string, { paid: number; reported: number }> = {};
+    for (const [ticketId, list] of Object.entries(grouped)) {
+      map[ticketId] = { paid: paidTotal(list), reported: reportedTotal(list) };
     }
     return map;
   }, [payments]);
@@ -336,12 +341,12 @@ export default function Tickets() {
   };
 
   const handleResolveTicket = async (ticketId: string) => {
-    const totalPaid = paymentsByTicket[ticketId] || 0;
+    const reported = paymentsByTicket[ticketId]?.reported || 0;
     const ticket = tickets?.find(t => t.id === ticketId);
     const amountOwed = ticket ? Number(ticket.amount_owed) : 0;
-    const balance = Math.max(0, amountOwed - totalPaid);
-    
-    if (totalPaid < amountOwed) {
+    const balance = Math.max(0, amountOwed - reported);
+
+    if (reported < amountOwed) {
       setBlockedResolveModal({ ticketId, balance });
       return;
     }
@@ -501,9 +506,9 @@ export default function Tickets() {
                   <TableRow><TableCell colSpan={13} className="text-center py-8 text-muted-foreground">No tickets found</TableCell></TableRow>
                 ) : (
                   filteredTickets.map((ticket) => {
-                    const totalPaid = paymentsByTicket[ticket.id] || 0;
+                    const totalPaid = paymentsByTicket[ticket.id]?.paid || 0;
                     const amountOwed = Number(ticket.amount_owed);
-                    const balance = Math.max(0, amountOwed - totalPaid);
+                    const balance = Math.max(0, amountOwed - (paymentsByTicket[ticket.id]?.reported || 0));
                     const ticketCallLogs = callLogsByTicket[ticket.id] || [];
                     const hasCallLogs = ticketCallLogs.length > 0;
                     const latestNote = ticketCallLogs[0];
@@ -596,7 +601,7 @@ export default function Tickets() {
                             <EditableAmountOwed
                               ticketId={ticket.id}
                               currentAmount={amountOwed}
-                              canEdit={isAdmin || ticket.assigned_agent === profile?.id}
+                              canEdit={isAdmin}
                               source="ticket_list"
                             />
                           </TableCell>

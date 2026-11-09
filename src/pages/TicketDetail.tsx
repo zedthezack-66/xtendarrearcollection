@@ -7,6 +7,7 @@ import { Separator } from '@/components/ui/separator';
 import { useTickets, usePayments, useProfiles, useMasterCustomers, useCallLogsByCustomer } from '@/hooks/useSupabaseData';
 import { useAuth } from '@/contexts/AuthContext';
 import { getDaysInArrearsBadgeClass } from '@/lib/daysInArrears';
+import { paidTotal, liveBalance } from '@/lib/paymentTotals';
 import { useEffect } from 'react';
 
 const formatCurrency = (amount: number) => {
@@ -92,9 +93,9 @@ export default function TicketDetail() {
   }
 
   const ticketPayments = payments.filter(p => p.ticket_id === id);
-  const totalPaid = ticketPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+  const totalPaid = paidTotal(ticketPayments);
   const amountOwed = Number(ticket.amount_owed);
-  const balance = Math.max(0, amountOwed - totalPaid);
+  const balance = liveBalance(amountOwed, ticketPayments);
 
   const getAgentName = (agentId: string | null) => {
     if (!agentId) return '-';
