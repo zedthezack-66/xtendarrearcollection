@@ -4,10 +4,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
+import { BrandMark } from '@/components/layout/AppSidebar';
 import { z } from 'zod';
 import xtendaLogo from '@/assests/xtenda-logo.png';
 
@@ -111,116 +111,178 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <div className="p-4 bg-primary rounded-lg">
-              <img src={xtendaLogo} alt="Xtenda Logo" className="h-16 w-16 object-contain" />
-            </div>
+    <div className="grid min-h-screen bg-background lg:grid-cols-[1.05fr_1fr]">
+      {/* Brand panel */}
+      <div className="relative hidden overflow-hidden bg-sidebar lg:flex lg:flex-col lg:justify-between lg:p-12">
+        <div className="pointer-events-none absolute -left-32 -top-32 h-[28rem] w-[28rem] rounded-full bg-brand/25 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-40 right-0 h-[26rem] w-[26rem] rounded-full bg-[hsl(224_70%_45%)]/20 blur-3xl" />
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.07]"
+          style={{
+            backgroundImage:
+              'linear-gradient(hsl(0 0% 100%) 1px, transparent 1px), linear-gradient(90deg, hsl(0 0% 100%) 1px, transparent 1px)',
+            backgroundSize: '44px 44px',
+            maskImage: 'radial-gradient(ellipse at 30% 30%, black 20%, transparent 70%)',
+          }}
+        />
+
+        <div className="relative flex items-center gap-3">
+          <BrandMark className="h-11 w-11" />
+          <div className="leading-tight">
+            <p className="text-base font-semibold text-white">Xtenda</p>
+            <p className="text-xs text-sidebar-foreground/60">Arrears Collections</p>
           </div>
-          <CardTitle className="text-2xl">Xtenda Arrears Collection</CardTitle>
-          <CardDescription>Sign in to manage your arrears collections</CardDescription>
-        </CardHeader>
-        <CardContent>
+        </div>
+
+        <div className="relative max-w-md space-y-6">
+          <h2 className="text-4xl font-semibold leading-[1.15] tracking-tight text-white">
+            Every kwacha in arrears, <span className="text-brand">accounted for.</span>
+          </h2>
+          <p className="text-[15px] leading-relaxed text-sidebar-foreground/70">
+            The daily loan book, your collectors and every customer conversation in one place.
+          </p>
+          <ul className="space-y-3 text-sm text-sidebar-foreground/80">
+            {[
+              "Daily loan book reconciled against the month's opening position",
+              'Collections tracked per agent, month to date',
+              'Call notes, promises and payments on every ticket',
+            ].map((line) => (
+              <li key={line} className="flex items-start gap-3">
+                <span className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-brand/20">
+                  <span className="h-1.5 w-1.5 rounded-full bg-brand" />
+                </span>
+                {line}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <p className="relative text-xs text-sidebar-foreground/40">© {new Date().getFullYear()} Xtenda. Now you can.</p>
+      </div>
+
+      {/* Form */}
+      <div className="flex items-center justify-center px-6 py-12">
+        <div className="w-full max-w-sm space-y-8">
+          <div className="space-y-2">
+            <div className="mb-6 flex items-center gap-3 lg:hidden">
+              <img src={xtendaLogo} alt="Xtenda" className="h-10 w-10 object-contain" />
+              <span className="text-lg font-semibold">Xtenda Collections</span>
+            </div>
+            <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
+            <p className="text-sm text-muted-foreground">Sign in to manage your arrears collections.</p>
+          </div>
+
           <Tabs defaultValue="signin" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-6">
-              <TabsTrigger value="signin">Sign In</TabsTrigger>
-              <TabsTrigger value="signup">Sign Up</TabsTrigger>
+            <TabsList className="mb-6 grid w-full grid-cols-2">
+              <TabsTrigger value="signin">Sign in</TabsTrigger>
+              <TabsTrigger value="signup">Create account</TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="signin">
               <form onSubmit={handleSignIn} className="space-y-4">
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label htmlFor="signin-email">Email</Label>
                   <Input
                     id="signin-email"
                     type="email"
-                    placeholder="agent@example.com"
+                    autoComplete="email"
+                    placeholder="agent@xtenda.co.zm"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     disabled={isLoading}
+                    className="h-10"
                   />
-                  {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
+                  {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label htmlFor="signin-password">Password</Label>
                   <Input
                     id="signin-password"
                     type="password"
+                    autoComplete="current-password"
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={isLoading}
+                    className="h-10"
                   />
-                  {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
+                  {errors.password && <p className="text-xs text-destructive">{errors.password}</p>}
                 </div>
-                <Button type="submit" className="w-full" disabled={isLoading}>
+                <Button type="submit" variant="brand" className="h-10 w-full" disabled={isLoading}>
                   {isLoading ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Signing In...
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Signing in...
                     </>
                   ) : (
-                    'Sign In'
+                    'Sign in'
                   )}
                 </Button>
               </form>
             </TabsContent>
-            
+
             <TabsContent value="signup">
               <form onSubmit={handleSignUp} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="signup-name">Full Name</Label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="signup-name">Full name</Label>
                   <Input
                     id="signup-name"
                     type="text"
-                    placeholder="John Doe"
+                    autoComplete="name"
+                    placeholder="Your full name"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     disabled={isLoading}
+                    className="h-10"
                   />
-                  {errors.fullName && <p className="text-sm text-destructive">{errors.fullName}</p>}
+                  {errors.fullName && <p className="text-xs text-destructive">{errors.fullName}</p>}
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label htmlFor="signup-email">Email</Label>
                   <Input
                     id="signup-email"
                     type="email"
-                    placeholder="agent@example.com"
+                    autoComplete="email"
+                    placeholder="agent@xtenda.co.zm"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     disabled={isLoading}
+                    className="h-10"
                   />
-                  {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
+                  {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label htmlFor="signup-password">Password</Label>
                   <Input
                     id="signup-password"
                     type="password"
-                    placeholder="••••••••"
+                    autoComplete="new-password"
+                    placeholder="At least 6 characters"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={isLoading}
+                    className="h-10"
                   />
-                  {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
+                  {errors.password && <p className="text-xs text-destructive">{errors.password}</p>}
                 </div>
-                <Button type="submit" className="w-full" disabled={isLoading}>
+                <Button type="submit" variant="brand" className="h-10 w-full" disabled={isLoading}>
                   {isLoading ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Creating Account...
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Creating account...
                     </>
                   ) : (
-                    'Create Account'
+                    'Create account'
                   )}
                 </Button>
+                <p className="text-center text-xs text-muted-foreground">
+                  New accounts need an administrator's approval before first sign-in.
+                </p>
               </form>
             </TabsContent>
           </Tabs>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

@@ -127,12 +127,12 @@ export default function RecordPayment() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-center gap-4">
-        <Link to="/payments" className="inline-flex items-center justify-center h-10 w-10 rounded-md border border-input bg-background hover:bg-accent">
+        <Link to="/payments" className="inline-flex items-center justify-center h-9 w-9 shrink-0 rounded-lg border border-input bg-card shadow-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Record Payment</h1>
-          <p className="text-muted-foreground">Log a new payment from a customer</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[28px] md:leading-9">Record Payment</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Log a new payment from a customer</p>
           <p className="text-xs text-muted-foreground mt-1">Balances update as soon as you record a payment. The next loan book sync replaces them with the real figures.</p>
         </div>
       </div>

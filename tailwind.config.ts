@@ -13,7 +13,23 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        sans: ['"Inter"', "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
+        // Amounts and IDs use Inter's tabular figures rather than a monospace face.
+        mono: ['"Inter"', "ui-sans-serif", "system-ui", "sans-serif"],
+      },
+      boxShadow: {
+        xs: "0 1px 2px 0 rgb(16 24 40 / 0.04)",
+        card: "0 1px 2px 0 rgb(16 24 40 / 0.04), 0 1px 3px 0 rgb(16 24 40 / 0.05)",
+        elevated: "0 4px 12px -2px rgb(16 24 40 / 0.08), 0 2px 4px -2px rgb(16 24 40 / 0.05)",
+        brand: "0 6px 16px -4px hsl(25 95% 53% / 0.45)",
+      },
       colors: {
+        brand: {
+          DEFAULT: "hsl(var(--brand))",
+          foreground: "hsl(var(--brand-foreground))",
+          soft: "hsl(var(--brand-soft))",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

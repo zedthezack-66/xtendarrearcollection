@@ -321,8 +321,8 @@ export default function Customers() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">{displayName}'s Customers</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[28px] md:leading-9">{displayName}'s Customers</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             {activeBatch ? `Viewing batch: ${activeBatch.name}` : 'Global customer registry'}
           </p>
         </div>

@@ -112,10 +112,10 @@ export default function TicketDetail() {
         </Button>
         <div className="flex-1">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">{ticket.customer_name}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[28px] md:leading-9">{ticket.customer_name}</h1>
             {getStatusBadge(ticket.status)}
           </div>
-          <p className="text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             Loan ID: <span className="font-mono">{(ticket as any).loan_id || '-'}</span>
             {' · '}NRC: {ticket.nrc_number}
           </p>

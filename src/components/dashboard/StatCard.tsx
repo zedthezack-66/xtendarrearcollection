@@ -1,5 +1,5 @@
 import { LucideIcon } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 interface StatCardProps {
@@ -11,86 +11,55 @@ interface StatCardProps {
     value: number;
     isPositive: boolean;
   };
-  variant?: 'default' | 'success' | 'warning' | 'destructive' | 'info';
+  variant?: 'default' | 'success' | 'warning' | 'destructive' | 'info' | 'brand';
   subtitle?: string;
+  className?: string;
 }
 
-// Format large currency values compactly while preserving precision
+// Large currency values are shortened (K21.71M); the full figure shows on hover.
 function formatCompactValue(value: string | number): { display: string; full: string } {
-  const strValue = String(value);
-  const full = strValue;
-  
-  // Check if it's a currency value (starts with K or contains currency symbols)
-  const currencyMatch = strValue.match(/^([A-Z]{1,3}\s?)?([\d,]+\.?\d*)$/);
-  if (currencyMatch) {
-    const prefix = currencyMatch[1] || '';
-    const numStr = currencyMatch[2]?.replace(/,/g, '') || '0';
-    const num = parseFloat(numStr);
-    
-    if (num >= 1000000) {
-      return { display: `${prefix}${(num / 1000000).toFixed(2)}M`, full };
-    } else if (num >= 10000) {
-      return { display: `${prefix}${(num / 1000).toFixed(1)}K`, full };
-    }
+  const full = String(value);
+  const match = full.match(/^([A-Z]{1,3}\s?)?([\d,]+\.?\d*)$/);
+  if (match) {
+    const prefix = match[1] || '';
+    const num = parseFloat(match[2]?.replace(/,/g, '') || '0');
+    if (num >= 1_000_000) return { display: `${prefix}${(num / 1_000_000).toFixed(2)}M`, full };
+    if (num >= 100_000) return { display: `${prefix}${(num / 1000).toFixed(1)}K`, full };
   }
-  
-  return { display: strValue, full };
+  return { display: full, full };
 }
 
-export function StatCard({ title, value, icon: Icon, imageSrc, trend, variant = 'default', subtitle }: StatCardProps) {
-  const variantStyles = {
-    default: 'bg-primary/10 text-primary',
-    success: 'bg-success/10 text-success',
-    warning: 'bg-warning/10 text-warning',
-    destructive: 'bg-destructive/10 text-destructive',
-    info: 'bg-info/10 text-info',
-  };
+const variantStyles = {
+  default: 'bg-primary/[0.06] text-primary ring-primary/10',
+  brand: 'bg-brand/10 text-brand ring-brand/20',
+  success: 'bg-success/10 text-success ring-success/20',
+  warning: 'bg-warning/10 text-warning ring-warning/20',
+  destructive: 'bg-destructive/10 text-destructive ring-destructive/20',
+  info: 'bg-info/10 text-info ring-info/20',
+};
 
+export function StatCard({ title, value, icon: Icon, imageSrc, trend, variant = 'default', subtitle, className }: StatCardProps) {
   const { display, full } = formatCompactValue(value);
-  const showTooltip = display !== full;
 
   return (
-    <Card className="animate-fade-in h-full min-h-[120px]">
-      <CardContent className="p-4 h-full flex flex-col justify-between">
-        <div className="flex items-start justify-between gap-2">
-          <div className="space-y-1 flex-1 min-w-0">
-            <p className="text-xs font-medium text-muted-foreground leading-tight">{title}</p>
-            <div className="relative group">
-              <p 
-                className="text-lg md:text-xl font-bold text-foreground leading-tight"
-                style={{ wordBreak: 'keep-all' }}
-              >
-                {display}
-              </p>
-              {showTooltip && (
-                <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-50 hidden group-hover:block">
-                  <div className="bg-foreground text-background text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap">
-                    {full}
-                  </div>
-                </div>
-              )}
-            </div>
-            {subtitle && (
-              <p className="text-xs text-muted-foreground leading-tight">{subtitle}</p>
-            )}
-            {trend && (
-              <p className={cn(
-                "text-xs font-medium",
-                trend.isPositive ? "text-success" : "text-destructive"
-              )}>
-                {trend.isPositive ? '+' : ''}{trend.value}% from last month
-              </p>
-            )}
+    <Card className={cn("h-full p-5 transition-shadow duration-200 hover:shadow-elevated", className)}>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[13px] font-medium leading-tight text-muted-foreground">{title}</p>
+        {(Icon || imageSrc) && (
+          <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset", variantStyles[variant])}>
+            {imageSrc ? <img src={imageSrc} alt="" className="h-4 w-4 object-contain" /> : Icon ? <Icon className="h-4 w-4" /> : null}
           </div>
-          <div className={cn("p-2 rounded-lg shrink-0", variantStyles[variant])}>
-            {imageSrc ? (
-              <img src={imageSrc} alt={title} className="h-4 w-4 object-contain" />
-            ) : Icon ? (
-              <Icon className="h-4 w-4" />
-            ) : null}
-          </div>
-        </div>
-      </CardContent>
+        )}
+      </div>
+      <p className="num mt-3 text-[26px] font-semibold leading-none tracking-tight text-foreground" title={display !== full ? full : undefined}>
+        {display}
+      </p>
+      {subtitle && <p className="mt-2 text-xs leading-snug text-muted-foreground">{subtitle}</p>}
+      {trend && (
+        <p className={cn("mt-2 text-xs font-medium", trend.isPositive ? "text-success" : "text-destructive")}>
+          {trend.isPositive ? '+' : ''}{trend.value}% from last month
+        </p>
+      )}
     </Card>
   );
 }

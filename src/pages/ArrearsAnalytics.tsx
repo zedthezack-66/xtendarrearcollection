@@ -66,8 +66,8 @@ export default function ArrearsAnalytics() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Arrears Movement Analytics</h1>
-          <p className="text-muted-foreground">Track arrears changes from loan book syncs</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[28px] md:leading-9">Arrears Movement Analytics</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Track arrears changes from loan book syncs</p>
         </div>
         
         <div className="flex items-center gap-2">

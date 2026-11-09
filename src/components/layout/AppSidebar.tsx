@@ -1,20 +1,4 @@
-import { 
-  LayoutDashboard, 
-  Users, 
-  Ticket, 
-  CreditCard, 
-  Upload,
-  Settings,
-  Download,
-  FileText,
-  Database,
-  LogOut,
-  Shield,
-  RefreshCw,
-  BarChart3,
-  Bell
-} from "lucide-react";
-import { NotificationsInbox } from "@/components/NotificationsInbox";
+import { LogOut, Shield } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
   Sidebar,
@@ -23,179 +7,106 @@ import {
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { BatchSelector } from "@/components/BatchSelector";
-import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
+import { navSections } from "./navigation";
 
-const mainNavItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Customers", url: "/customers", icon: Users },
-  { title: "Tickets", url: "/tickets", icon: Ticket },
-  { title: "Payments", url: "/payments", icon: CreditCard },
-];
+const getInitials = (name: string) =>
+  name
+    .split(" ")
+    .filter(Boolean)
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
 
-const toolsNavItems = [
-  { title: "Export Data", url: "/export", icon: Download },
-  { title: "Weekly Report", url: "/reports", icon: FileText },
-  { title: "Master Registry", url: "/master-registry", icon: Database },
-  { title: "Settings", url: "/settings", icon: Settings },
-];
+export function BrandMark({ className = "h-9 w-9" }: { className?: string }) {
+  return (
+    <div
+      className={`${className} flex shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[hsl(30_100%_58%)] to-[hsl(20_92%_48%)] text-white shadow-brand`}
+    >
+      <svg viewBox="0 0 24 24" className="h-[55%] w-[55%]" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+        <path d="M6 6l12 12M18 6L6 18" />
+      </svg>
+    </div>
+  );
+}
 
-const adminNavItems = [
-  { title: "New Batch Import", url: "/batch/new", icon: Upload },
-  { title: "Loan Book Sync", url: "/loan-book-sync", icon: RefreshCw },
-  { title: "Arrears Analytics", url: "/arrears-analytics", icon: BarChart3 },
-];
+const groupLabel = "px-3 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/40";
 
 export function AppSidebar() {
   const { profile, userRole, signOut, isAdmin } = useAuth();
-
-  const getInitials = (name: string) => {
-    return name
-      .split(' ')
-      .map(n => n[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2);
-  };
-
-  const displayName = profile?.display_name || profile?.full_name?.split(' ')[0] || 'User';
+  const fullName = profile?.display_name || profile?.full_name || "User";
 
   return (
-    <Sidebar className="border-r border-sidebar-border">
-      <SidebarHeader className="p-4 border-b border-sidebar-border">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground font-bold">
-              {getInitials(profile?.display_name || profile?.full_name || 'LC')}
-            </div>
-            <div>
-              <h1 className="font-semibold text-sidebar-foreground">{displayName}'s Collections</h1>
-              <p className="text-xs text-sidebar-foreground/60">Collections Manager</p>
-            </div>
+    <Sidebar className="border-r-0">
+      <SidebarHeader className="px-4 pb-3 pt-5">
+        <div className="flex items-center gap-3">
+          <BrandMark />
+          <div className="leading-tight">
+            <p className="text-[15px] font-semibold tracking-tight text-white">Xtenda</p>
+            <p className="text-xs text-sidebar-foreground/55">Arrears Collections</p>
           </div>
-          <NotificationsInbox />
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="px-2">
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/60 text-xs uppercase tracking-wider">
-            Active Batch
-          </SidebarGroupLabel>
-          <SidebarGroupContent className="px-2 py-2">
+      <SidebarContent className="gap-1 px-2">
+        <SidebarGroup className="py-2">
+          <SidebarGroupLabel className={groupLabel}>Active batch</SidebarGroupLabel>
+          <SidebarGroupContent className="px-1 pt-1">
             <BatchSelector />
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <Separator className="bg-sidebar-border" />
-
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/60 text-xs uppercase tracking-wider">
-            Main Menu
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {mainNavItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <NavLink 
-                      to={item.url} 
-                      end={item.url === "/"}
-                      className="flex items-center gap-3 px-3 py-2 rounded-md text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
-                      activeClassName="bg-sidebar-primary text-sidebar-primary-foreground"
-                    >
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/60 text-xs uppercase tracking-wider">
-            Tools
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {toolsNavItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <NavLink 
-                      to={item.url}
-                      className="flex items-center gap-3 px-3 py-2 rounded-md text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
-                      activeClassName="bg-sidebar-primary text-sidebar-primary-foreground"
-                    >
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        {isAdmin && (
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-sidebar-foreground/60 text-xs uppercase tracking-wider">
-              Admin Tools
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {adminNavItems.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild>
-                      <NavLink 
-                        to={item.url}
-                        className="flex items-center gap-3 px-3 py-2 rounded-md text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
-                        activeClassName="bg-sidebar-primary text-sidebar-primary-foreground"
-                      >
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                      </NavLink>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+        {navSections
+          .filter((section) => !section.adminOnly || isAdmin)
+          .map((section) => (
+            <SidebarGroup key={section.label} className="py-1.5">
+              <SidebarGroupLabel className={groupLabel}>{section.label}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-0.5">
+                  {section.items.map((item) => (
+                    <SidebarMenuItem key={item.url}>
+                      <NavLink
+                          to={item.url}
+                          end={item.url === "/"}
+                          className="group/nav relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-white"
+                          activeClassName="bg-sidebar-accent text-white before:absolute before:left-0 before:top-1/2 before:h-5 before:w-[3px] before:-translate-y-1/2 before:rounded-r-full before:bg-sidebar-primary [&>svg]:text-sidebar-primary"
+                        >
+                          <item.icon className="h-[18px] w-[18px] shrink-0 text-sidebar-foreground/50 transition-colors group-hover/nav:text-white" />
+                          <span className="truncate">{item.title}</span>
+                        </NavLink>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          ))}
       </SidebarContent>
 
-      <SidebarFooter className="p-4 border-t border-sidebar-border">
-        <div className="flex items-center gap-3">
-          <Avatar className="h-8 w-8">
-            <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground text-xs">
-              {profile?.display_name ? getInitials(profile.display_name) : profile?.full_name ? getInitials(profile.full_name) : 'U'}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-sidebar-foreground truncate">
-              {profile?.display_name || profile?.full_name || 'User'}
-            </p>
-            <div className="flex items-center gap-1">
-              {isAdmin && <Shield className="h-3 w-3 text-sidebar-foreground/60" />}
-              <p className="text-xs text-sidebar-foreground/60 capitalize">
-                {userRole || 'Agent'}
-              </p>
-            </div>
+      <SidebarFooter className="p-3">
+        <div className="flex items-center gap-3 rounded-xl border border-sidebar-border bg-sidebar-accent/60 p-2.5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 text-xs font-semibold text-white">
+            {getInitials(fullName) || "U"}
           </div>
-          <Button 
-            variant="ghost" 
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-white">{fullName}</p>
+            <p className="flex items-center gap-1 text-xs capitalize text-sidebar-foreground/55">
+              {isAdmin && <Shield className="h-3 w-3 text-sidebar-primary" />}
+              {userRole || "Agent"}
+            </p>
+          </div>
+          <Button
+            variant="ghost"
             size="icon"
             onClick={signOut}
-            className="h-8 w-8 text-sidebar-foreground/60 hover:text-sidebar-foreground"
+            aria-label="Sign out"
+            className="h-8 w-8 text-sidebar-foreground/55 hover:bg-white/10 hover:text-white"
           >
             <LogOut className="h-4 w-4" />
           </Button>

@@ -361,8 +361,8 @@ export default function Tickets() {
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">{displayName}'s Tickets</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[28px] md:leading-9">{displayName}'s Tickets</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             {activeBatch ? `Batch: ${activeBatch.name} • ${filteredTickets.length} tickets` : `All batches • ${filteredTickets.length} tickets`}
           </p>
         </div>

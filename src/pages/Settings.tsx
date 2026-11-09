@@ -147,8 +147,8 @@ export default function Settings() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-        <p className="text-muted-foreground">Manage your profile and view application statistics</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[28px] md:leading-9">Settings</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Manage your profile and view application statistics</p>
       </div>
 
       <Card>

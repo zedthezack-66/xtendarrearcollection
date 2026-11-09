@@ -230,10 +230,10 @@ export default function CustomerProfile() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Link to="/customers" className="inline-flex items-center justify-center h-10 w-10 rounded-md border border-input bg-background hover:bg-accent"><ArrowLeft className="h-4 w-4" /></Link>
+        <Link to="/customers" className="inline-flex items-center justify-center h-9 w-9 shrink-0 rounded-lg border border-input bg-card shadow-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"><ArrowLeft className="h-4 w-4" /></Link>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-foreground">{customer.name}</h1>
-          <p className="text-muted-foreground">Customer Profile</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[28px] md:leading-9">{customer.name}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Customer Profile</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" asChild><Link to={`/tickets?customerId=${customer.id}`}><Ticket className="h-4 w-4 mr-2" />View Ticket</Link></Button>

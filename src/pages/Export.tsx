@@ -737,8 +737,8 @@ export default function Export() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Export Data</h1>
-        <p className="text-muted-foreground">Download customer and collection data as CSV or PDF</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[28px] md:leading-9">Export Data</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Download customer and collection data as CSV or PDF</p>
       </div>
 
       {/* Admin Agent Filter - Full visibility for admins */}

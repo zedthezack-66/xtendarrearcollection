@@ -2,103 +2,116 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Xtenda design tokens.
+ * Ink navy carries the interface (sidebar, primary buttons); Xtenda orange is the brand accent
+ * (logo, active navigation, focus rings, highlights). Content sits on calm neutrals so figures lead.
+ */
 @layer base {
   :root {
-    --background: 210 20% 98%;
-    --foreground: 222 47% 11%;
+    --background: 220 20% 97.5%;
+    --foreground: 224 32% 12%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 224 32% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 224 32% 12%;
 
-    --primary: 221 83% 53%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 224 40% 14%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
+    --brand: 25 95% 53%;
+    --brand-foreground: 0 0% 100%;
+    --brand-soft: 30 100% 96%;
 
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
+    --secondary: 220 16% 95%;
+    --secondary-foreground: 224 32% 12%;
 
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
+    --muted: 220 16% 95.5%;
+    --muted-foreground: 220 9% 44%;
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
+    --accent: 220 16% 94%;
+    --accent-foreground: 224 32% 12%;
 
-    --success: 142 76% 36%;
-    --success-foreground: 210 40% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
 
-    --warning: 38 92% 50%;
-    --warning-foreground: 222 47% 11%;
+    --success: 155 65% 34%;
+    --success-foreground: 0 0% 100%;
 
-    --info: 199 89% 48%;
-    --info-foreground: 210 40% 98%;
+    --warning: 33 92% 46%;
+    --warning-foreground: 224 32% 12%;
 
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 221 83% 53%;
+    --info: 206 84% 44%;
+    --info-foreground: 0 0% 100%;
 
-    --radius: 0.5rem;
+    --border: 220 14% 90%;
+    --input: 220 13% 86%;
+    --ring: 25 95% 53%;
 
-    --sidebar-background: 222 47% 11%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 221 83% 53%;
-    --sidebar-primary-foreground: 210 40% 98%;
-    --sidebar-accent: 222 47% 18%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 222 47% 18%;
-    --sidebar-ring: 221 83% 53%;
+    --radius: 0.75rem;
+
+    --sidebar-background: 224 45% 9%;
+    --sidebar-foreground: 220 14% 82%;
+    --sidebar-primary: 25 95% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 224 32% 15%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 224 30% 15%;
+    --sidebar-ring: 25 95% 53%;
   }
 
   .dark {
-    --background: 222 47% 8%;
-    --foreground: 210 40% 98%;
+    --background: 224 40% 6%;
+    --foreground: 220 14% 94%;
 
-    --card: 222 47% 11%;
-    --card-foreground: 210 40% 98%;
+    --card: 224 36% 9%;
+    --card-foreground: 220 14% 94%;
 
-    --popover: 222 47% 11%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 224 36% 9%;
+    --popover-foreground: 220 14% 94%;
 
-    --primary: 221 83% 53%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 220 14% 94%;
+    --primary-foreground: 224 40% 10%;
 
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
+    --brand: 25 95% 55%;
+    --brand-foreground: 0 0% 100%;
+    --brand-soft: 25 60% 14%;
 
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
+    --secondary: 224 26% 15%;
+    --secondary-foreground: 220 14% 94%;
 
-    --accent: 217 33% 17%;
-    --accent-foreground: 210 40% 98%;
+    --muted: 224 26% 14%;
+    --muted-foreground: 220 10% 62%;
 
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 210 40% 98%;
+    --accent: 224 26% 16%;
+    --accent-foreground: 220 14% 94%;
 
-    --success: 142 76% 36%;
-    --success-foreground: 210 40% 98%;
+    --destructive: 0 70% 56%;
+    --destructive-foreground: 0 0% 100%;
 
-    --warning: 38 92% 50%;
-    --warning-foreground: 222 47% 11%;
+    --success: 155 55% 45%;
+    --success-foreground: 224 40% 6%;
 
-    --info: 199 89% 48%;
-    --info-foreground: 210 40% 98%;
+    --warning: 35 92% 55%;
+    --warning-foreground: 224 40% 6%;
 
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 221 83% 53%;
+    --info: 206 84% 58%;
+    --info-foreground: 224 40% 6%;
 
-    --sidebar-background: 222 47% 6%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 221 83% 53%;
-    --sidebar-primary-foreground: 210 40% 98%;
-    --sidebar-accent: 222 47% 11%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 222 47% 11%;
-    --sidebar-ring: 221 83% 53%;
+    --border: 224 24% 17%;
+    --input: 224 24% 20%;
+    --ring: 25 95% 55%;
+
+    --sidebar-background: 224 45% 5%;
+    --sidebar-foreground: 220 14% 82%;
+    --sidebar-primary: 25 95% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 224 30% 11%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 224 30% 11%;
+    --sidebar-ring: 25 95% 55%;
   }
 }
 
@@ -107,24 +120,85 @@
     @apply border-border;
   }
 
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply tracking-tight;
+  }
+
+  /* Figures line up in tables and stat tiles. */
+  td,
+  th,
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background-color: hsl(var(--brand) / 0.2);
+  }
+
+  /* Slim, quiet scrollbars. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  /* Number styling for amounts: Inter's tabular figures, without a monospace face. */
+  .num {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum", "cv02", "cv03", "cv04", "cv11";
+  }
+
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground;
   }
 }
 
 @layer utilities {
   .animate-fade-in {
-    animation: fade-in 0.3s ease-out;
+    animation: fade-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   @keyframes fade-in {
     from {
       opacity: 0;
-      transform: translateY(10px);
+      transform: translateY(6px);
     }
     to {
       opacity: 1;
       transform: translateY(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-fade-in {
+      animation: none;
     }
   }
 }

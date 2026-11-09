@@ -30,8 +30,8 @@ export default function MasterRegistry() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><Database className="h-6 w-6" />Master Customer Registry</h1>
-        <p className="text-muted-foreground">Global view of all customers across all batches</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[28px] md:leading-9 flex items-center gap-2"><Database className="h-6 w-6" />Master Customer Registry</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Global view of all customers across all batches</p>
       </div>
       <Card>
         <CardHeader className="pb-4">

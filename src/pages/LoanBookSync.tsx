@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBatches } from "@/hooks/useSupabaseData";
 import { fetchAllRows } from "@/lib/fetchAllRows";
+import { PageHeader } from "@/components/layout/PageHeader";
 import XLSX from "xlsx-js-style";
 import Papa from "papaparse";
 
@@ -483,13 +484,11 @@ export default function LoanBookSync() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Daily Update (Loan Book)</h1>
-        <p className="text-muted-foreground">
-          Upload today's loan book. Each loan is compared with its arrears at the start of the month: lower means a
-          payment, zero means cleared, higher is flagged. Differences under K1 are ignored.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Loan book"
+        title="Daily update"
+        description="Upload today's loan book. Each loan is compared with its arrears at the start of the month: lower means a payment, zero means cleared, higher is flagged. Differences under K1 are ignored."
+      />
 
       <Card>
         <CardHeader>
