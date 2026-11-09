@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { reportedTotal } from '@/lib/paymentTotals';
+import { fetchAllRows, chunk } from '@/lib/fetchAllRows';
 
 // Types for database operations
 export interface BatchInsert {
@@ -61,13 +62,12 @@ export function useBatches() {
   return useQuery({
     queryKey: ['batches'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      return fetchAllRows((from, to) => supabase
         .from('batches')
         .select('*')
-        .order('upload_date', { ascending: false });
-      
-      if (error) throw error;
-      return data;
+        .order('upload_date', { ascending: false })
+        .order('id')
+        .range(from, to));
     },
   });
 }
@@ -106,13 +106,12 @@ export function useMasterCustomers() {
   return useQuery({
     queryKey: ['master_customers'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      return fetchAllRows((from, to) => supabase
         .from('master_customers')
         .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      return data;
+        .order('created_at', { ascending: false })
+        .order('id')
+        .range(from, to));
     },
   });
 }
@@ -163,16 +162,13 @@ export function useBatchCustomers(batchId?: string) {
   return useQuery({
     queryKey: ['batch_customers', batchId],
     queryFn: async () => {
-      let query = supabase.from('batch_customers').select('*');
-      
-      if (batchId) {
-        query = query.eq('batch_id', batchId);
-      }
-      
-      const { data, error } = await query.order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      return data;
+      return fetchAllRows((from, to) => {
+        let query = supabase.from('batch_customers').select('*');
+        if (batchId) {
+          query = query.eq('batch_id', batchId);
+        }
+        return query.order('created_at', { ascending: false }).order('id').range(from, to);
+      });
     },
   });
 }
@@ -210,13 +206,12 @@ export function useTickets() {
   return useQuery({
     queryKey: ['tickets'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      return fetchAllRows((from, to) => supabase
         .from('tickets')
         .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      return data;
+        .order('created_at', { ascending: false })
+        .order('id')
+        .range(from, to));
     },
   });
 }
@@ -319,13 +314,12 @@ export function usePayments() {
   return useQuery({
     queryKey: ['payments'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      return fetchAllRows((from, to) => supabase
         .from('payments')
         .select('*')
-        .order('payment_date', { ascending: false });
-      
-      if (error) throw error;
-      return data;
+        .order('payment_date', { ascending: false })
+        .order('id')
+        .range(from, to));
     },
   });
 }
@@ -410,16 +404,13 @@ export function useCallLogs(ticketId?: string) {
   return useQuery({
     queryKey: ['call_logs', ticketId],
     queryFn: async () => {
-      let query = supabase.from('call_logs').select('*');
-      
-      if (ticketId) {
-        query = query.eq('ticket_id', ticketId);
-      }
-      
-      const { data, error } = await query.order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      return data;
+      return fetchAllRows((from, to) => {
+        let query = supabase.from('call_logs').select('*');
+        if (ticketId) {
+          query = query.eq('ticket_id', ticketId);
+        }
+        return query.order('created_at', { ascending: false }).order('id').range(from, to);
+      });
     },
   });
 }
@@ -434,14 +425,16 @@ export function useCallLogsForTickets(ticketIds: string[]) {
     queryFn: async () => {
       if (!ticketIds.length) return [];
       
-      const { data, error } = await supabase
-        .from('call_logs')
-        .select('*')
-        .in('ticket_id', ticketIds)
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      return data ?? [];
+      const pages = await Promise.all(chunk(ticketIds).map((ids) =>
+        fetchAllRows((from, to) => supabase
+          .from('call_logs')
+          .select('*')
+          .in('ticket_id', ids)
+          .order('created_at', { ascending: false })
+          .order('id')
+          .range(from, to))
+      ));
+      return pages.flat().sort((a, b) => b.created_at.localeCompare(a.created_at));
     },
     enabled: ticketIds.length > 0,
     staleTime: 0, // Always refetch when invalidated
@@ -516,13 +509,12 @@ export function useProfiles() {
   return useQuery({
     queryKey: ['profiles'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      return fetchAllRows((from, to) => supabase
         .from('profiles')
         .select('*')
-        .order('full_name');
-      
-      if (error) throw error;
-      return data;
+        .order('full_name')
+        .order('id')
+        .range(from, to));
     },
   });
 }
@@ -553,12 +545,11 @@ export function useUserRoles() {
   return useQuery({
     queryKey: ['user_roles'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      return fetchAllRows((from, to) => supabase
         .from('user_roles')
-        .select('*');
-      
-      if (error) throw error;
-      return data;
+        .select('*')
+        .order('id')
+        .range(from, to));
     },
   });
 }
@@ -911,19 +902,13 @@ export function useTicketsSorted(sortOrder: 'high' | 'low' = 'high', batchId?: s
   return useQuery({
     queryKey: ['tickets_sorted', sortOrder, batchId],
     queryFn: async () => {
-      let query = supabase
-        .from('tickets')
-        .select('*')
-        .order('amount_owed', { ascending: sortOrder === 'low' });
-      
-      if (batchId) {
-        query = query.eq('batch_id', batchId);
-      }
-      
-      const { data, error } = await query;
-      
-      if (error) throw error;
-      return data;
+      return fetchAllRows((from, to) => {
+        let query = supabase.from('tickets').select('*');
+        if (batchId) {
+          query = query.eq('batch_id', batchId);
+        }
+        return query.order('amount_owed', { ascending: sortOrder === 'low' }).order('id').range(from, to);
+      });
     },
   });
 }

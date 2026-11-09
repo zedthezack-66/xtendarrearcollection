@@ -23,6 +23,7 @@ import { useMasterCustomers, useCreateBatch, useProfiles, useBatches } from "@/h
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { generateLoanId } from "@/lib/generateLoanId";
+import { fetchAllRows, chunk } from "@/lib/fetchAllRows";
 import { parseDaysInArrears } from "@/lib/daysInArrears";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
@@ -99,13 +100,19 @@ async function reattachPreviousBatchNotes(
 
   const masterCustomerIds = Array.from(new Set(newTickets.map((ticket) => ticket.master_customer_id)));
 
-  const { data: orphanedNotes, error: fetchError } = await supabase
-    .from('call_logs')
-    .select('id, master_customer_id')
-    .in('master_customer_id', masterCustomerIds)
-    .is('ticket_id', null);
-
-  if (fetchError) {
+  let orphanedNotes: { id: string; master_customer_id: string | null }[];
+  try {
+    const pages = await Promise.all(chunk(masterCustomerIds).map((ids) =>
+      fetchAllRows((from, to) => supabase
+        .from('call_logs')
+        .select('id, master_customer_id')
+        .in('master_customer_id', ids)
+        .is('ticket_id', null)
+        .order('id')
+        .range(from, to))
+    ));
+    orphanedNotes = pages.flat();
+  } catch (fetchError) {
     console.error('Failed to fetch orphaned call logs for reattachment:', fetchError);
     return { reattached: 0, orphaned: 0 };
   }
@@ -723,10 +730,12 @@ export default function CSVImport() {
       // =====================================================
       if (uploadMode === "update") {
         // Fetch existing batch_customers for this batch
-        const { data: existingBatchCustomers } = await supabase
+        const existingBatchCustomers = await fetchAllRows((from, to) => supabase
           .from('batch_customers')
           .select('nrc_number, master_customer_id')
-          .eq('batch_id', batch.id);
+          .eq('batch_id', batch.id)
+          .order('id')
+          .range(from, to));
         
         const existingNrcsInBatch = new Map(
           existingBatchCustomers?.map(bc => [bc.nrc_number, bc.master_customer_id]) || []
@@ -850,10 +859,12 @@ export default function CSVImport() {
 
       // Fetch existing batch_customers for this batch to check for duplicates
       // Fetch existing Loan IDs in this batch to check for duplicates
-      const { data: existingBatchTickets } = await supabase
+      const existingBatchTickets = await fetchAllRows((from, to) => supabase
         .from('tickets')
         .select('loan_id')
-        .eq('batch_id', batch.id);
+        .eq('batch_id', batch.id)
+        .order('id')
+        .range(from, to));
       
       const existingLoanIdsInBatch = new Set(existingBatchTickets?.map(t => t.loan_id).filter(Boolean) || []);
 
@@ -1382,12 +1393,12 @@ export default function CSVImport() {
                     onClick={async () => {
                       try {
                         // Fetch NRCs from the selected batch
-                        const { data: batchCustomers, error } = await supabase
+                        const batchCustomers = await fetchAllRows((from, to) => supabase
                           .from('tickets')
                           .select('nrc_number, amount_owed')
-                          .eq('batch_id', selectedBatchId);
-                        
-                        if (error) throw error;
+                          .eq('batch_id', selectedBatchId)
+                          .order('id')
+                          .range(from, to));
                         
                         if (!batchCustomers || batchCustomers.length === 0) {
                           toast({ title: "No Data", description: "No customers found in this batch", variant: "destructive" });
