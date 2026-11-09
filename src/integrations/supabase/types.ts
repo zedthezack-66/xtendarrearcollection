@@ -630,10 +630,6 @@ export type Database = {
         Returns: Json
       }
       clear_all_data: { Args: never; Returns: Json }
-      create_arrears_snapshots: {
-        Args: { p_source?: string; p_sync_batch_id: string }
-        Returns: Json
-      }
       get_admin_agent_analytics: {
         Args: { p_agent_id?: string }
         Returns: Json
@@ -669,10 +665,6 @@ export type Database = {
             }
             Returns: Json
           }
-      get_batch_loan_book_sync_template: {
-        Args: { p_batch_id: string }
-        Returns: Json
-      }
       get_collections_by_agent: { Args: { p_batch_id?: string }; Returns: Json }
       get_dashboard_stats: {
         Args: { p_agent_id?: string; p_batch_id?: string }
@@ -730,15 +722,6 @@ export type Database = {
       }
       import_master_customer: { Args: { p_customers: Json }; Returns: Json }
       import_ticket_row: { Args: { p_tickets: Json }; Returns: Json }
-      process_batch_arrears_update: {
-        Args: { p_batch_id: string; p_updates: Json }
-        Returns: Json
-      }
-      process_daily_loan_book_update: {
-        Args: { p_batch_id: string; p_sync_data: string }
-        Returns: Json
-      }
-      process_loan_book_sync: { Args: { p_sync_data: string }; Returns: Json }
       safe_delete_batch: {
         Args: { p_archive?: boolean; p_batch_id: string; p_chunk_size?: number }
         Returns: Json
