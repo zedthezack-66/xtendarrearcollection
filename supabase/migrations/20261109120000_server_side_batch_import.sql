@@ -405,4 +405,9 @@ GRANT EXECUTE ON FUNCTION public.import_clean(text) TO authenticated, service_ro
 REVOKE EXECUTE ON FUNCTION public.import_batch(text, text, jsonb, boolean) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.import_batch(text, text, jsonb, boolean) TO authenticated, service_role;
 
+-- Recorded in the migration history (table added by 20261109180000, which ran first on the live database).
+INSERT INTO public.schema_migrations (version, name)
+VALUES ('20261109120000', '20261109120000_server_side_batch_import.sql')
+ON CONFLICT (version) DO NOTHING;
+
 COMMIT;
