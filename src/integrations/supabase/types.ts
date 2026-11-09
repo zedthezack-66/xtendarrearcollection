@@ -696,6 +696,7 @@ export type Database = {
             Returns: Json
           }
       get_loan_book_sync_template: { Args: never; Returns: Json }
+      get_loan_book_mtd_summary: { Args: { p_batch_ids: string[] }; Returns: Json }
       get_recent_tickets: {
         Args: {
           p_batch_id?: string
@@ -740,6 +741,15 @@ export type Database = {
       process_loan_book_sync: { Args: { p_sync_data: string }; Returns: Json }
       safe_delete_batch: {
         Args: { p_archive?: boolean; p_batch_id: string; p_chunk_size?: number }
+        Returns: Json
+      }
+      sync_loan_book_mtd: {
+        Args: {
+          p_batch_ids: string[]
+          p_commit?: boolean
+          p_file_name?: string
+          p_rows: Json
+        }
         Returns: Json
       }
       transfer_client_to_batch: {

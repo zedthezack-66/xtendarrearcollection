@@ -1,8 +1,7 @@
-import { useState, useCallback } from "react";
-import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, TrendingUp, TrendingDown, Minus, RotateCcw, Download, RefreshCw, Bell, Layers } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, RotateCcw, Download, Layers, Flag, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -10,378 +9,462 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBatches } from "@/hooks/useSupabaseData";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 import XLSX from "xlsx-js-style";
 import Papa from "papaparse";
 
-interface SyncRecord {
+// Columns read from the daily loan book export (LoanBook_DDMmmYYYY.csv).
+const REQUIRED_COLUMNS = ["LoanRefId", "NRCNumber", "ArrearAmount", "LastPaymentDate"];
+
+interface FileRow {
+  row: number;
   loan_id: string;
   nrc_number: string;
-  arrears_amount: number | null;
-  days_in_arrears: number | null;
-  last_payment_date: string | null;
+  foreclosure_loan_id: string;
+  arrears_amount: string;
+  days_in_arrears: string;
+  last_payment_date: string;
+}
+
+interface Totals {
+  loans: number;
+  opening: number;
+  current: number;
+  collected: number;
+  paying: number;
+  cleared: number;
+  reduced: number;
+  maintained: number;
+  no_arrears: number;
+  increased: number;
+  flagged: number;
+  matched_loan_id: number;
+  matched_top_up: number;
+  matched_nrc: number;
+  missing: number;
+  ambiguous: number;
+}
+
+interface AgentRow {
+  agent_id: string | null;
+  agent_name: string;
+  loans: number;
+  opening: number;
+  current: number;
+  collected: number;
+  paying: number;
+  cleared: number;
+  flagged: number;
+}
+
+interface FlaggedRow {
+  ticket_id: string;
+  customer_name: string;
+  loan_id: string;
+  matched_loan_id: string | null;
+  agent_name: string;
+  opening: number;
+  current: number;
+  flag_reason: string;
+}
+
+interface Summary {
+  last_updated: string | null;
+  file_name: string | null;
+  totals: Totals;
+  agents: AgentRow[];
+  flagged: FlaggedRow[];
+}
+
+interface Issue {
+  row: number | null;
+  loan_id: string | null;
+  message: string;
 }
 
 interface SyncResult {
   success: boolean;
-  sync_batch_id: string;
-  processed: number;
-  updated: number;
-  maintained: number;
-  not_found: number;
-  resolved: number;
-  reopened: number;
-  overridden_payments: number;
-  payments_created: number;
-  total_amount_collected: number;
-  errors: string[];
+  committed: boolean;
+  rows_received?: number;
+  tickets?: number;
+  tickets_changed?: number;
+  reopened?: number;
+  overridden_payments?: number;
+  notifications?: number;
+  collected_before?: number;
+  summary?: Summary;
+  errors: Issue[];
+  warnings: Issue[];
 }
 
-// Template columns - New format with Old Arrears pre-filled
-const TEMPLATE_HEADERS = ['Loan ID', 'NRC Number', 'Old Arrears Amount', 'New Arrears Amount', 'Days in Arrears', 'Last Payment Date - Loan Book'];
+const kwacha = (value: number | null | undefined) =>
+  `K${Number(value ?? 0).toLocaleString("en-ZM", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const SAMPLE_CSV = `Loan ID,NRC Number,Old Arrears Amount,New Arrears Amount,Days in Arrears,Last Payment Date - Loan Book
-LN20260302A1B2C3D4,123456/78/9,5000,0,30,2026-01-10
-LN20260302E5F6A7B8,987654/32/1,15000,5000,,2026-01-15
-LN20260302C9D0E1F2,456789/01/2,0,2500,15,`;
+const normLoan = (value: unknown) => String(value ?? "").trim().toUpperCase();
+const normNrc = (value: unknown) => String(value ?? "").replace(/\s/g, "").toUpperCase();
 
-// Helper to check empty/N/A values
-const isEmptyValue = (value: string | undefined | null): boolean => {
-  if (value === undefined || value === null) return true;
-  const v = value.toString().trim().toUpperCase();
-  return v === '' || v === '#N/A' || v === 'N/A' || v === 'NULL';
-};
+const errorMessage = (error: unknown) =>
+  (error as { message?: string } | null)?.message ?? String(error);
 
-// Parse arrears amount with fault tolerance (0 is valid)
-const parseArrearsAmount = (value: string | undefined | null): number | null => {
-  if (isEmptyValue(value)) return null;
-  const cleaned = value!.toString().trim().replace(/,/g, '');
-  const parsed = parseFloat(cleaned);
-  return isNaN(parsed) ? null : parsed;
-};
+const rate = (collected: number, opening: number) =>
+  Number(opening) > 0 ? `${((Number(collected) / Number(opening)) * 100).toFixed(1)}%` : "-";
 
-// Parse days in arrears
-const parseDaysInArrears = (value: string | undefined | null): number | null => {
-  if (isEmptyValue(value)) return null;
-  const parsed = parseInt(value!.toString().trim(), 10);
-  return isNaN(parsed) ? null : parsed;
-};
+function SummaryView({ summary, title, description }: { summary: Summary; title: string; description: string }) {
+  const t = summary.totals;
+  const tiles = [
+    { label: "Collected this month", value: kwacha(t.collected), tone: "text-green-600" },
+    { label: "Opening arrears", value: kwacha(t.opening) },
+    { label: "Arrears today", value: kwacha(t.current) },
+    { label: "Collection rate", value: rate(t.collected, t.opening) },
+    { label: "Loans paying", value: t.paying },
+    { label: "Cleared", value: t.cleared, tone: "text-green-600" },
+    { label: "No change", value: t.maintained },
+    { label: "Flagged", value: t.flagged, tone: t.flagged > 0 ? "text-orange-600" : undefined },
+  ];
 
-// Parse date with validation (1900-2100 range)
-const parseSyncDate = (value: string | undefined | null): string | null => {
-  if (isEmptyValue(value)) return null;
-  const trimmed = value!.toString().trim();
-  const date = new Date(trimmed);
-  if (isNaN(date.getTime())) return null;
-  const year = date.getFullYear();
-  if (year < 1900 || year > 2100) return null;
-  return trimmed;
-};
+  const downloadSummary = () => {
+    const wb = XLSX.utils.book_new();
+    const agentRows = summary.agents.map((a) => ({
+      Agent: a.agent_name,
+      Loans: a.loans,
+      "Opening Arrears": Number(a.opening),
+      "Arrears Today": Number(a.current),
+      "Collected MTD": Number(a.collected),
+      "Collection Rate": rate(a.collected, a.opening),
+      "Loans Paying": a.paying,
+      Cleared: a.cleared,
+      Flagged: a.flagged,
+    }));
+    agentRows.push({
+      Agent: "Total",
+      Loans: t.loans,
+      "Opening Arrears": Number(t.opening),
+      "Arrears Today": Number(t.current),
+      "Collected MTD": Number(t.collected),
+      "Collection Rate": rate(t.collected, t.opening),
+      "Loans Paying": t.paying,
+      Cleared: t.cleared,
+      Flagged: t.flagged,
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(agentRows), "By Agent");
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(
+        summary.flagged.map((f) => ({
+          Customer: f.customer_name,
+          "Loan ID": f.loan_id,
+          "Loan ID in Loan Book": f.matched_loan_id ?? "",
+          Agent: f.agent_name,
+          "Opening Arrears": Number(f.opening),
+          "Arrears Today": Number(f.current),
+          Reason: f.flag_reason,
+        }))
+      ),
+      "Flagged"
+    );
+    XLSX.writeFile(wb, `Collections_MTD_${new Date().toISOString().split("T")[0]}.xlsx`);
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+        <div>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
+        </div>
+        <Button variant="outline" size="sm" onClick={downloadSummary}>
+          <Download className="h-4 w-4 mr-1" />
+          Download
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {tiles.map((tile) => (
+            <div key={tile.label} className="p-3 bg-muted/50 rounded-lg">
+              <p className={`text-xl font-bold ${tile.tone ?? ""}`}>{tile.value}</p>
+              <p className="text-xs text-muted-foreground">{tile.label}</p>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          {t.loans} loans: {t.matched_loan_id} matched by Loan ID, {t.matched_top_up} by top-up, {t.matched_nrc} by NRC,{" "}
+          {t.missing} not in the file, {t.ambiguous} unclear. {t.no_arrears} had no arrears at the start of the month.
+        </p>
+
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Agent</TableHead>
+                <TableHead className="text-right">Loans</TableHead>
+                <TableHead className="text-right">Opening</TableHead>
+                <TableHead className="text-right">Today</TableHead>
+                <TableHead className="text-right">Collected</TableHead>
+                <TableHead className="text-right">Rate</TableHead>
+                <TableHead className="text-right">Paying</TableHead>
+                <TableHead className="text-right">Cleared</TableHead>
+                <TableHead className="text-right">Flagged</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {summary.agents.map((a) => (
+                <TableRow key={a.agent_id ?? "unassigned"}>
+                  <TableCell className="font-medium">{a.agent_name}</TableCell>
+                  <TableCell className="text-right">{a.loans}</TableCell>
+                  <TableCell className="text-right font-mono">{kwacha(a.opening)}</TableCell>
+                  <TableCell className="text-right font-mono">{kwacha(a.current)}</TableCell>
+                  <TableCell className="text-right font-mono text-green-600">{kwacha(a.collected)}</TableCell>
+                  <TableCell className="text-right">{rate(a.collected, a.opening)}</TableCell>
+                  <TableCell className="text-right">{a.paying}</TableCell>
+                  <TableCell className="text-right">{a.cleared}</TableCell>
+                  <TableCell className="text-right">{a.flagged > 0 ? <Badge variant="outline">{a.flagged}</Badge> : 0}</TableCell>
+                </TableRow>
+              ))}
+              <TableRow className="font-semibold">
+                <TableCell>Total</TableCell>
+                <TableCell className="text-right">{t.loans}</TableCell>
+                <TableCell className="text-right font-mono">{kwacha(t.opening)}</TableCell>
+                <TableCell className="text-right font-mono">{kwacha(t.current)}</TableCell>
+                <TableCell className="text-right font-mono text-green-600">{kwacha(t.collected)}</TableCell>
+                <TableCell className="text-right">{rate(t.collected, t.opening)}</TableCell>
+                <TableCell className="text-right">{t.paying}</TableCell>
+                <TableCell className="text-right">{t.cleared}</TableCell>
+                <TableCell className="text-right">{t.flagged}</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
+
+        {summary.flagged.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <Flag className="h-4 w-4 text-orange-500" />
+              Flagged for checking ({t.flagged})
+            </h3>
+            <div className="overflow-x-auto max-h-96 overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Loan ID</TableHead>
+                    <TableHead>Agent</TableHead>
+                    <TableHead className="text-right">Opening</TableHead>
+                    <TableHead className="text-right">Today</TableHead>
+                    <TableHead>Reason</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {summary.flagged.map((f) => (
+                    <TableRow key={f.ticket_id}>
+                      <TableCell>{f.customer_name}</TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {f.loan_id}
+                        {f.matched_loan_id && f.matched_loan_id !== f.loan_id && (
+                          <span className="block text-muted-foreground">now {f.matched_loan_id}</span>
+                        )}
+                      </TableCell>
+                      <TableCell>{f.agent_name}</TableCell>
+                      <TableCell className="text-right font-mono">{kwacha(f.opening)}</TableCell>
+                      <TableCell className="text-right font-mono">{kwacha(f.current)}</TableCell>
+                      <TableCell className="text-sm">{f.flag_reason}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            {t.flagged > summary.flagged.length && (
+              <p className="text-xs text-muted-foreground">Showing the {summary.flagged.length} largest.</p>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function IssueList({ issues, title, destructive }: { issues: Issue[]; title: string; destructive?: boolean }) {
+  if (issues.length === 0) return null;
+  return (
+    <Alert variant={destructive ? "destructive" : "default"}>
+      <AlertCircle className="h-4 w-4" />
+      <AlertDescription>
+        <p className="font-medium mb-1">{title}</p>
+        <ul className="text-sm space-y-0.5 max-h-48 overflow-y-auto">
+          {issues.map((issue, i) => (
+            <li key={i}>
+              {issue.row ? `Row ${issue.row}` : ""}
+              {issue.loan_id ? ` (${issue.loan_id})` : ""}
+              {issue.row || issue.loan_id ? ": " : ""}
+              {issue.message}
+            </li>
+          ))}
+        </ul>
+      </AlertDescription>
+    </Alert>
+  );
+}
 
 export default function LoanBookSync() {
   const { isAdmin } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: batches = [] } = useBatches();
-  
-  const [file, setFile] = useState<File | null>(null);
-  const [parsedData, setParsedData] = useState<SyncRecord[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
-  const [parseErrors, setParseErrors] = useState<string[]>([]);
-  const [selectedBatchId, setSelectedBatchId] = useState<string>("");
 
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (!selectedFile) return;
-    
-    setFile(selectedFile);
-    setSyncResult(null);
-    setParseErrors([]);
-    setProgress(0);
-
-    Papa.parse(selectedFile, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        const errors: string[] = [];
-        const records: SyncRecord[] = [];
-        
-        results.data.forEach((row: any, index: number) => {
-          // Loan ID is the PRIMARY matching key
-          const loanId = (row['Loan ID'] || row['loan_id'])?.toString().trim();
-          const nrc = (row['NRC Number'] || row['nrc_number'] || row['NRC'])?.toString().trim();
-          // New format: prefer "New Arrears Amount" column, fallback to legacy "Amount Owed"
-          const arrearsStr = row['New Arrears Amount'] || row['Amount Owed'] || row['Arrears Amount'] || row['arrears_amount'];
-          const daysStr = row['Days in Arrears'] || row['days_in_arrears'];
-          const paymentDate = row['Last Payment Date - Loan Book'] || row['Last Payment Date'] || row['last_payment_date'];
-          
-          if (!loanId) {
-            errors.push(`Row ${index + 2}: Missing Loan ID`);
-            return;
-          }
-          
-          const arrears = parseArrearsAmount(arrearsStr);
-          const days = parseDaysInArrears(daysStr);
-          const date = parseSyncDate(paymentDate);
-          
-          records.push({
-            loan_id: loanId,
-            nrc_number: nrc || '',
-            arrears_amount: arrears,
-            days_in_arrears: days,
-            last_payment_date: date,
-          });
-        });
-        
-        setParsedData(records);
-        setParseErrors(errors);
-        
-        if (records.length > 0) {
-          toast({
-            title: "File parsed",
-            description: `${records.length} records ready for sync${errors.length > 0 ? `, ${errors.length} rows skipped` : ''}`,
-          });
-        }
-      },
-      error: (error) => {
-        toast({
-          title: "Parse error",
-          description: error.message,
-          variant: "destructive",
-        });
-      },
-    });
-  }, [toast]);
-
-  const handleSync = async () => {
-    if (parsedData.length === 0) {
-      toast({ title: "No data to sync", variant: "destructive" });
-      return;
-    }
-
-    setIsProcessing(true);
-    setProgress(10);
-
-    try {
-      // Process in chunks for large datasets (free-tier safe)
-      const CHUNK_SIZE = 500;
-      let totalProcessed = 0;
-      let totalUpdated = 0;
-      let totalMaintained = 0;
-      let totalNotFound = 0;
-      let totalResolved = 0;
-      let totalReopened = 0;
-      let totalOverridden = 0;
-      let totalPaymentsCreated = 0;
-      let totalAmountCollected = 0;
-      let allErrors: string[] = [];
-      let lastBatchId = '';
-
-      for (let i = 0; i < parsedData.length; i += CHUNK_SIZE) {
-        const chunk = parsedData.slice(i, i + CHUNK_SIZE);
-        
-        const { data, error } = await supabase.rpc('process_loan_book_sync', {
-          p_sync_data: JSON.stringify(chunk),
-        });
-        
-        if (error) throw error;
-        
-        const result = data as unknown as SyncResult;
-        totalProcessed += result.processed;
-        totalUpdated += result.updated;
-        totalMaintained += result.maintained || 0;
-        totalNotFound += result.not_found;
-        totalResolved += result.resolved;
-        totalReopened += result.reopened || 0;
-        totalOverridden += result.overridden_payments || 0;
-        totalPaymentsCreated += result.payments_created || 0;
-        totalAmountCollected += result.total_amount_collected || 0;
-        allErrors = [...allErrors, ...result.errors];
-        lastBatchId = result.sync_batch_id;
-        
-        setProgress(10 + ((i + chunk.length) / parsedData.length) * 80);
+  // A month's opening position is all the batches loaded that month (one per agent).
+  const months = useMemo(() => {
+    const byMonth = new Map<string, { key: string; label: string; batches: typeof batches }>();
+    batches.forEach((b) => {
+      const d = new Date(b.upload_date);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      if (!byMonth.has(key)) {
+        byMonth.set(key, { key, label: d.toLocaleString("en-GB", { month: "long", year: "numeric" }), batches: [] });
       }
+      byMonth.get(key)!.batches.push(b);
+    });
+    return [...byMonth.values()].sort((a, b) => b.key.localeCompare(a.key));
+  }, [batches]);
 
-      setProgress(100);
-      
-      setSyncResult({
-        success: true,
-        sync_batch_id: lastBatchId,
-        processed: totalProcessed,
-        updated: totalUpdated,
-        maintained: totalMaintained,
-        not_found: totalNotFound,
-        resolved: totalResolved,
-        reopened: totalReopened,
-        overridden_payments: totalOverridden,
-        payments_created: totalPaymentsCreated,
-        total_amount_collected: totalAmountCollected,
-        errors: allErrors,
-      });
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const monthBatches = useMemo(() => months.find((m) => m.key === selectedMonth)?.batches ?? [], [months, selectedMonth]);
+  const batchIds = useMemo(() => monthBatches.map((b) => b.id), [monthBatches]);
+  const monthLabel = months.find((m) => m.key === selectedMonth)?.label ?? "";
 
-      // Invalidate queries to refresh data including payments
-      queryClient.invalidateQueries({ queryKey: ['master_customers'] });
-      queryClient.invalidateQueries({ queryKey: ['tickets'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
-      queryClient.invalidateQueries({ queryKey: ['agent_notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['payments'] });
+  const [file, setFile] = useState<File | null>(null);
+  const [rows, setRows] = useState<FileRow[]>([]);
+  const [fileRowCount, setFileRowCount] = useState(0);
+  const [stage, setStage] = useState<"idle" | "reading" | "previewing" | "applying">("idle");
+  const [preview, setPreview] = useState<SyncResult | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
 
-      const collectedText = totalAmountCollected > 0 
-        ? `, K${totalAmountCollected.toLocaleString()} collected`
-        : '';
-      toast({
-        title: "Daily update completed",
-        description: `${totalUpdated} updated, ${totalResolved} resolved${collectedText}`,
-      });
-    } catch (error: any) {
-      toast({
-        title: "Sync failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+  // The latest month is normally the one being collected.
+  useEffect(() => {
+    if (!selectedMonth && months.length > 0) setSelectedMonth(months[0].key);
+  }, [months, selectedMonth]);
 
-  const handleReset = () => {
+  const { data: currentSummary, isLoading: summaryLoading } = useQuery({
+    queryKey: ["loan_book_mtd", ...batchIds],
+    enabled: isAdmin && batchIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("get_loan_book_mtd_summary", { p_batch_ids: batchIds });
+      if (error) throw error;
+      return data as unknown as Summary;
+    },
+  });
+
+  const reset = () => {
     setFile(null);
-    setParsedData([]);
-    setSyncResult(null);
-    setParseErrors([]);
-    setProgress(0);
+    setRows([]);
+    setFileRowCount(0);
+    setPreview(null);
+    setFileError(null);
+    setStage("idle");
   };
 
-  const downloadEmptyTemplate = () => {
-    const blob = new Blob([SAMPLE_CSV], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'daily_update_template.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+  const runSync = async (fileRows: FileRow[], commit: boolean, fileName: string) => {
+    const { data, error } = await supabase.rpc("sync_loan_book_mtd", {
+      p_batch_ids: batchIds,
+      p_rows: fileRows as unknown as never,
+      p_file_name: fileName,
+      p_commit: commit,
+    });
+    if (error) throw error;
+    return data as unknown as SyncResult;
   };
 
-  const downloadBatchTemplate = async () => {
-    if (!selectedBatchId) {
-      toast({ title: "Select a batch", description: "Please select a batch first.", variant: "destructive" });
+  const handleFile = async (selected: File) => {
+    if (batchIds.length === 0) {
+      toast({ title: "Select the month first", variant: "destructive" });
       return;
     }
-    setIsDownloadingTemplate(true);
+    reset();
+    setFile(selected);
+    setStage("reading");
+
     try {
-      const { data, error } = await supabase.rpc('get_batch_loan_book_sync_template', {
-        p_batch_id: selectedBatchId,
-      });
-      if (error) throw error;
+      const parsed = await new Promise<Papa.ParseResult<Record<string, string>>>((resolve, reject) =>
+        Papa.parse<Record<string, string>>(selected, {
+          header: true,
+          skipEmptyLines: true,
+          transformHeader: (h) => h.trim(),
+          complete: resolve,
+          error: reject,
+        })
+      );
 
-      const result = data as any;
-      const customers = result?.customers || [];
-      const batchName = result?.batch_name || 'Unknown';
-      const batchId = result?.batch_id || selectedBatchId;
-      const totalNrcs = result?.total_nrcs || customers.length;
-      const totalOldArrears = result?.total_old_arrears || 0;
-      const exportDate = new Date().toLocaleString('en-GB');
-
-      if (customers.length === 0) {
-        toast({ title: "No customers found", description: "No customers in the selected batch.", variant: "destructive" });
+      const headers = parsed.meta.fields ?? [];
+      const missingColumns = REQUIRED_COLUMNS.filter((c) => !headers.includes(c));
+      if (missingColumns.length > 0) {
+        setFileError(`This doesn't look like the daily loan book. Missing columns: ${missingColumns.join(", ")}.`);
+        setStage("idle");
         return;
       }
 
-      // Build Excel workbook with metadata header
-      const wb = XLSX.utils.book_new();
+      // Only rows that can belong to the month's batches go to the server: their Loan IDs, top-ups of them, and their NRCs.
+      const tickets = await fetchAllRows<{ loan_id: string; nrc_number: string }>((from, to) =>
+        supabase
+          .from("tickets")
+          .select("loan_id, nrc_number, id")
+          .in("batch_id", batchIds)
+          .order("id")
+          .range(from, to)
+      );
+      const loanIds = new Set(tickets.map((t) => normLoan(t.loan_id)));
+      const nrcs = new Set(tickets.map((t) => normNrc(t.nrc_number)));
 
-      // Metadata rows
-      const metaRows = [
-        ['Loan Book Sync Template'],
-        ['Batch Name:', batchName],
-        ['Batch ID:', batchId],
-        ['Total NRCs in Batch:', totalNrcs],
-        ['Total Old Arrears (Batch):', totalOldArrears],
-        ['Total New Arrears (Batch):', ''],
-        ['Export Date & Time:', exportDate],
-        [], // blank separator
-      ];
-
-      // Data header - Loan ID is first column
-      const dataHeaders = ['Batch ID', 'Loan ID', 'NRC Number', 'Customer Name', 'Old Arrears Amount', 'New Arrears Amount', 'Days in Arrears', 'Last Payment Date - Loan Book'];
-
-      // Data rows
-      const dataRows = customers.map((c: any) => [
-        batchId,
-        c.loan_id || '',
-        c.nrc_number,
-        c.customer_name || '',
-        c.old_arrears_amount ?? 0,
-        '', // New Arrears - admin fills
-        '', // Days in Arrears - admin fills
-        '', // Last Payment Date - admin fills
-      ]);
-
-      const allRows = [...metaRows, dataHeaders, ...dataRows];
-      const ws = XLSX.utils.aoa_to_sheet(allRows);
-
-      // Style metadata rows
-      const metaStyle = { font: { bold: true, color: { rgb: '1a365d' } } };
-      for (let r = 0; r < metaRows.length - 1; r++) {
-        const cellA = XLSX.utils.encode_cell({ r, c: 0 });
-        if (ws[cellA]) ws[cellA].s = metaStyle;
-      }
-      // Title row
-      const titleCell = XLSX.utils.encode_cell({ r: 0, c: 0 });
-      if (ws[titleCell]) ws[titleCell].s = { font: { bold: true, sz: 14, color: { rgb: '1a365d' } } };
-
-      // Style data header row
-      const headerRowIdx = metaRows.length;
-      for (let c = 0; c < dataHeaders.length; c++) {
-        const cell = XLSX.utils.encode_cell({ r: headerRowIdx, c });
-        if (ws[cell]) {
-          ws[cell].s = {
-            font: { bold: true, color: { rgb: 'FFFFFF' } },
-            fill: { fgColor: { rgb: '2B6CB0' } },
-          };
+      const relevant: FileRow[] = [];
+      parsed.data.forEach((r, i) => {
+        const loan = normLoan(r.LoanRefId);
+        const foreclosure = normLoan(r.ForeclosureLoanRefId);
+        const nrc = normNrc(r.NRCNumber);
+        if (loanIds.has(loan) || (foreclosure && loanIds.has(foreclosure)) || (nrc && nrcs.has(nrc))) {
+          relevant.push({
+            row: i + 2,
+            loan_id: loan,
+            nrc_number: r.NRCNumber ?? "",
+            foreclosure_loan_id: foreclosure,
+            arrears_amount: r.ArrearAmount ?? "",
+            days_in_arrears: r.DaysInArrear ?? "",
+            last_payment_date: r.LastPaymentDate ?? "",
+          });
         }
-      }
-
-      // Column widths
-      ws['!cols'] = [
-        { wch: 38 }, // Batch ID
-        { wch: 24 }, // Loan ID
-        { wch: 18 }, // NRC
-        { wch: 24 }, // Customer Name
-        { wch: 20 }, // Old Arrears
-        { wch: 20 }, // New Arrears
-        { wch: 16 }, // Days
-        { wch: 28 }, // Last Payment Date
-      ];
-
-      XLSX.utils.book_append_sheet(wb, ws, 'Loan Book Sync');
-      const dateStr = new Date().toISOString().split('T')[0];
-      XLSX.writeFile(wb, `Loan_Book_Sync_${batchId.slice(0, 8)}_${dateStr}.xlsx`);
-
-      toast({
-        title: "Template downloaded",
-        description: `${customers.length} NRCs from batch "${batchName}". Fill in "New Arrears Amount" from your loan book.`,
       });
-    } catch (error: any) {
-      toast({ title: "Download failed", description: error.message, variant: "destructive" });
+
+      setRows(relevant);
+      setFileRowCount(parsed.data.length);
+      setStage("previewing");
+      setPreview(await runSync(relevant, false, selected.name));
+    } catch (error) {
+      toast({ title: "Could not read the loan book", description: errorMessage(error), variant: "destructive" });
     } finally {
-      setIsDownloadingTemplate(false);
+      setStage((s) => (s === "reading" || s === "previewing" ? "idle" : s));
     }
   };
 
-  // Get expected action label for preview
-  const getExpectedAction = (arrears: number | null): { label: string; variant: "default" | "secondary" | "outline" | "destructive" } => {
-    if (arrears === null) {
-      return { label: "Skip (No Value)", variant: "outline" };
+  const apply = async () => {
+    if (!file) return;
+    setStage("applying");
+    try {
+      const result = await runSync(rows, true, file.name);
+      if (!result.success) {
+        setPreview(result);
+        return;
+      }
+      ["loan_book_mtd", "master_customers", "tickets", "dashboard_stats", "agent_notifications", "payments"].forEach((key) =>
+        queryClient.invalidateQueries({ queryKey: [key] })
+      );
+      toast({
+        title: "Loan book update applied",
+        description: `${kwacha(result.summary?.totals.collected)} collected this month, ${result.summary?.totals.flagged ?? 0} flagged`,
+      });
+      reset();
+    } catch (error) {
+      toast({ title: "Update failed; nothing was saved", description: errorMessage(error), variant: "destructive" });
+    } finally {
+      setStage((s) => (s === "applying" ? "idle" : s));
     }
-    if (arrears === 0) {
-      return { label: "Will Clear & Resolve", variant: "default" };
-    }
-    return { label: "Will Update", variant: "secondary" };
   };
 
   if (!isAdmin) {
@@ -389,295 +472,152 @@ export default function LoanBookSync() {
       <div className="flex items-center justify-center h-96">
         <Alert variant="destructive" className="max-w-md">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            Only administrators can access the Daily Loan Book Update feature.
-          </AlertDescription>
+          <AlertDescription>Only administrators can access the Daily Loan Book Update feature.</AlertDescription>
         </Alert>
       </div>
     );
   }
+
+  const busy = stage !== "idle";
+  const changeToday = preview?.summary ? Number(preview.summary.totals.collected) - Number(preview.collected_before ?? 0) : 0;
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Daily Update (Loan Book)</h1>
         <p className="text-muted-foreground">
-          Reconcile arrears from the loan book. Updates balances, resolves cleared accounts, and notifies agents.
+          Upload today's loan book. Each loan is compared with its arrears at the start of the month: lower means a
+          payment, zero means cleared, higher is flagged. Differences under K1 are ignored.
         </p>
       </div>
 
-      {/* Info Alert */}
-      <Alert>
-        <RefreshCw className="h-4 w-4" />
-        <AlertDescription>
-          <strong>Reconciliation Mode:</strong> This updates arrears only. No new customers or tickets are created. 
-          Agents will be notified of all changes (cleared, reduced, increased, reopened).
-        </AlertDescription>
-      </Alert>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Upload Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileSpreadsheet className="h-5 w-5" />
-              Upload Loan Book Data
-            </CardTitle>
-            <CardDescription>
-              CSV with: NRC Number, Old Arrears (pre-filled), New Arrears Amount (from loan book)
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Batch Selector */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileSpreadsheet className="h-5 w-5" />
+            Upload Loan Book
+          </CardTitle>
+          <CardDescription>The daily export as it comes, e.g. LoanBook_09Nov2026.csv</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Select Batch</label>
-              <Select value={selectedBatchId} onValueChange={setSelectedBatchId}>
+              <label className="text-sm font-medium">Month (opening position)</label>
+              <Select value={selectedMonth} onValueChange={(v) => { reset(); setSelectedMonth(v); }} disabled={busy}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Choose a batch..." />
+                  <SelectValue placeholder="Choose a month..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {batches.map((batch) => (
-                    <SelectItem key={batch.id} value={batch.id}>
-                      <div className="flex items-center gap-2">
-                        <Layers className="h-3 w-3" />
-                        <span>{batch.name}</span>
-                        <Badge variant="secondary" className="text-xs ml-1">{batch.customer_count}</Badge>
-                      </div>
+                  {months.map((m) => (
+                    <SelectItem key={m.key} value={m.key}>
+                      {m.label} ({m.batches.length} {m.batches.length === 1 ? "batch" : "batches"})
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={downloadEmptyTemplate}>
-                <Download className="h-4 w-4 mr-1" />
-                Empty Template
-              </Button>
-              <Button 
-                variant="default" 
-                size="sm" 
-                onClick={downloadBatchTemplate}
-                disabled={isDownloadingTemplate || !selectedBatchId}
-              >
-                <Download className="h-4 w-4 mr-1" />
-                {isDownloadingTemplate ? 'Loading...' : 'Batch Template'}
-              </Button>
-              {file && (
-                <Button variant="ghost" size="sm" onClick={handleReset}>
-                  <RotateCcw className="h-4 w-4 mr-1" />
-                  Reset
-                </Button>
+              {monthBatches.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {monthBatches.map((b) => (
+                    <Badge key={b.id} variant="secondary" className="text-xs font-normal">
+                      <Layers className="h-3 w-3 mr-1" />
+                      {b.name} · {b.customer_count}
+                    </Badge>
+                  ))}
+                </div>
               )}
             </div>
 
-            <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center">
+            <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 text-center">
               <input
                 type="file"
-                accept=".csv,.xlsx,.xls"
-                onChange={handleFileChange}
+                accept=".csv"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) handleFile(f);
+                }}
                 className="hidden"
                 id="loan-book-upload"
-                disabled={isProcessing}
+                disabled={busy || batchIds.length === 0}
               />
               <label htmlFor="loan-book-upload" className="cursor-pointer">
-                <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">
-                  {file ? file.name : 'Click to upload or drag and drop'}
-                </p>
-                <p className="text-xs text-muted-foreground/60 mt-1">CSV files only</p>
+                <Upload className="h-6 w-6 mx-auto mb-1 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">{file ? file.name : "Choose the loan book CSV"}</p>
               </label>
             </div>
+          </div>
 
-            {parseErrors.length > 0 && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
+          {(stage === "reading" || stage === "previewing") && (
+            <p className="text-sm text-muted-foreground flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {stage === "reading" ? "Reading the file..." : "Comparing with the opening position..."}
+            </p>
+          )}
+
+          {fileError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{fileError}</AlertDescription>
+            </Alert>
+          )}
+
+          {preview && !preview.success && (
+            <IssueList issues={preview.errors} title="Nothing was saved. Fix these and upload again:" destructive />
+          )}
+
+          {preview?.success && preview.summary && (
+            <div className="space-y-3">
+              <Alert>
+                <CheckCircle className="h-4 w-4" />
                 <AlertDescription>
-                  {parseErrors.length} rows skipped due to missing NRC
+                  <p className="font-medium">Preview: nothing has been saved yet.</p>
+                  <p className="text-sm">
+                    {fileRowCount.toLocaleString()} loans in the file, {rows.length.toLocaleString()} relate to this batch.{" "}
+                    {kwacha(changeToday)} more collected since the last update. {preview.tickets_changed} tickets will
+                    change, {preview.reopened} reopen, {preview.overridden_payments} agent-reported payments will be
+                    replaced by the loan book, and {preview.notifications} agent notifications will be sent.
+                  </p>
                 </AlertDescription>
               </Alert>
-            )}
-
-            {parsedData.length > 0 && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Records ready:</span>
-                  <Badge variant="secondary">{parsedData.length}</Badge>
-                </div>
-                
-                <Button 
-                  onClick={handleSync} 
-                  disabled={isProcessing}
-                  className="w-full"
-                >
-                  {isProcessing ? 'Processing...' : 'Run Daily Update'}
+              <IssueList issues={preview.warnings} title="Warnings (the update can still be applied):" />
+              <div className="flex gap-2">
+                <Button onClick={apply} disabled={busy}>
+                  {stage === "applying" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-1" />}
+                  Apply update
+                </Button>
+                <Button variant="ghost" onClick={reset} disabled={busy}>
+                  <RotateCcw className="h-4 w-4 mr-1" />
+                  Cancel
                 </Button>
               </div>
-            )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-            {isProcessing && (
-              <div className="space-y-2">
-                <Progress value={progress} />
-                <p className="text-xs text-center text-muted-foreground">{Math.round(progress)}%</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Results Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Update Results</CardTitle>
-            <CardDescription>Summary of the latest daily update</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {syncResult ? (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 text-green-600">
-                  <CheckCircle className="h-5 w-5" />
-                  <span className="font-medium">Update completed successfully</span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 bg-muted/50 rounded-lg">
-                    <p className="text-2xl font-bold">{syncResult.processed}</p>
-                    <p className="text-xs text-muted-foreground">Processed</p>
-                  </div>
-                  <div className="p-3 bg-muted/50 rounded-lg">
-                    <div className="flex items-center gap-1">
-                      <TrendingUp className="h-4 w-4 text-blue-500" />
-                      <p className="text-2xl font-bold text-blue-600">{syncResult.updated}</p>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Updated</p>
-                  </div>
-                  <div className="p-3 bg-muted/50 rounded-lg">
-                    <div className="flex items-center gap-1">
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                      <p className="text-2xl font-bold text-green-600">{syncResult.resolved}</p>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Resolved</p>
-                  </div>
-                  <div className="p-3 bg-muted/50 rounded-lg">
-                    <div className="flex items-center gap-1">
-                      <RefreshCw className="h-4 w-4 text-orange-500" />
-                      <p className="text-2xl font-bold text-orange-600">{syncResult.reopened}</p>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Tickets reopened</p>
-                  </div>
-                  <div className="p-3 bg-muted/50 rounded-lg">
-                    <div className="flex items-center gap-1">
-                      <RefreshCw className="h-4 w-4 text-muted-foreground" />
-                      <p className="text-2xl font-bold">{syncResult.overridden_payments}</p>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Agent payments replaced by loan book</p>
-                  </div>
-                  <div className="p-3 bg-muted/50 rounded-lg">
-                    <div className="flex items-center gap-1">
-                      <Minus className="h-4 w-4 text-muted-foreground" />
-                      <p className="text-2xl font-bold">{syncResult.maintained}</p>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Maintained</p>
-                  </div>
-                  <div className="p-3 bg-muted/50 rounded-lg">
-                    <div className="flex items-center gap-1">
-                      <AlertCircle className="h-4 w-4 text-yellow-500" />
-                      <p className="text-2xl font-bold text-yellow-600">{syncResult.not_found}</p>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Not Found</p>
-                  </div>
-                </div>
-
-                {/* Amount Collected from Loan Book */}
-                {syncResult.total_amount_collected > 0 && (
-                  <div className="flex items-center justify-between p-3 bg-success/10 rounded-lg border border-success/20">
-                    <div className="flex items-center gap-2">
-                      <TrendingDown className="h-5 w-5 text-success" />
-                      <span className="font-medium text-success">Collections from Loan Book</span>
-                    </div>
-                    <span className="text-lg font-bold text-success">
-                      K{syncResult.total_amount_collected.toLocaleString()}
-                    </span>
-                  </div>
-                )}
-
-                {/* Agent notification indicator */}
-                <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg">
-                  <Bell className="h-4 w-4 text-primary" />
-                  <span className="text-sm">
-                    Agents notified of {syncResult.updated + syncResult.resolved + syncResult.reopened} changes
-                  </span>
-                </div>
-
-                {syncResult.errors.length > 0 && (
-                  <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>
-                      {syncResult.errors.length} errors: {syncResult.errors.slice(0, 3).join('; ')}
-                      {syncResult.errors.length > 3 && `... and ${syncResult.errors.length - 3} more`}
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <FileSpreadsheet className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p>No update results yet</p>
-                <p className="text-sm">Upload a loan book file to begin</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Preview Table */}
-      {parsedData.length > 0 && !syncResult && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Data Preview</CardTitle>
-            <CardDescription>First 10 records from the uploaded file</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>NRC Number</TableHead>
-                  <TableHead className="text-right">Amount Owed</TableHead>
-                  <TableHead className="text-right">Days in Arrears</TableHead>
-                  <TableHead>Last Payment Date</TableHead>
-                  <TableHead>Expected Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {parsedData.slice(0, 10).map((record, index) => {
-                  const action = getExpectedAction(record.arrears_amount);
-                  return (
-                    <TableRow key={index}>
-                      <TableCell className="font-mono">{record.nrc_number}</TableCell>
-                      <TableCell className="text-right font-mono">
-                        {record.arrears_amount !== null
-                          ? new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW', minimumFractionDigits: 0 }).format(record.arrears_amount)
-                          : <span className="text-muted-foreground italic">-</span>
-                        }
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {record.days_in_arrears !== null ? record.days_in_arrears : <span className="text-muted-foreground">-</span>}
-                      </TableCell>
-                      <TableCell>{record.last_payment_date || <span className="text-muted-foreground">-</span>}</TableCell>
-                      <TableCell>
-                        <Badge variant={action.variant}>{action.label}</Badge>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-            {parsedData.length > 10 && (
-              <p className="text-xs text-muted-foreground text-center mt-4">
-                + {parsedData.length - 10} more records
-              </p>
-            )}
-          </CardContent>
-        </Card>
+      {preview?.success && preview.summary ? (
+        <SummaryView
+          summary={preview.summary}
+          title="Preview: month to date after this update"
+          description={`${monthLabel} - ${file?.name ?? ""}`}
+        />
+      ) : summaryLoading ? null : currentSummary && currentSummary.totals.loans > 0 ? (
+        <SummaryView
+          summary={currentSummary}
+          title="Month to date"
+          description={`${monthLabel} - last updated ${
+            currentSummary.last_updated ? new Date(currentSummary.last_updated).toLocaleString("en-GB") : "-"
+          } from ${currentSummary.file_name ?? "the loan book"}`}
+        />
+      ) : (
+        batchIds.length > 0 && (
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground">
+              <FileSpreadsheet className="h-10 w-10 mx-auto mb-2 opacity-50" />
+              <p>No loan book uploaded for {monthLabel} yet.</p>
+            </CardContent>
+          </Card>
+        )
       )}
     </div>
   );
